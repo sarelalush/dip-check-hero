@@ -31,7 +31,8 @@ function ScanScreen() {
       navigate({ to: "/select-pool" });
     } catch (e) {
       console.error(e);
-      setError("שגיאה בניתוח התמונה. נסה לצלם שוב.");
+      const msg = e instanceof Error ? e.message : "שגיאה בניתוח התמונה. נסה לצלם שוב.";
+      setError(msg);
       setLoading(false);
     }
   }
