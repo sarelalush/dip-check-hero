@@ -9,38 +9,128 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SelectPoolRouteImport } from './routes/select-pool'
+import { Route as ScanRouteImport } from './routes/scan'
+import { Route as PoolsRouteImport } from './routes/pools'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ResultsTestIdRouteImport } from './routes/results.$testId'
+import { Route as PoolNewRouteImport } from './routes/pool.new'
 
+const SelectPoolRoute = SelectPoolRouteImport.update({
+  id: '/select-pool',
+  path: '/select-pool',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScanRoute = ScanRouteImport.update({
+  id: '/scan',
+  path: '/scan',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PoolsRoute = PoolsRouteImport.update({
+  id: '/pools',
+  path: '/pools',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ResultsTestIdRoute = ResultsTestIdRouteImport.update({
+  id: '/results/$testId',
+  path: '/results/$testId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PoolNewRoute = PoolNewRouteImport.update({
+  id: '/pool/new',
+  path: '/pool/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/pools': typeof PoolsRoute
+  '/scan': typeof ScanRoute
+  '/select-pool': typeof SelectPoolRoute
+  '/pool/new': typeof PoolNewRoute
+  '/results/$testId': typeof ResultsTestIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/pools': typeof PoolsRoute
+  '/scan': typeof ScanRoute
+  '/select-pool': typeof SelectPoolRoute
+  '/pool/new': typeof PoolNewRoute
+  '/results/$testId': typeof ResultsTestIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/pools': typeof PoolsRoute
+  '/scan': typeof ScanRoute
+  '/select-pool': typeof SelectPoolRoute
+  '/pool/new': typeof PoolNewRoute
+  '/results/$testId': typeof ResultsTestIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/pools'
+    | '/scan'
+    | '/select-pool'
+    | '/pool/new'
+    | '/results/$testId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/pools'
+    | '/scan'
+    | '/select-pool'
+    | '/pool/new'
+    | '/results/$testId'
+  id:
+    | '__root__'
+    | '/'
+    | '/pools'
+    | '/scan'
+    | '/select-pool'
+    | '/pool/new'
+    | '/results/$testId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  PoolsRoute: typeof PoolsRoute
+  ScanRoute: typeof ScanRoute
+  SelectPoolRoute: typeof SelectPoolRoute
+  PoolNewRoute: typeof PoolNewRoute
+  ResultsTestIdRoute: typeof ResultsTestIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/select-pool': {
+      id: '/select-pool'
+      path: '/select-pool'
+      fullPath: '/select-pool'
+      preLoaderRoute: typeof SelectPoolRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/scan': {
+      id: '/scan'
+      path: '/scan'
+      fullPath: '/scan'
+      preLoaderRoute: typeof ScanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pools': {
+      id: '/pools'
+      path: '/pools'
+      fullPath: '/pools'
+      preLoaderRoute: typeof PoolsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +138,30 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/results/$testId': {
+      id: '/results/$testId'
+      path: '/results/$testId'
+      fullPath: '/results/$testId'
+      preLoaderRoute: typeof ResultsTestIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pool/new': {
+      id: '/pool/new'
+      path: '/pool/new'
+      fullPath: '/pool/new'
+      preLoaderRoute: typeof PoolNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  PoolsRoute: PoolsRoute,
+  ScanRoute: ScanRoute,
+  SelectPoolRoute: SelectPoolRoute,
+  PoolNewRoute: PoolNewRoute,
+  ResultsTestIdRoute: ResultsTestIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
