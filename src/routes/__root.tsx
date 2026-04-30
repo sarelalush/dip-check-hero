@@ -36,6 +36,10 @@ export const Route = createRootRoute({
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "PoolCheck — בדיקת מים לבריכה" },
+      { name: "twitter:description", content: "צלם סטיק בדיקה וקבל המלצה כמה חומר להוסיף לבריכה" },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/3ff949ad-cda1-404f-94b2-eb1fc629850d/id-preview-055ef950--576c2811-78cc-4bcb-829d-f52730dbbc5b.lovable.app-1777552131030.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/3ff949ad-cda1-404f-94b2-eb1fc629850d/id-preview-055ef950--576c2811-78cc-4bcb-829d-f52730dbbc5b.lovable.app-1777552131030.png" },
     ],
     links: [
       {
