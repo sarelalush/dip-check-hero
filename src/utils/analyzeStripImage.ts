@@ -1,5 +1,9 @@
-// Modular strip analyzer. MVP: returns mock results.
-// Replace internals with real CV pipeline later — same return shape.
+// Hybrid pool test strip analyzer.
+// Strategy: try Vision AI first; fallback to client-side pixel CV if AI fails or low confidence.
+
+import { targetRanges } from "@/config/targetRanges";
+import { analyzeStripWithAI } from "@/server/strip-analysis.functions";
+import { analyzeStripPixels } from "./colorUtils";
 
 export type Status = "low" | "ok" | "high";
 
@@ -15,9 +19,10 @@ export interface StripResults {
   ph: StripReading;
   alkalinity: StripReading;
   salt?: StripReading;
+  source: "ai" | "cv" | "mock";
+  confidence: number;
+  notes?: string;
 }
-
-import { targetRanges } from "@/config/targetRanges";
 
 function statusOf(value: number, key: keyof typeof targetRanges): Status {
   const r = targetRanges[key];
@@ -26,54 +31,73 @@ function statusOf(value: number, key: keyof typeof targetRanges): Status {
   return "ok";
 }
 
+async function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result as string);
+    r.onerror = () => rej(r.error);
+    r.readAsDataURL(file);
+  });
+}
+
 /**
  * Analyze a pool test strip image.
- * Currently returns mock data with slight randomization.
- * @param _image File or data URL of the strip
- * @param includeSalt whether to include salt reading (saltwater pools)
+ * @param image File or data URL of the strip
+ * @param includeSalt include salt reading (saltwater pools)
  */
 export async function analyzeStripImage(
-  _image: File | string,
+  image: File | string,
   includeSalt = false,
 ): Promise<StripResults> {
-  // Simulate processing delay
-  await new Promise((r) => setTimeout(r, 1400));
+  const dataUrl = typeof image === "string" ? image : await fileToDataUrl(image);
 
-  // Mock: pick plausible "needs adjustment" values
-  const fc = +(Math.random() * 1.2 + 0.3).toFixed(1); // 0.3-1.5 (often low)
-  const ph = +(Math.random() * 0.8 + 7.4).toFixed(1); // 7.4-8.2
-  const alk = Math.round(Math.random() * 60 + 70); // 70-130
-  const salt = Math.round(Math.random() * 1000 + 2400); // 2400-3400
-
-  const result: StripResults = {
-    freeChlorine: {
-      labelHe: "כלור חופשי",
-      value: fc,
-      unit: "ppm",
-      status: statusOf(fc, "freeChlorine"),
-    },
-    ph: {
-      labelHe: "pH",
-      value: ph,
-      unit: "",
-      status: statusOf(ph, "ph"),
-    },
-    alkalinity: {
-      labelHe: "אלקליניות",
-      value: alk,
-      unit: "ppm",
-      status: statusOf(alk, "alkalinity"),
-    },
-  };
-
-  if (includeSalt) {
-    result.salt = {
-      labelHe: "מלח",
-      value: salt,
-      unit: "ppm",
-      status: statusOf(salt, "salt"),
-    };
+  // 1) Try Vision AI
+  let aiResult: Awaited<ReturnType<typeof analyzeStripWithAI>> | null = null;
+  try {
+    aiResult = await analyzeStripWithAI({ data: { imageBase64: dataUrl, includeSalt } });
+  } catch (e) {
+    console.warn("AI analyzer threw:", e);
   }
 
-  return result;
+  if (aiResult?.ok && aiResult.data.confidence >= 0.4) {
+    const d = aiResult.data;
+    const result: StripResults = {
+      freeChlorine: { labelHe: "כלור חופשי", value: d.freeChlorine, unit: "ppm", status: statusOf(d.freeChlorine, "freeChlorine") },
+      ph: { labelHe: "pH", value: d.ph, unit: "", status: statusOf(d.ph, "ph") },
+      alkalinity: { labelHe: "אלקליניות", value: d.alkalinity, unit: "ppm", status: statusOf(d.alkalinity, "alkalinity") },
+      source: "ai",
+      confidence: d.confidence,
+      notes: d.notes,
+    };
+    if (includeSalt && typeof d.salt === "number") {
+      result.salt = { labelHe: "מלח", value: d.salt, unit: "ppm", status: statusOf(d.salt, "salt") };
+    }
+    return result;
+  }
+
+  // 2) Fallback: client-side CV (pixel sampling)
+  try {
+    const cv = await analyzeStripPixels(dataUrl);
+    return {
+      freeChlorine: { labelHe: "כלור חופשי", value: cv.freeChlorine, unit: "ppm", status: statusOf(cv.freeChlorine, "freeChlorine") },
+      ph: { labelHe: "pH", value: cv.ph, unit: "", status: statusOf(cv.ph, "ph") },
+      alkalinity: { labelHe: "אלקליניות", value: cv.alkalinity, unit: "ppm", status: statusOf(cv.alkalinity, "alkalinity") },
+      source: "cv",
+      confidence: cv.confidence,
+      notes: aiResult && !aiResult.ok
+        ? `ניתוח AI נכשל (${"message" in aiResult ? aiResult.message : aiResult.error}), מוצג ניתוח פיקסלים מקומי`
+        : "ביטחון נמוך מ-AI, מוצג ניתוח פיקסלים מקומי",
+    };
+  } catch (e) {
+    console.error("CV fallback failed:", e);
+    // 3) Last-resort: mock so UX doesn't break
+    return {
+      freeChlorine: { labelHe: "כלור חופשי", value: 1, unit: "ppm", status: "ok" },
+      ph: { labelHe: "pH", value: 7.4, unit: "", status: "ok" },
+      alkalinity: { labelHe: "אלקליניות", value: 100, unit: "ppm", status: "ok" },
+      source: "mock",
+      confidence: 0,
+      notes: "לא ניתן היה לנתח את התמונה. צלם שוב באור טוב.",
+    };
+  }
 }
