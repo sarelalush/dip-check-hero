@@ -108,6 +108,7 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
       return {
         ok: true as const,
         data: {
+          isStrip: Boolean(args.isStrip),
           freeChlorine: Number(args.freeChlorine),
           ph: Number(args.ph),
           alkalinity: Number(args.alkalinity),
