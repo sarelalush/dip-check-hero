@@ -15,17 +15,25 @@ function ScanScreen() {
   const galleryRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
 
+  const [error, setError] = useState<string | null>(null);
+
   async function handleFile(file: File) {
     setLoading(true);
-    const reader = new FileReader();
-    const dataUrl: string = await new Promise((res) => {
-      reader.onload = () => res(reader.result as string);
-      reader.readAsDataURL(file);
-    });
-    // Note: includeSalt determined later per pool; we run with salt=true so data is available
-    const results = await analyzeStripImage(file, true);
-    scanSession.set({ results, imageDataUrl: dataUrl });
-    navigate({ to: "/select-pool" });
+    setError(null);
+    try {
+      const reader = new FileReader();
+      const dataUrl: string = await new Promise((res) => {
+        reader.onload = () => res(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+      const results = await analyzeStripImage(dataUrl, true);
+      scanSession.set({ results, imageDataUrl: dataUrl });
+      navigate({ to: "/select-pool" });
+    } catch (e) {
+      console.error(e);
+      setError("שגיאה בניתוח התמונה. נסה לצלם שוב.");
+      setLoading(false);
+    }
   }
 
   return (
