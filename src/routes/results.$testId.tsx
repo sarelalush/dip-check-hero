@@ -45,6 +45,26 @@ function ResultsScreen() {
           {new Date(test.date).toLocaleDateString("he-IL")}
         </p>
 
+        {test.results.source && (
+          <div className="mt-3 flex items-center gap-2 text-xs">
+            <span className={`rounded-full px-2.5 py-1 font-semibold ${
+              test.results.source === "ai" ? "bg-primary/15 text-primary" :
+              test.results.source === "cv" ? "bg-warning/15 text-warning-foreground" :
+              "bg-muted text-muted-foreground"
+            }`}>
+              {test.results.source === "ai" ? "ניתוח AI" : test.results.source === "cv" ? "ניתוח פיקסלים" : "ערכי דמו"}
+            </span>
+            {typeof test.results.confidence === "number" && test.results.confidence > 0 && (
+              <span className="text-muted-foreground">
+                ביטחון: {Math.round(test.results.confidence * 100)}%
+              </span>
+            )}
+          </div>
+        )}
+        {test.results.notes && (
+          <p className="mt-2 text-xs text-muted-foreground">{test.results.notes}</p>
+        )}
+
         <div className="mt-5 space-y-3">
           {test.recommendations.map((rec) => (
             <ResultCard key={rec.paramKey} rec={rec} />
