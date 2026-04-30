@@ -7,18 +7,23 @@ const inputSchema = z.object({
 });
 
 const SYSTEM_PROMPT = `You are an expert pool water test strip analyzer.
-You receive an image of a pool/spa test strip (e.g. AquaChek style) with multiple colored test pads.
-Carefully identify each test pad by its color and read the value by comparing it to the standard color chart for these strips.
+You receive an image and must FIRST determine whether it actually shows a pool/spa test strip
+(e.g. AquaChek style — a thin plastic strip with multiple colored test pads).
 
-Return ONLY a JSON object via the report_strip tool with the following fields:
-- freeChlorine: ppm (typical range 0-10)
-- ph: pH value (typical range 6.2-8.4)
-- alkalinity: ppm (typical range 0-240)
-- salt: ppm (typical range 0-4500), include only if a salt pad is present and includeSalt is true
-- confidence: number between 0 and 1 indicating overall confidence
-- notes: short Hebrew note if image is unclear or strip not detected, otherwise empty string
+If the image does NOT clearly show a pool test strip (e.g. it's a person, a pet, a landscape,
+a random object, blurry, or any other non-strip image), set isStrip=false, confidence=0,
+and put a short Hebrew explanation in notes (e.g. "לא זוהה סטיק בתמונה. אנא צלם סטיק בדיקה.").
+Do NOT invent values — return 0 for all readings in that case.
 
-Be conservative: if a pad is unreadable, estimate from neighbors. If the image clearly does not show a test strip, set confidence to 0 and explain in notes (Hebrew).`;
+If the image DOES show a test strip, set isStrip=true and read each pad by comparing its color
+to the standard chart for these strips. Return values via the report_strip tool:
+- freeChlorine: ppm (typical 0-10)
+- ph: 6.2-8.4
+- alkalinity: ppm (typical 0-240)
+- salt: ppm (only if a salt pad is visible AND includeSalt is true)
+- confidence: 0-1, your overall confidence in the readings
+- isStrip: boolean, whether the image shows a test strip
+- notes: short Hebrew note (empty string if all is fine)`;
 
 export const analyzeStripWithAI = createServerFn({ method: "POST" })
   .inputValidator((d) => inputSchema.parse(d))
@@ -64,6 +69,7 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
                 parameters: {
                   type: "object",
                   properties: {
+                    isStrip: { type: "boolean" },
                     freeChlorine: { type: "number" },
                     ph: { type: "number" },
                     alkalinity: { type: "number" },
@@ -71,7 +77,7 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
                     confidence: { type: "number" },
                     notes: { type: "string" },
                   },
-                  required: ["freeChlorine", "ph", "alkalinity", "confidence", "notes"],
+                  required: ["isStrip", "freeChlorine", "ph", "alkalinity", "confidence", "notes"],
                   additionalProperties: false,
                 },
               },
@@ -102,6 +108,7 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
       return {
         ok: true as const,
         data: {
+          isStrip: Boolean(args.isStrip),
           freeChlorine: Number(args.freeChlorine),
           ph: Number(args.ph),
           alkalinity: Number(args.alkalinity),
