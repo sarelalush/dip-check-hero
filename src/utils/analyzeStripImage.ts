@@ -24,6 +24,13 @@ export interface StripResults {
   notes?: string;
 }
 
+export class StripNotDetectedError extends Error {
+  constructor(message = "לא זוהה סטיק בדיקה בתמונה. אנא צלם סטיק בריכה.") {
+    super(message);
+    this.name = "StripNotDetectedError";
+  }
+}
+
 function statusOf(value: number, key: keyof typeof targetRanges): Status {
   const r = targetRanges[key];
   if (value < r.min) return "low";
