@@ -69,6 +69,7 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
                 parameters: {
                   type: "object",
                   properties: {
+                    isStrip: { type: "boolean" },
                     freeChlorine: { type: "number" },
                     ph: { type: "number" },
                     alkalinity: { type: "number" },
@@ -76,7 +77,7 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
                     confidence: { type: "number" },
                     notes: { type: "string" },
                   },
-                  required: ["freeChlorine", "ph", "alkalinity", "confidence", "notes"],
+                  required: ["isStrip", "freeChlorine", "ph", "alkalinity", "confidence", "notes"],
                   additionalProperties: false,
                 },
               },
