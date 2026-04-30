@@ -114,14 +114,4 @@ export async function analyzeStripImage(
       ? `ניתוח התמונה נכשל: ${aiResult.message}. נסה שוב.`
       : "ניתוח התמונה נכשל. ודא שצילמת סטיק בדיקה ונסה שוב.",
   );
-    // 3) Last-resort: mock so UX doesn't break
-    return {
-      freeChlorine: { labelHe: "כלור חופשי", value: 1, unit: "ppm", status: "ok" },
-      ph: { labelHe: "pH", value: 7.4, unit: "", status: "ok" },
-      alkalinity: { labelHe: "אלקליניות", value: 100, unit: "ppm", status: "ok" },
-      source: "mock",
-      confidence: 0,
-      notes: "לא ניתן היה לנתח את התמונה. צלם שוב באור טוב.",
-    };
-  }
 }
