@@ -66,7 +66,16 @@ export async function analyzeStripImage(
     console.warn("AI analyzer threw:", e);
   }
 
-  if (aiResult?.ok && aiResult.data.confidence >= 0.4) {
+  // If AI explicitly says it's NOT a strip — block immediately, don't fall back to CV
+  // (CV would happily return garbage values for any image).
+  if (aiResult?.ok && aiResult.data.isStrip === false) {
+    throw new StripNotDetectedError(
+      aiResult.data.notes || "לא זוהה סטיק בדיקה בתמונה. אנא צלם סטיק בריכה.",
+    );
+  }
+
+  // AI succeeded with usable confidence
+  if (aiResult?.ok && aiResult.data.isStrip && aiResult.data.confidence >= 0.4) {
     const d = aiResult.data;
     const result: StripResults = {
       freeChlorine: { labelHe: "כלור חופשי", value: d.freeChlorine, unit: "ppm", status: statusOf(d.freeChlorine, "freeChlorine") },
@@ -82,21 +91,29 @@ export async function analyzeStripImage(
     return result;
   }
 
-  // 2) Fallback: client-side CV (pixel sampling)
-  try {
-    const cv = await analyzeStripPixels(dataUrl);
-    return {
-      freeChlorine: { labelHe: "כלור חופשי", value: cv.freeChlorine, unit: "ppm", status: statusOf(cv.freeChlorine, "freeChlorine") },
-      ph: { labelHe: "pH", value: cv.ph, unit: "", status: statusOf(cv.ph, "ph") },
-      alkalinity: { labelHe: "אלקליניות", value: cv.alkalinity, unit: "ppm", status: statusOf(cv.alkalinity, "alkalinity") },
-      source: "cv",
-      confidence: cv.confidence,
-      notes: aiResult && !aiResult.ok
-        ? `ניתוח AI נכשל (${"message" in aiResult ? aiResult.message : aiResult.error}), מוצג ניתוח פיקסלים מקומי`
-        : "ביטחון נמוך מ-AI, מוצג ניתוח פיקסלים מקומי",
-    };
-  } catch (e) {
-    console.error("CV fallback failed:", e);
+  // AI low confidence (but did identify a strip) — try CV as a sanity backup
+  if (aiResult?.ok && aiResult.data.isStrip) {
+    try {
+      const cv = await analyzeStripPixels(dataUrl);
+      return {
+        freeChlorine: { labelHe: "כלור חופשי", value: cv.freeChlorine, unit: "ppm", status: statusOf(cv.freeChlorine, "freeChlorine") },
+        ph: { labelHe: "pH", value: cv.ph, unit: "", status: statusOf(cv.ph, "ph") },
+        alkalinity: { labelHe: "אלקליניות", value: cv.alkalinity, unit: "ppm", status: statusOf(cv.alkalinity, "alkalinity") },
+        source: "cv",
+        confidence: cv.confidence,
+        notes: "ביטחון נמוך, מוצג ניתוח פיקסלים מקומי. צלם שוב באור טוב לשיפור הדיוק.",
+      };
+    } catch (e) {
+      console.error("CV fallback failed:", e);
+    }
+  }
+
+  // AI completely failed (network/gateway error) — block with a clear error
+  throw new StripNotDetectedError(
+    aiResult && !aiResult.ok && "message" in aiResult
+      ? `ניתוח התמונה נכשל: ${aiResult.message}. נסה שוב.`
+      : "ניתוח התמונה נכשל. ודא שצילמת סטיק בדיקה ונסה שוב.",
+  );
     // 3) Last-resort: mock so UX doesn't break
     return {
       freeChlorine: { labelHe: "כלור חופשי", value: 1, unit: "ppm", status: "ok" },
