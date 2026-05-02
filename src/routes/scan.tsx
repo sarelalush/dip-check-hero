@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { Camera, Image as ImageIcon, ArrowRight, Loader2, Sun, Square, Eye } from "lucide-react";
-import { analyzeStripImage } from "@/utils/analyzeStripImage";
+import { Camera, Image as ImageIcon, ArrowRight, Loader2, Sun, Square, Eye, AlertTriangle } from "lucide-react";
+import { analyzeStripImage, StripNotDetectedError, type FailureReason } from "@/utils/analyzeStripImage";
 import { scanSession } from "@/utils/scanSession";
 
 export const Route = createFileRoute("/scan")({
