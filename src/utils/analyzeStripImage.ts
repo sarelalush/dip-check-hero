@@ -80,9 +80,12 @@ export async function analyzeStripImage(
   // If AI explicitly says it's NOT a strip — block immediately, don't fall back to CV
   // (CV would happily return garbage values for any image).
   if (aiResult?.ok && aiResult.data.isStrip === false) {
-    throw new StripNotDetectedError(
-      aiResult.data.notes || "לא זוהה סטיק בדיקה בתמונה. אנא צלם סטיק בריכה.",
-    );
+    const r = aiResult.data.failureReason;
+    const reason: FailureReason =
+      r === "not_strip" || r === "blurry" || r === "lighting" || r === "framing"
+        ? r
+        : "not_strip";
+    throw new StripNotDetectedError(reason, aiResult.data.notes || undefined);
   }
 
   // AI succeeded with usable confidence
@@ -120,9 +123,9 @@ export async function analyzeStripImage(
   }
 
   // AI completely failed (network/gateway error) — block with a clear error
-  throw new StripNotDetectedError(
+  const errMsg =
     aiResult && !aiResult.ok && "message" in aiResult
-      ? `ניתוח התמונה נכשל: ${aiResult.message}. נסה שוב.`
-      : "ניתוח התמונה נכשל. ודא שצילמת סטיק בדיקה ונסה שוב.",
-  );
+      ? `ניתוח התמונה נכשל: ${aiResult.message}.`
+      : "ניתוח התמונה נכשל. נסה שוב.";
+  throw new StripNotDetectedError("ai_error", errMsg);
 }
