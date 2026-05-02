@@ -12,8 +12,21 @@ You receive an image and must FIRST determine whether it actually shows a pool/s
 
 If the image does NOT clearly show a pool test strip (e.g. it's a person, a pet, a landscape,
 a random object, blurry, or any other non-strip image), set isStrip=false, confidence=0,
-and put a short Hebrew explanation in notes (e.g. "לא זוהה סטיק בתמונה. אנא צלם סטיק בדיקה.").
+and put a short Hebrew explanation in notes.
 Do NOT invent values — return 0 for all readings in that case.
+
+You MUST also classify the failure reason in failureReason:
+- "none": image is a clear, usable strip (isStrip=true, good quality)
+- "not_strip": image does not show a pool test strip at all (a person, pet, landscape, random object)
+- "blurry": a strip is visible but too out of focus to read pad colors reliably
+- "lighting": a strip is visible but lighting is bad (too dark, overexposed, strong color cast, glare/reflection covering pads)
+- "framing": a strip is visible but partially cut off, too far, too small, or pads not all visible
+- "low_confidence": strip visible and readable but you are not very confident in the values
+
+For not_strip / blurry / lighting / framing → set isStrip=false.
+For low_confidence → set isStrip=true with confidence < 0.4.
+Always provide a short, actionable Hebrew tip in notes matching the failureReason
+(e.g. "התמונה מטושטשת — נסה לייצב את היד ולצלם שוב").
 
 If the image DOES show a test strip, set isStrip=true and read each pad by comparing its color
 to the standard chart for these strips. Return values via the report_strip tool:
@@ -68,8 +81,12 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
                 description: "Report parsed pool test strip values",
                 parameters: {
                   type: "object",
-                  properties: {
+                properties: {
                     isStrip: { type: "boolean" },
+                    failureReason: {
+                      type: "string",
+                      enum: ["none", "not_strip", "blurry", "lighting", "framing", "low_confidence"],
+                    },
                     freeChlorine: { type: "number" },
                     ph: { type: "number" },
                     alkalinity: { type: "number" },
@@ -77,7 +94,7 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
                     confidence: { type: "number" },
                     notes: { type: "string" },
                   },
-                  required: ["isStrip", "freeChlorine", "ph", "alkalinity", "confidence", "notes"],
+                  required: ["isStrip", "failureReason", "freeChlorine", "ph", "alkalinity", "confidence", "notes"],
                   additionalProperties: false,
                 },
               },
@@ -109,6 +126,8 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
         ok: true as const,
         data: {
           isStrip: Boolean(args.isStrip),
+          failureReason: (args.failureReason ?? "none") as
+            | "none" | "not_strip" | "blurry" | "lighting" | "framing" | "low_confidence",
           freeChlorine: Number(args.freeChlorine),
           ph: Number(args.ph),
           alkalinity: Number(args.alkalinity),

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { Camera, Image as ImageIcon, ArrowRight, Loader2, Sun, Square, Eye } from "lucide-react";
-import { analyzeStripImage } from "@/utils/analyzeStripImage";
+import { Camera, Image as ImageIcon, ArrowRight, Loader2, Sun, Square, Eye, AlertTriangle } from "lucide-react";
+import { analyzeStripImage, StripNotDetectedError, type FailureReason } from "@/utils/analyzeStripImage";
 import { scanSession } from "@/utils/scanSession";
 
 export const Route = createFileRoute("/scan")({
@@ -14,12 +14,11 @@ function ScanScreen() {
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
-
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ reason: FailureReason; message: string } | null>(null);
 
   async function handleFile(file: File) {
     setLoading(true);
-    setError(null);
+    setFailure(null);
     try {
       const reader = new FileReader();
       const dataUrl: string = await new Promise((res) => {
@@ -31,8 +30,14 @@ function ScanScreen() {
       navigate({ to: "/select-pool" });
     } catch (e) {
       console.error(e);
-      const msg = e instanceof Error ? e.message : "שגיאה בניתוח התמונה. נסה לצלם שוב.";
-      setError(msg);
+      if (e instanceof StripNotDetectedError) {
+        setFailure({ reason: e.reason, message: e.message });
+      } else {
+        setFailure({
+          reason: "unknown",
+          message: e instanceof Error ? e.message : "שגיאה בניתוח התמונה.",
+        });
+      }
       setLoading(false);
     }
   }
@@ -87,11 +92,7 @@ function ScanScreen() {
             <ImageIcon className="h-5 w-5 text-primary" />
             העלה מהגלריה
           </button>
-          {error && (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive text-center">
-              {error}
-            </div>
-          )}
+          {failure && <FailureCard reason={failure.reason} message={failure.message} />}
         </div>
       </div>
     </div>
@@ -102,6 +103,78 @@ function Tip({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
     <div className="flex items-center gap-2 rounded-xl bg-secondary/60 px-3 py-2 text-sm text-foreground">
       <span className="text-primary">{icon}</span> {text}
+    </div>
+  );
+}
+
+const FAILURE_GUIDE: Record<FailureReason, { title: string; tips: string[] }> = {
+  not_strip: {
+    title: "לא זוהה סטיק בדיקה בתמונה",
+    tips: [
+      "ודא שאתה מצלם סטיק בדיקה לבריכה (AquaChek או דומה)",
+      "הסטיק צריך להופיע במרכז התמונה ולמלא את רובה",
+      "הסר אובייקטים אחרים מהפריים",
+    ],
+  },
+  blurry: {
+    title: "התמונה מטושטשת",
+    tips: [
+      "ייצב את היד או הנח את הטלפון על משטח",
+      "המתן שהמצלמה תתמקד לפני הצילום",
+      "התקרב לסטיק במקום להשתמש בזום",
+    ],
+  },
+  lighting: {
+    title: "תאורה לא טובה",
+    tips: [
+      "צלם באור יום טבעי, לא באור מנורה צהוב",
+      "הימנע מצל ישיר על הסטיק",
+      "הימנע מבוהק / השתקפות על הריבועים הצבעוניים",
+    ],
+  },
+  framing: {
+    title: "מסגור התמונה",
+    tips: [
+      "ודא שכל הריבועים הצבעוניים נראים בתמונה",
+      "התקרב — הסטיק צריך למלא את רוב הפריים",
+      "החזק את הטלפון ישר מעל הסטיק (לא בזווית)",
+    ],
+  },
+  low_confidence: {
+    title: "לא הצלחנו לקרוא את הצבעים בביטחון",
+    tips: [
+      "צלם שוב באור טוב יותר",
+      "הנח את הסטיק על רקע לבן או בהיר",
+      "ודא שלא נשארו טיפות מים גדולות שמעוותות את הצבע",
+    ],
+  },
+  ai_error: {
+    title: "שגיאה זמנית בניתוח",
+    tips: ["בדוק את החיבור לאינטרנט", "המתן רגע ונסה שוב"],
+  },
+  unknown: {
+    title: "משהו השתבש",
+    tips: ["נסה לצלם שוב באור טוב, עם הסטיק במרכז התמונה"],
+  },
+};
+
+function FailureCard({ reason, message }: { reason: FailureReason; message: string }) {
+  const guide = FAILURE_GUIDE[reason] ?? FAILURE_GUIDE.unknown;
+  return (
+    <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-right">
+      <div className="flex items-center gap-2 text-destructive font-bold">
+        <AlertTriangle className="h-5 w-5" />
+        <span>{guide.title}</span>
+      </div>
+      {message && message !== guide.title && (
+        <p className="mt-1 text-xs text-muted-foreground">{message}</p>
+      )}
+      <ul className="mt-3 space-y-1.5 text-sm text-foreground list-disc pr-5">
+        {guide.tips.map((t) => (
+          <li key={t}>{t}</li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs font-semibold text-primary">תקן את הבעיה ונסה לצלם שוב</p>
     </div>
   );
 }
