@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SelectPoolRouteImport } from './routes/select-pool'
+import { Route as ScanLiveRouteImport } from './routes/scan-live'
 import { Route as ScanRouteImport } from './routes/scan'
 import { Route as PoolsRouteImport } from './routes/pools'
 import { Route as IndexRouteImport } from './routes/index'
@@ -19,6 +20,11 @@ import { Route as PoolNewRouteImport } from './routes/pool.new'
 const SelectPoolRoute = SelectPoolRouteImport.update({
   id: '/select-pool',
   path: '/select-pool',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScanLiveRoute = ScanLiveRouteImport.update({
+  id: '/scan-live',
+  path: '/scan-live',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ScanRoute = ScanRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/pools': typeof PoolsRoute
   '/scan': typeof ScanRoute
+  '/scan-live': typeof ScanLiveRoute
   '/select-pool': typeof SelectPoolRoute
   '/pool/new': typeof PoolNewRoute
   '/results/$testId': typeof ResultsTestIdRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/pools': typeof PoolsRoute
   '/scan': typeof ScanRoute
+  '/scan-live': typeof ScanLiveRoute
   '/select-pool': typeof SelectPoolRoute
   '/pool/new': typeof PoolNewRoute
   '/results/$testId': typeof ResultsTestIdRoute
@@ -68,6 +76,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/pools': typeof PoolsRoute
   '/scan': typeof ScanRoute
+  '/scan-live': typeof ScanLiveRoute
   '/select-pool': typeof SelectPoolRoute
   '/pool/new': typeof PoolNewRoute
   '/results/$testId': typeof ResultsTestIdRoute
@@ -78,6 +87,7 @@ export interface FileRouteTypes {
     | '/'
     | '/pools'
     | '/scan'
+    | '/scan-live'
     | '/select-pool'
     | '/pool/new'
     | '/results/$testId'
@@ -86,6 +96,7 @@ export interface FileRouteTypes {
     | '/'
     | '/pools'
     | '/scan'
+    | '/scan-live'
     | '/select-pool'
     | '/pool/new'
     | '/results/$testId'
@@ -94,6 +105,7 @@ export interface FileRouteTypes {
     | '/'
     | '/pools'
     | '/scan'
+    | '/scan-live'
     | '/select-pool'
     | '/pool/new'
     | '/results/$testId'
@@ -103,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   PoolsRoute: typeof PoolsRoute
   ScanRoute: typeof ScanRoute
+  ScanLiveRoute: typeof ScanLiveRoute
   SelectPoolRoute: typeof SelectPoolRoute
   PoolNewRoute: typeof PoolNewRoute
   ResultsTestIdRoute: typeof ResultsTestIdRoute
@@ -115,6 +128,13 @@ declare module '@tanstack/react-router' {
       path: '/select-pool'
       fullPath: '/select-pool'
       preLoaderRoute: typeof SelectPoolRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/scan-live': {
+      id: '/scan-live'
+      path: '/scan-live'
+      fullPath: '/scan-live'
+      preLoaderRoute: typeof ScanLiveRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/scan': {
@@ -159,6 +179,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   PoolsRoute: PoolsRoute,
   ScanRoute: ScanRoute,
+  ScanLiveRoute: ScanLiveRoute,
   SelectPoolRoute: SelectPoolRoute,
   PoolNewRoute: PoolNewRoute,
   ResultsTestIdRoute: ResultsTestIdRoute,
