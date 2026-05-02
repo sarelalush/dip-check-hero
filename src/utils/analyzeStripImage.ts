@@ -24,10 +24,21 @@ export interface StripResults {
   notes?: string;
 }
 
+export type FailureReason =
+  | "not_strip"
+  | "blurry"
+  | "lighting"
+  | "framing"
+  | "low_confidence"
+  | "ai_error"
+  | "unknown";
+
 export class StripNotDetectedError extends Error {
-  constructor(message = "לא זוהה סטיק בדיקה בתמונה. אנא צלם סטיק בריכה.") {
-    super(message);
+  reason: FailureReason;
+  constructor(reason: FailureReason = "unknown", message?: string) {
+    super(message || "לא זוהה סטיק בדיקה בתמונה.");
     this.name = "StripNotDetectedError";
+    this.reason = reason;
   }
 }
 
