@@ -106,3 +106,75 @@ function Tip({ icon, text }: { icon: React.ReactNode; text: string }) {
     </div>
   );
 }
+
+const FAILURE_GUIDE: Record<FailureReason, { title: string; tips: string[] }> = {
+  not_strip: {
+    title: "לא זוהה סטיק בדיקה בתמונה",
+    tips: [
+      "ודא שאתה מצלם סטיק בדיקה לבריכה (AquaChek או דומה)",
+      "הסטיק צריך להופיע במרכז התמונה ולמלא את רובה",
+      "הסר אובייקטים אחרים מהפריים",
+    ],
+  },
+  blurry: {
+    title: "התמונה מטושטשת",
+    tips: [
+      "ייצב את היד או הנח את הטלפון על משטח",
+      "המתן שהמצלמה תתמקד לפני הצילום",
+      "התקרב לסטיק במקום להשתמש בזום",
+    ],
+  },
+  lighting: {
+    title: "תאורה לא טובה",
+    tips: [
+      "צלם באור יום טבעי, לא באור מנורה צהוב",
+      "הימנע מצל ישיר על הסטיק",
+      "הימנע מבוהק / השתקפות על הריבועים הצבעוניים",
+    ],
+  },
+  framing: {
+    title: "מסגור התמונה",
+    tips: [
+      "ודא שכל הריבועים הצבעוניים נראים בתמונה",
+      "התקרב — הסטיק צריך למלא את רוב הפריים",
+      "החזק את הטלפון ישר מעל הסטיק (לא בזווית)",
+    ],
+  },
+  low_confidence: {
+    title: "לא הצלחנו לקרוא את הצבעים בביטחון",
+    tips: [
+      "צלם שוב באור טוב יותר",
+      "הנח את הסטיק על רקע לבן או בהיר",
+      "ודא שלא נשארו טיפות מים גדולות שמעוותות את הצבע",
+    ],
+  },
+  ai_error: {
+    title: "שגיאה זמנית בניתוח",
+    tips: ["בדוק את החיבור לאינטרנט", "המתן רגע ונסה שוב"],
+  },
+  unknown: {
+    title: "משהו השתבש",
+    tips: ["נסה לצלם שוב באור טוב, עם הסטיק במרכז התמונה"],
+  },
+};
+
+function FailureCard({ reason, message }: { reason: FailureReason; message: string }) {
+  const guide = FAILURE_GUIDE[reason] ?? FAILURE_GUIDE.unknown;
+  return (
+    <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-right">
+      <div className="flex items-center gap-2 text-destructive font-bold">
+        <AlertTriangle className="h-5 w-5" />
+        <span>{guide.title}</span>
+      </div>
+      {message && message !== guide.title && (
+        <p className="mt-1 text-xs text-muted-foreground">{message}</p>
+      )}
+      <ul className="mt-3 space-y-1.5 text-sm text-foreground list-disc pr-5">
+        {guide.tips.map((t) => (
+          <li key={t}>{t}</li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs font-semibold text-primary">תקן את הבעיה ונסה לצלם שוב</p>
+    </div>
+  );
+}
