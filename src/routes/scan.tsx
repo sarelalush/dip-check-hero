@@ -76,13 +76,20 @@ function ScanScreen() {
           <input ref={galleryRef} type="file" accept="image/*" hidden
                  onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
 
+          <Link
+            to="/scan-live"
+            className="flex w-full items-center justify-center gap-3 rounded-2xl bg-primary px-6 py-5 text-lg font-bold text-primary-foreground shadow-[var(--shadow-soft)] transition active:scale-[0.98]"
+          >
+            <Camera className="h-6 w-6" />
+            סריקת לייב (מומלץ)
+          </Link>
           <button
             disabled={loading}
             onClick={() => cameraRef.current?.click()}
-            className="flex w-full items-center justify-center gap-3 rounded-2xl bg-primary px-6 py-5 text-lg font-bold text-primary-foreground shadow-[var(--shadow-soft)] transition active:scale-[0.98] disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-3 rounded-2xl border-2 border-primary/20 bg-card px-6 py-4 text-base font-semibold text-foreground transition active:scale-[0.98] disabled:opacity-60"
           >
             {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Camera className="h-6 w-6" />}
-            {loading ? "מנתח את הסטיק..." : "צלם סטיק"}
+            {loading ? "מנתח את הסטיק..." : "צלם תמונה רגילה"}
           </button>
           <button
             disabled={loading}
