@@ -92,11 +92,7 @@ function ScanScreen() {
             <ImageIcon className="h-5 w-5 text-primary" />
             העלה מהגלריה
           </button>
-          {error && (
-            <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive text-center">
-              {error}
-            </div>
-          )}
+          {failure && <FailureCard reason={failure.reason} message={failure.message} />}
         </div>
       </div>
     </div>
