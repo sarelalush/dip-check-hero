@@ -14,12 +14,11 @@ function ScanScreen() {
   const cameraRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
-
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ reason: FailureReason; message: string } | null>(null);
 
   async function handleFile(file: File) {
     setLoading(true);
-    setError(null);
+    setFailure(null);
     try {
       const reader = new FileReader();
       const dataUrl: string = await new Promise((res) => {
@@ -31,8 +30,14 @@ function ScanScreen() {
       navigate({ to: "/select-pool" });
     } catch (e) {
       console.error(e);
-      const msg = e instanceof Error ? e.message : "שגיאה בניתוח התמונה. נסה לצלם שוב.";
-      setError(msg);
+      if (e instanceof StripNotDetectedError) {
+        setFailure({ reason: e.reason, message: e.message });
+      } else {
+        setFailure({
+          reason: "unknown",
+          message: e instanceof Error ? e.message : "שגיאה בניתוח התמונה.",
+        });
+      }
       setLoading(false);
     }
   }
