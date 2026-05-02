@@ -81,8 +81,12 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
                 description: "Report parsed pool test strip values",
                 parameters: {
                   type: "object",
-                  properties: {
+                properties: {
                     isStrip: { type: "boolean" },
+                    failureReason: {
+                      type: "string",
+                      enum: ["none", "not_strip", "blurry", "lighting", "framing", "low_confidence"],
+                    },
                     freeChlorine: { type: "number" },
                     ph: { type: "number" },
                     alkalinity: { type: "number" },
@@ -90,7 +94,7 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
                     confidence: { type: "number" },
                     notes: { type: "string" },
                   },
-                  required: ["isStrip", "freeChlorine", "ph", "alkalinity", "confidence", "notes"],
+                  required: ["isStrip", "failureReason", "freeChlorine", "ph", "alkalinity", "confidence", "notes"],
                   additionalProperties: false,
                 },
               },
@@ -122,6 +126,8 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
         ok: true as const,
         data: {
           isStrip: Boolean(args.isStrip),
+          failureReason: (args.failureReason ?? "none") as
+            | "none" | "not_strip" | "blurry" | "lighting" | "framing" | "low_confidence",
           freeChlorine: Number(args.freeChlorine),
           ph: Number(args.ph),
           alkalinity: Number(args.alkalinity),
