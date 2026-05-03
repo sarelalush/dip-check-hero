@@ -98,10 +98,22 @@ function LiveScanScreen() {
       const roiX = Math.floor((vw - roiW) / 2);
       const roiY = Math.floor((vh - roiH) / 2);
 
-      const q = analyzeFrameQuality(ctx, { x: roiX, y: roiY, w: roiW, h: roiH });
+      const q = analyzeFrameQuality(
+        ctx,
+        { x: roiX, y: roiY, w: roiW, h: roiH },
+        prevFrameRef.current,
+      );
+      prevFrameRef.current = {
+        lumaGrid: q.lumaGrid,
+        gridCols: q.gridCols,
+        gridRows: q.gridRows,
+      };
       setQuality(q);
 
-      if (q.issue === "ok" && q.quality >= 0.65) {
+      // Any shake immediately resets the auto-capture countdown.
+      if (q.issue === "shaky") {
+        stableCountRef.current = 0;
+      } else if (q.issue === "ok" && q.quality >= 0.65) {
         stableCountRef.current += 1;
         if (stableCountRef.current >= STABLE_FRAMES_NEEDED) {
           autoCapture();
