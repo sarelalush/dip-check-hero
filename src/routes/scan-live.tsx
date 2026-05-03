@@ -19,6 +19,11 @@ function LiveScanScreen() {
   const streamRef = useRef<MediaStream | null>(null);
   const stableCountRef = useRef(0);
   const capturingRef = useRef(false);
+  const prevFrameRef = useRef<{
+    lumaGrid: Float32Array;
+    gridCols: number;
+    gridRows: number;
+  } | null>(null);
 
   const [quality, setQuality] = useState<FrameQuality | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
