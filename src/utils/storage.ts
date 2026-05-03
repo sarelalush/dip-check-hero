@@ -8,6 +8,8 @@ export interface Pool {
   name: string;
   type: PoolType;
   volumeLiters: number;
+  /** Selected test strip brand id (see src/config/stripBrands.ts). */
+  stripBrandId?: string;
   createdAt: number;
   lastTestAt?: number;
 }
