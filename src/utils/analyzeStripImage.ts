@@ -1,7 +1,15 @@
-// Hybrid pool test strip analyzer.
-// Strategy: try Vision AI first; fallback to client-side pixel CV if AI fails or low confidence.
+// Brand-aware pool test strip analyzer.
+// Sends the strip's pad list to the Vision AI; falls back to local CV
+// for the legacy 4-in-1 layout when AI is low-confidence.
 
 import { targetRanges } from "@/config/targetRanges";
+import {
+  PARAM_LABEL_HE,
+  type StripParameter,
+  type StripBrand,
+  getBrand,
+  DEFAULT_BRAND_ID,
+} from "@/config/stripBrands";
 import { analyzeStripWithAI } from "@/server/strip-analysis.functions";
 import { analyzeStripPixels } from "./colorUtils";
 
@@ -15,13 +23,18 @@ export interface StripReading {
 }
 
 export interface StripResults {
-  freeChlorine: StripReading;
-  ph: StripReading;
-  alkalinity: StripReading;
-  salt?: StripReading;
+  brandId: string;
+  /** Readings keyed by parameter — only the ones the brand measures appear. */
+  readings: Partial<Record<StripParameter, StripReading>>;
   source: "ai" | "cv" | "mock";
   confidence: number;
   notes?: string;
+
+  // Back-compat shortcuts (legacy code reads these directly).
+  freeChlorine?: StripReading;
+  ph?: StripReading;
+  alkalinity?: StripReading;
+  salt?: StripReading;
 }
 
 export type FailureReason =
@@ -42,11 +55,17 @@ export class StripNotDetectedError extends Error {
   }
 }
 
-function statusOf(value: number, key: keyof typeof targetRanges): Status {
+function statusOf(value: number, key: StripParameter): Status {
   const r = targetRanges[key];
+  if (!r) return "ok"; // no target defined → don't flag
   if (value < r.min) return "low";
   if (value > r.max) return "high";
   return "ok";
+}
+
+function makeReading(p: StripParameter, value: number): StripReading {
+  const def = PARAM_LABEL_HE[p];
+  return { labelHe: def.labelHe, value, unit: def.unit, status: statusOf(value, p) };
 }
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -58,27 +77,41 @@ async function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+function attachLegacyAliases(results: StripResults): StripResults {
+  results.freeChlorine = results.readings.freeChlorine;
+  results.ph = results.readings.ph;
+  results.alkalinity = results.readings.alkalinity;
+  results.salt = results.readings.salt;
+  return results;
+}
+
 /**
  * Analyze a pool test strip image.
- * @param image File or data URL of the strip
- * @param includeSalt include salt reading (saltwater pools)
+ * @param image  File or data URL of the strip
+ * @param brandId  Strip brand id (see src/config/stripBrands.ts). Falls back to default.
  */
 export async function analyzeStripImage(
   image: File | string,
-  includeSalt = false,
+  brandId: string = DEFAULT_BRAND_ID,
 ): Promise<StripResults> {
   const dataUrl = typeof image === "string" ? image : await fileToDataUrl(image);
+  const brand: StripBrand = getBrand(brandId);
 
-  // 1) Try Vision AI
   let aiResult: Awaited<ReturnType<typeof analyzeStripWithAI>> | null = null;
   try {
-    aiResult = await analyzeStripWithAI({ data: { imageBase64: dataUrl, includeSalt } });
+    aiResult = await analyzeStripWithAI({
+      data: {
+        imageBase64: dataUrl,
+        brandId: brand.id,
+        brandNameHe: brand.nameHe,
+        parameters: brand.parameters,
+      },
+    });
   } catch (e) {
     console.warn("AI analyzer threw:", e);
   }
 
-  // If AI explicitly says it's NOT a strip — block immediately, don't fall back to CV
-  // (CV would happily return garbage values for any image).
+  // Hard block: AI says image isn't a strip.
   if (aiResult?.ok && aiResult.data.isStrip === false) {
     const r = aiResult.data.failureReason;
     const reason: FailureReason =
@@ -91,38 +124,48 @@ export async function analyzeStripImage(
   // AI succeeded with usable confidence
   if (aiResult?.ok && aiResult.data.isStrip && aiResult.data.confidence >= 0.4) {
     const d = aiResult.data;
-    const result: StripResults = {
-      freeChlorine: { labelHe: "כלור חופשי", value: d.freeChlorine, unit: "ppm", status: statusOf(d.freeChlorine, "freeChlorine") },
-      ph: { labelHe: "pH", value: d.ph, unit: "", status: statusOf(d.ph, "ph") },
-      alkalinity: { labelHe: "אלקליניות", value: d.alkalinity, unit: "ppm", status: statusOf(d.alkalinity, "alkalinity") },
+    const readings: StripResults["readings"] = {};
+    for (const p of brand.parameters) {
+      const v = d.values[p];
+      if (typeof v === "number" && !Number.isNaN(v)) {
+        readings[p] = makeReading(p, v);
+      }
+    }
+    return attachLegacyAliases({
+      brandId: brand.id,
+      readings,
       source: "ai",
       confidence: d.confidence,
       notes: d.notes,
-    };
-    if (includeSalt && typeof d.salt === "number") {
-      result.salt = { labelHe: "מלח", value: d.salt, unit: "ppm", status: statusOf(d.salt, "salt") };
-    }
-    return result;
+    });
   }
 
-  // AI low confidence (but did identify a strip) — try CV as a sanity backup
-  if (aiResult?.ok && aiResult.data.isStrip) {
+  // AI low-confidence — local CV fallback works only for the classic 4-pad layout.
+  const cvCompatible =
+    brand.parameters.includes("freeChlorine") &&
+    brand.parameters.includes("ph") &&
+    brand.parameters.includes("alkalinity");
+
+  if (aiResult?.ok && aiResult.data.isStrip && cvCompatible) {
     try {
       const cv = await analyzeStripPixels(dataUrl);
-      return {
-        freeChlorine: { labelHe: "כלור חופשי", value: cv.freeChlorine, unit: "ppm", status: statusOf(cv.freeChlorine, "freeChlorine") },
-        ph: { labelHe: "pH", value: cv.ph, unit: "", status: statusOf(cv.ph, "ph") },
-        alkalinity: { labelHe: "אלקליניות", value: cv.alkalinity, unit: "ppm", status: statusOf(cv.alkalinity, "alkalinity") },
+      const readings: StripResults["readings"] = {
+        freeChlorine: makeReading("freeChlorine", cv.freeChlorine),
+        ph: makeReading("ph", cv.ph),
+        alkalinity: makeReading("alkalinity", cv.alkalinity),
+      };
+      return attachLegacyAliases({
+        brandId: brand.id,
+        readings,
         source: "cv",
         confidence: cv.confidence,
         notes: "ביטחון נמוך, מוצג ניתוח פיקסלים מקומי. צלם שוב באור טוב לשיפור הדיוק.",
-      };
+      });
     } catch (e) {
       console.error("CV fallback failed:", e);
     }
   }
 
-  // AI completely failed (network/gateway error) — block with a clear error
   const errMsg =
     aiResult && !aiResult.ok && "message" in aiResult
       ? `ניתוח התמונה נכשל: ${aiResult.message}.`
