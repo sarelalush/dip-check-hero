@@ -25,7 +25,7 @@ function ScanScreen() {
         reader.onload = () => res(reader.result as string);
         reader.readAsDataURL(file);
       });
-      const results = await analyzeStripImage(dataUrl, true);
+      const results = await analyzeStripImage(dataUrl, scanSession.get().brandId);
       scanSession.set({ results, imageDataUrl: dataUrl });
       navigate({ to: "/select-pool" });
     } catch (e) {

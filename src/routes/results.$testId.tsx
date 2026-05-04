@@ -46,7 +46,7 @@ function ResultsScreen() {
         </p>
 
         {test.results.source && (
-          <div className="mt-3 flex items-center gap-2 text-xs">
+          <div className="mt-3 flex items-center gap-2 text-xs flex-wrap">
             <span className={`rounded-full px-2.5 py-1 font-semibold ${
               test.results.source === "ai" ? "bg-primary/15 text-primary" :
               test.results.source === "cv" ? "bg-warning/15 text-warning-foreground" :
@@ -59,6 +59,18 @@ function ResultsScreen() {
                 ביטחון: {Math.round(test.results.confidence * 100)}%
               </span>
             )}
+            {typeof test.results.shotsUsed === "number" && (
+              <span className="text-muted-foreground">· {test.results.shotsUsed} ניתוחים</span>
+            )}
+          </div>
+        )}
+        {test.results.lowConfidence && (
+          <div className="mt-3 flex gap-2 rounded-xl border border-warning/40 bg-warning/10 p-3">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-warning mt-0.5" />
+            <p className="text-xs leading-relaxed text-foreground/90">
+              ביטחון נמוך בתוצאה — שני צילומים של אותו סטיק עלולים לתת ערכים שונים.
+              לדיוק טוב יותר: צלם באור יום טבעי, על רקע לבן, עם הסטיק שטוח וקרוב.
+            </p>
           </div>
         )}
         {test.results.notes && (
