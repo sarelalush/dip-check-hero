@@ -5,6 +5,7 @@ interface Session {
   results?: StripResults;
   imageDataUrl?: string;
   includeSalt?: boolean;
+  brandId?: string;
 }
 
 let session: Session = {};
