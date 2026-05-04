@@ -1,6 +1,10 @@
 // Brand-aware pool test strip analyzer.
-// Sends the strip's pad list to the Vision AI; falls back to local CV
-// for the legacy 4-in-1 layout when AI is low-confidence.
+// Pipeline:
+//   1. White-balance the image (gray-world) to remove yellow/blue color casts.
+//   2. Run the AI analyzer N times in parallel ("multi-shot consensus").
+//   3. Merge per-pad readings via the median value across runs.
+//   4. Compute consensus confidence from agreement between runs.
+//   5. Falls back to local pixel CV when AI is low-confidence on a 4-pad layout.
 
 import { targetRanges } from "@/config/targetRanges";
 import {
@@ -12,6 +16,7 @@ import {
 } from "@/config/stripBrands";
 import { analyzeStripWithAI } from "@/server/strip-analysis.functions";
 import { analyzeStripPixels } from "./colorUtils";
+import { whiteBalanceDataUrl } from "./whiteBalance";
 
 export type Status = "low" | "ok" | "high";
 
@@ -20,6 +25,8 @@ export interface StripReading {
   value: number;
   unit: string;
   status: Status;
+  /** 0..1: agreement across multi-shot runs. Lower = noisier reading. */
+  agreement?: number;
 }
 
 export interface StripResults {
@@ -28,6 +35,10 @@ export interface StripResults {
   readings: Partial<Record<StripParameter, StripReading>>;
   source: "ai" | "cv" | "mock";
   confidence: number;
+  /** True when confidence is below the trust threshold. UI should warn the user. */
+  lowConfidence?: boolean;
+  /** Number of AI runs that succeeded (multi-shot). */
+  shotsUsed?: number;
   notes?: string;
 
   // Back-compat shortcuts (legacy code reads these directly).
@@ -55,17 +66,21 @@ export class StripNotDetectedError extends Error {
   }
 }
 
+const MULTI_SHOT_RUNS = 3;
+const CONFIDENCE_WARN_THRESHOLD = 0.55;
+const CONFIDENCE_BLOCK_THRESHOLD = 0.4;
+
 function statusOf(value: number, key: StripParameter): Status {
   const r = targetRanges[key];
-  if (!r) return "ok"; // no target defined → don't flag
+  if (!r) return "ok";
   if (value < r.min) return "low";
   if (value > r.max) return "high";
   return "ok";
 }
 
-function makeReading(p: StripParameter, value: number): StripReading {
+function makeReading(p: StripParameter, value: number, agreement?: number): StripReading {
   const def = PARAM_LABEL_HE[p];
-  return { labelHe: def.labelHe, value, unit: def.unit, status: statusOf(value, p) };
+  return { labelHe: def.labelHe, value, unit: def.unit, status: statusOf(value, p), agreement };
 }
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -85,6 +100,20 @@ function attachLegacyAliases(results: StripResults): StripResults {
   return results;
 }
 
+function median(nums: number[]): number {
+  const s = [...nums].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/** Agreement = 1 - normalized spread. Tight values → near 1; wide → near 0. */
+function agreementOf(values: number[], reference: number): number {
+  if (values.length < 2) return 1;
+  const denom = Math.max(Math.abs(reference), 1);
+  const spread = (Math.max(...values) - Math.min(...values)) / denom;
+  return Math.max(0, Math.min(1, 1 - spread));
+}
+
 /**
  * Analyze a pool test strip image.
  * @param image  File or data URL of the strip
@@ -94,81 +123,138 @@ export async function analyzeStripImage(
   image: File | string,
   brandId: string = DEFAULT_BRAND_ID,
 ): Promise<StripResults> {
-  const dataUrl = typeof image === "string" ? image : await fileToDataUrl(image);
+  const rawDataUrl = typeof image === "string" ? image : await fileToDataUrl(image);
   const brand: StripBrand = getBrand(brandId);
 
-  let aiResult: Awaited<ReturnType<typeof analyzeStripWithAI>> | null = null;
+  // Step 1: white-balance to neutralize color cast before AI sees the image.
+  let dataUrl = rawDataUrl;
   try {
-    aiResult = await analyzeStripWithAI({
-      data: {
-        imageBase64: dataUrl,
-        brandId: brand.id,
-        brandNameHe: brand.nameHe,
-        parameters: brand.parameters,
-      },
-    });
+    dataUrl = await whiteBalanceDataUrl(rawDataUrl);
   } catch (e) {
-    console.warn("AI analyzer threw:", e);
+    console.warn("White balance failed, using raw image:", e);
   }
 
-  // Hard block: AI says image isn't a strip.
-  if (aiResult?.ok && aiResult.data.isStrip === false) {
-    const r = aiResult.data.failureReason;
+  // Step 2: run AI N times in parallel.
+  const runs = await Promise.all(
+    Array.from({ length: MULTI_SHOT_RUNS }, () =>
+      analyzeStripWithAI({
+        data: {
+          imageBase64: dataUrl,
+          brandId: brand.id,
+          brandNameHe: brand.nameHe,
+          parameters: brand.parameters,
+        },
+      }).catch((e) => {
+        console.warn("AI run failed:", e);
+        return null;
+      }),
+    ),
+  );
+
+  const okRuns = runs.filter(
+    (r): r is Extract<typeof r, { ok: true }> => !!r && r.ok === true,
+  );
+
+  // Hard block: majority of runs say it's not a strip.
+  const notStripRuns = okRuns.filter((r) => r.data.isStrip === false);
+  if (okRuns.length > 0 && notStripRuns.length > okRuns.length / 2) {
+    const r = notStripRuns[0].data.failureReason;
     const reason: FailureReason =
       r === "not_strip" || r === "blurry" || r === "lighting" || r === "framing"
         ? r
         : "not_strip";
-    throw new StripNotDetectedError(reason, aiResult.data.notes || undefined);
+    throw new StripNotDetectedError(reason, notStripRuns[0].data.notes || undefined);
   }
 
-  // AI succeeded with usable confidence
-  if (aiResult?.ok && aiResult.data.isStrip && aiResult.data.confidence >= 0.4) {
-    const d = aiResult.data;
+  // Keep only runs that consider the image a strip.
+  const stripRuns = okRuns.filter((r) => r.data.isStrip);
+
+  if (stripRuns.length > 0) {
+    // Step 3 + 4: median per parameter + agreement per parameter.
     const readings: StripResults["readings"] = {};
     for (const p of brand.parameters) {
-      const v = d.values[p];
-      if (typeof v === "number" && !Number.isNaN(v)) {
-        readings[p] = makeReading(p, v);
+      const values = stripRuns
+        .map((r) => r.data.values[p])
+        .filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
+      if (values.length === 0) continue;
+      const med = median(values);
+      const agree = agreementOf(values, med);
+      readings[p] = makeReading(p, +med.toFixed(2), agree);
+    }
+
+    const meanConfidence =
+      stripRuns.reduce((s, r) => s + (r.data.confidence ?? 0.5), 0) / stripRuns.length;
+    // Penalize confidence by average per-pad disagreement.
+    const agrees = Object.values(readings).map((r) => r?.agreement ?? 1);
+    const meanAgree = agrees.length ? agrees.reduce((a, b) => a + b, 0) / agrees.length : 1;
+    const consensusConfidence = meanConfidence * (0.6 + 0.4 * meanAgree);
+
+    const notesPieces: string[] = [];
+    if (stripRuns.length < MULTI_SHOT_RUNS) {
+      notesPieces.push(`בוצעו ${stripRuns.length} מתוך ${MULTI_SHOT_RUNS} ניתוחים.`);
+    }
+    if (consensusConfidence < CONFIDENCE_WARN_THRESHOLD) {
+      notesPieces.push("ביטחון נמוך — מומלץ לצלם שוב באור טבעי וברקע לבן.");
+    }
+
+    if (consensusConfidence >= CONFIDENCE_BLOCK_THRESHOLD) {
+      return attachLegacyAliases({
+        brandId: brand.id,
+        readings,
+        source: "ai",
+        confidence: +consensusConfidence.toFixed(2),
+        lowConfidence: consensusConfidence < CONFIDENCE_WARN_THRESHOLD,
+        shotsUsed: stripRuns.length,
+        notes: notesPieces.join(" ") || undefined,
+      });
+    }
+
+    // Below block threshold — try local CV fallback for the 4-pad layout.
+    const cvCompatible =
+      brand.parameters.includes("freeChlorine") &&
+      brand.parameters.includes("ph") &&
+      brand.parameters.includes("alkalinity");
+
+    if (cvCompatible) {
+      try {
+        const cv = await analyzeStripPixels(dataUrl);
+        const cvReadings: StripResults["readings"] = {
+          freeChlorine: makeReading("freeChlorine", cv.freeChlorine),
+          ph: makeReading("ph", cv.ph),
+          alkalinity: makeReading("alkalinity", cv.alkalinity),
+        };
+        return attachLegacyAliases({
+          brandId: brand.id,
+          readings: cvReadings,
+          source: "cv",
+          confidence: cv.confidence,
+          lowConfidence: true,
+          shotsUsed: stripRuns.length,
+          notes: "ביטחון נמוך, מוצג ניתוח פיקסלים מקומי. צלם שוב באור טוב לשיפור הדיוק.",
+        });
+      } catch (e) {
+        console.error("CV fallback failed:", e);
       }
     }
+
+    // No CV path — return the low-confidence AI consensus with a clear warning.
     return attachLegacyAliases({
       brandId: brand.id,
       readings,
       source: "ai",
-      confidence: d.confidence,
-      notes: d.notes,
+      confidence: +consensusConfidence.toFixed(2),
+      lowConfidence: true,
+      shotsUsed: stripRuns.length,
+      notes: "ביטחון נמוך מאוד — התוצאות עשויות להיות לא מדויקות. מומלץ לצלם שוב.",
     });
   }
 
-  // AI low-confidence — local CV fallback works only for the classic 4-pad layout.
-  const cvCompatible =
-    brand.parameters.includes("freeChlorine") &&
-    brand.parameters.includes("ph") &&
-    brand.parameters.includes("alkalinity");
-
-  if (aiResult?.ok && aiResult.data.isStrip && cvCompatible) {
-    try {
-      const cv = await analyzeStripPixels(dataUrl);
-      const readings: StripResults["readings"] = {
-        freeChlorine: makeReading("freeChlorine", cv.freeChlorine),
-        ph: makeReading("ph", cv.ph),
-        alkalinity: makeReading("alkalinity", cv.alkalinity),
-      };
-      return attachLegacyAliases({
-        brandId: brand.id,
-        readings,
-        source: "cv",
-        confidence: cv.confidence,
-        notes: "ביטחון נמוך, מוצג ניתוח פיקסלים מקומי. צלם שוב באור טוב לשיפור הדיוק.",
-      });
-    } catch (e) {
-      console.error("CV fallback failed:", e);
-    }
-  }
-
-  const errMsg =
-    aiResult && !aiResult.ok && "message" in aiResult
-      ? `ניתוח התמונה נכשל: ${aiResult.message}.`
-      : "ניתוח התמונה נכשל. נסה שוב.";
+  // No usable AI runs.
+  const firstFail = runs.find((r) => r && !r.ok) as
+    | Exclude<Awaited<ReturnType<typeof analyzeStripWithAI>>, { ok: true }>
+    | undefined;
+  const errMsg = firstFail
+    ? `ניתוח התמונה נכשל: ${firstFail.message ?? firstFail.error}.`
+    : "ניתוח התמונה נכשל. נסה שוב.";
   throw new StripNotDetectedError("ai_error", errMsg);
 }
