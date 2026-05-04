@@ -139,8 +139,7 @@ function LiveScanScreen() {
       const canvas = canvasRef.current!;
       const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
       const sess = scanSession.get();
-      const includeSalt = sess.includeSalt ?? true;
-      const results = await analyzeStripImage(dataUrl, includeSalt);
+      const results = await analyzeStripImage(dataUrl, sess.brandId);
       scanSession.set({ results, imageDataUrl: dataUrl });
       // stop camera before navigation
       streamRef.current?.getTracks().forEach((t) => t.stop());
