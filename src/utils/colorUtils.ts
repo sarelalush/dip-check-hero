@@ -26,6 +26,7 @@ const TC_TB_REFS: ColorRef[] = [
   { value: 3,   rgb: [184, 216, 140] },
   { value: 5,   rgb: [144, 198, 120] },
   { value: 10,  rgb: [76,  163, 95]  },
+  { value: 20,  rgb: [40,  120, 70]  },
 ];
 
 const PRO_REFS = {
