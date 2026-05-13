@@ -140,13 +140,13 @@ describe("AquaChek Pro — סטיקים שונים מתרחישי בריכה א�
       const url = buildAquachekProStrip(s.name, s.fc, s.ph, s.alk);
       const r = await analyzeStripPixels(url);
 
-      expect(Math.abs(r.freeChlorine - s.fc)).toBeLessThanOrEqual(1);
-      expect(Math.abs(r.ph - s.ph)).toBeLessThanOrEqual(0.4);
-      expect(Math.abs(r.alkalinity - s.alk)).toBeLessThanOrEqual(30);
+      expect(Math.abs(r.freeChlorine! - s.fc)).toBeLessThanOrEqual(1);
+      expect(Math.abs(r.ph! - s.ph)).toBeLessThanOrEqual(0.4);
+      expect(Math.abs(r.alkalinity! - s.alk)).toBeLessThanOrEqual(30);
 
-      expect(statusOf(r.freeChlorine, "freeChlorine")).toBe(s.expect.fcStatus);
-      expect(statusOf(r.ph, "ph")).toBe(s.expect.phStatus);
-      expect(statusOf(r.alkalinity, "alkalinity")).toBe(s.expect.alkStatus);
+      expect(statusOf(r.freeChlorine!, "freeChlorine")).toBe(s.expect.fcStatus);
+      expect(statusOf(r.ph!, "ph")).toBe(s.expect.phStatus);
+      expect(statusOf(r.alkalinity!, "alkalinity")).toBe(s.expect.alkStatus);
 
       expect(r.confidence).toBeGreaterThan(0.7);
     });
@@ -163,6 +163,6 @@ describe("AquaChek Pro — סטיקים שונים מתרחישי בריכה א�
   it("מבחין בין סטיק תקין לסטיק עם כלור גבוה", async () => {
     const ok = await analyzeStripPixels(buildAquachekProStrip("ok", 3, 7.2, 120));
     const high = await analyzeStripPixels(buildAquachekProStrip("hi", 8, 7.2, 120));
-    expect(high.freeChlorine).toBeGreaterThan(ok.freeChlorine + 2);
+    expect(high.freeChlorine).toBeGreaterThan(ok.freeChlorine! + 2);
   });
 });

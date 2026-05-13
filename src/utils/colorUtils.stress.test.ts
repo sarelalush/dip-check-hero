@@ -143,9 +143,9 @@ describe("analyzeStripPixels — stress: many synthetic AquaChek Pro strips", ()
     let fcErr = 0, phErr = 0, alkErr = 0;
     for (const c of cases) {
       const r = await analyzeStripPixels(buildStrip(c));
-      fcErr += Math.abs(r.freeChlorine - c.fc);
-      phErr += Math.abs(r.ph - c.ph);
-      alkErr += Math.abs(r.alkalinity - c.alk);
+      fcErr += Math.abs(r.freeChlorine! - c.fc);
+      phErr += Math.abs(r.ph! - c.ph);
+      alkErr += Math.abs(r.alkalinity! - c.alk);
     }
     const N = cases.length;
     console.log(`Clean — N=${N} meanErr fc=${(fcErr / N).toFixed(2)} ph=${(phErr / N).toFixed(2)} alk=${(alkErr / N).toFixed(1)}`);
@@ -163,9 +163,9 @@ describe("analyzeStripPixels — stress: many synthetic AquaChek Pro strips", ()
     let fcErr = 0, phErr = 0, alkErr = 0;
     for (const c of cases) {
       const r = await analyzeStripPixels(buildStrip({ id: `noise-${c.fc}`, ...c, noise: 15 }));
-      fcErr += Math.abs(r.freeChlorine - c.fc);
-      phErr += Math.abs(r.ph - c.ph);
-      alkErr += Math.abs(r.alkalinity - c.alk);
+      fcErr += Math.abs(r.freeChlorine! - c.fc);
+      phErr += Math.abs(r.ph! - c.ph);
+      alkErr += Math.abs(r.alkalinity! - c.alk);
     }
     expect(fcErr / 3).toBeLessThan(1.5);
     expect(phErr / 3).toBeLessThan(0.7);
@@ -175,8 +175,8 @@ describe("analyzeStripPixels — stress: many synthetic AquaChek Pro strips", ()
   it("handles slight horizontal off-center strip", async () => {
     const c = { fc: 3, ph: 7.2, alk: 120 };
     const r = await analyzeStripPixels(buildStrip({ id: "shift", ...c, shiftX: 8 }));
-    expect(Math.abs(r.freeChlorine - c.fc)).toBeLessThanOrEqual(1.5);
-    expect(Math.abs(r.ph - c.ph)).toBeLessThanOrEqual(0.7);
+    expect(Math.abs(r.freeChlorine! - c.fc)).toBeLessThanOrEqual(1.5);
+    expect(Math.abs(r.ph! - c.ph)).toBeLessThanOrEqual(0.7);
   });
 
   it("flags low confidence on multiple off-chart strips", async () => {
