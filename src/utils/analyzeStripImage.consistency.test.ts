@@ -44,9 +44,9 @@ function buildCanonicalStrip(): string {
 // AI returns noisy values per call, simulating real model jitter.
 let aiCallIdx = 0;
 const AI_NOISE: Array<{ fc: number; ph: number; alk: number; conf: number }> = [
-  { fc: 2.8, ph: 7.5, alk: 118, conf: 0.82 },
-  { fc: 3.0, ph: 7.6, alk: 120, conf: 0.88 },
-  { fc: 3.2, ph: 7.7, alk: 122, conf: 0.85 },
+  { fc: 3.8, ph: 7.5, alk: 238, conf: 0.82 },
+  { fc: 4.0, ph: 7.6, alk: 240, conf: 0.88 },
+  { fc: 4.2, ph: 7.7, alk: 242, conf: 0.85 },
 ];
 
 vi.mock("@/server/strip-analysis.functions", () => ({
@@ -115,10 +115,10 @@ describe("Consistency — same strip → same reading", () => {
       expect(r.ph).toBe(first.ph);
       expect(r.alk).toBe(first.alk);
     }
-    // Median of [2.8, 3.0, 3.2] = 3.0 — proves the consensus picks the middle
-    expect(first.fc).toBe(3);
+    // Median of [3.8, 4.0, 4.2] = 4.0 — proves the consensus picks the middle
+    expect(first.fc).toBe(4);
     expect(first.ph).toBe(7.6);
-    expect(first.alk).toBe(120);
+    expect(first.alk).toBe(240);
   });
 
   it("Stability under wider AI jitter: median still snaps to truth", async () => {
