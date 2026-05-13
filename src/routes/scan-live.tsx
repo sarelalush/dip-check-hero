@@ -271,7 +271,7 @@ function LiveScanScreen() {
         >
           {analyzing ? (
             <span className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> מנתח את הסטיק...
+              <Loader2 className="h-4 w-4 animate-spin" /> מייצב תוצאה מ-3 פריימים...
             </span>
           ) : (
             quality?.tipHe ?? "מקם את הסטיק במרכז המסגרת"
