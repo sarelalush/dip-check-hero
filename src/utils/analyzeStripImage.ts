@@ -66,7 +66,7 @@ export class StripNotDetectedError extends Error {
   }
 }
 
-const MULTI_SHOT_RUNS = 3;
+const MULTI_SHOT_RUNS = 1;
 const CONFIDENCE_WARN_THRESHOLD = 0.55;
 const CONFIDENCE_BLOCK_THRESHOLD = 0.4;
 
