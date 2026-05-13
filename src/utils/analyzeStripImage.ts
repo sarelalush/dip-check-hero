@@ -100,6 +100,42 @@ function attachLegacyAliases(results: StripResults): StripResults {
   return results;
 }
 
+export function combineStripResults(results: StripResults[], brandId?: string): StripResults {
+  if (results.length === 0) {
+    throw new StripNotDetectedError("low_confidence", "לא התקבלו מספיק פריימים יציבים לניתוח.");
+  }
+  if (results.length === 1) return attachLegacyAliases({ ...results[0], readings: { ...results[0].readings } });
+
+  const brand: StripBrand = getBrand(brandId ?? results[0].brandId);
+  const readings: StripResults["readings"] = {};
+  for (const p of brand.parameters) {
+    const values = results
+      .map((r) => r.readings[p]?.value)
+      .filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
+    if (values.length === 0) continue;
+    const med = median(values);
+    readings[p] = makeReading(p, +med.toFixed(2), agreementOf(values, med));
+  }
+
+  const meanConfidence = results.reduce((s, r) => s + (r.confidence ?? 0.5), 0) / results.length;
+  const agrees = Object.values(readings).map((r) => r?.agreement ?? 1);
+  const meanAgree = agrees.length ? agrees.reduce((a, b) => a + b, 0) / agrees.length : 1;
+  const confidence = meanConfidence * (0.55 + 0.45 * meanAgree);
+  const source = results.every((r) => r.source === "ai") ? "ai" : results.some((r) => r.source === "cv") ? "cv" : results[0].source;
+  const shotsUsed = results.reduce((sum, r) => sum + (r.shotsUsed ?? 1), 0);
+  const lowConfidence = results.some((r) => r.lowConfidence) || confidence < CONFIDENCE_WARN_THRESHOLD;
+
+  return attachLegacyAliases({
+    brandId: brand.id,
+    readings,
+    source,
+    confidence: +confidence.toFixed(2),
+    lowConfidence,
+    shotsUsed,
+    notes: `תוצאה מיוצבת מתוך ${results.length} פריימים רצופים.${lowConfidence ? " מומלץ לצלם שוב אם הערכים לא תואמים למניפה." : ""}`,
+  });
+}
+
 function median(nums: number[]): number {
   const s = [...nums].sort((a, b) => a - b);
   const m = Math.floor(s.length / 2);
