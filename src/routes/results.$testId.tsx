@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ArrowRight, Camera, ListChecks, AlertTriangle } from "lucide-react";
 import { testStorage, poolStorage, type TestRecord, type Pool } from "@/utils/storage";
 import { ResultCard } from "@/components/ResultCard";
+import { ParameterArcs } from "@/components/ParameterArcs";
 import { scanSession } from "@/utils/scanSession";
 
 export const Route = createFileRoute("/results/$testId")({
@@ -77,6 +78,14 @@ function ResultsScreen() {
           <p className="mt-2 text-xs text-muted-foreground">{test.results.notes}</p>
         )}
 
+        {/* Visual overview — concentric arcs */}
+        {test.recommendations.length > 0 && (
+          <div className="mt-5">
+            <ParameterArcs recs={test.recommendations} />
+          </div>
+        )}
+
+        {/* Detailed cards with action recommendations */}
         <div className="mt-5 space-y-3">
           {test.recommendations.map((rec) => (
             <ResultCard key={rec.paramKey} rec={rec} />
