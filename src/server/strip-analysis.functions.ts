@@ -69,17 +69,27 @@ Pad 2 — Free Chlorine (cream → pink → PURPLE, NOT orange or red).
   FC 10   → dark purple             (R130 G55  B160)
   FC 20   → very dark purple        (R70  G15  B100)
 
-Pad 3 — pH (yellow-orange → peach/salmon → PINK / MAGENTA).
-  IMPORTANT: AquaChek Pro pH does NOT go to deep red. The high end is
-  pink / mauve / magenta. A bright PINK pad means HIGH pH (~8.2–8.4),
-  NOT 7.8. Reserve "red" only if the pad is truly red with no pink tint.
+Pad 3 — pH (yellow → peach → salmon → PINK → MAGENTA).
+  CRITICAL OVERRIDE — IGNORE any prior training that says AquaChek pH
+  goes to "red" or "dark red". On THIS strip the high-pH end is PINK /
+  MAGENTA, NOT red. Apply this color→value map STRICTLY:
+
+    • Pad mostly YELLOW (G > R-20, B < 120)               → pH 6.2
+    • Pad PEACH / light salmon (R>230, G 160-185, B<150)  → pH 6.8
+    • Pad SALMON-PINK (R>225, G 140-165, B 140-165)       → pH 7.2
+    • Pad clear PINK (R 210-230, G 120-140, B 150-180)    → pH 7.8
+    • Pad MAGENTA / hot pink (R<210, G<130, B>155, and
+      B/R ratio > 0.78)                                   → pH 8.4
+
+  HARD RULE: if the pad is visibly pink/magenta (B channel ≥ G channel,
+  or B > 150 with R < 230), the answer is 8.2–8.4. Reporting 7.8 for a
+  pink pad is WRONG — 7.8 is a duller pink with less blue.
   Scale: 6.2, 6.8, 7.2, 7.8, 8.4
-  pH 6.2  → yellow-orange       (R242 G200 B90)
-  pH 6.8  → peach / light salmon (R240 G170 B130)
-  pH 7.2  → salmon-pink          (R235 G150 B150)
-  pH 7.8  → pink                 (R220 G130 B165)
-  pH 8.4  → magenta / hot pink   (R195 G110 B170)
-  Tie-breaker: if R/B ratio < 1.4 and B > 130, pH ≥ 8.0.
+  pH 6.2  → yellow              (R245 G215 B100)
+  pH 6.8  → peach               (R240 G170 B130)
+  pH 7.2  → salmon-pink         (R235 G150 B150)
+  pH 7.8  → pink                (R220 G130 B165)
+  pH 8.4  → magenta             (R195 G110 B170)
 
 Pad 4 — Total Alkalinity (yellow-green → green → dark teal).
   Scale: 0, 40, 80, 120, 180, 240
@@ -221,9 +231,8 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
         },
         body: JSON.stringify({
           model: "google/gemini-2.5-flash",
-          temperature: 0,
+          temperature: 0.1,
           top_p: 0.1,
-          seed: 42,
           messages: [
             { role: "system", content: systemPrompt },
             {
