@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Camera, X, Loader2 } from "lucide-react";
 import { analyzeFrameQuality, type FrameQuality } from "@/utils/frameQuality";
-import { analyzeStripImage, StripNotDetectedError } from "@/utils/analyzeStripImage";
+import { analyzeStripImage, combineStripResults, StripNotDetectedError } from "@/utils/analyzeStripImage";
 import { scanSession } from "@/utils/scanSession";
 
 export const Route = createFileRoute("/scan-live")({
@@ -11,6 +11,10 @@ export const Route = createFileRoute("/scan-live")({
 });
 
 const STABLE_FRAMES_NEEDED = 4; // ~2s of good frames before auto-capture
+const CONSENSUS_CAPTURES_NEEDED = 3;
+const CONSENSUS_CAPTURE_DELAY_MS = 450;
+
+const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 function LiveScanScreen() {
   const navigate = useNavigate();
@@ -137,10 +141,16 @@ function LiveScanScreen() {
     setAnalysisError(null);
     try {
       const canvas = canvasRef.current!;
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
       const sess = scanSession.get();
-      const results = await analyzeStripImage(dataUrl, sess.brandId);
-      scanSession.set({ results, imageDataUrl: dataUrl });
+      const captures: string[] = [];
+      const analyzed = [];
+      for (let i = 0; i < CONSENSUS_CAPTURES_NEEDED; i++) {
+        captures.push(canvas.toDataURL("image/jpeg", 0.9));
+        analyzed.push(await analyzeStripImage(captures[i], sess.brandId));
+        if (i < CONSENSUS_CAPTURES_NEEDED - 1) await wait(CONSENSUS_CAPTURE_DELAY_MS);
+      }
+      const results = combineStripResults(analyzed, sess.brandId);
+      scanSession.set({ results, imageDataUrl: captures[Math.floor(captures.length / 2)] });
       // stop camera before navigation
       streamRef.current?.getTracks().forEach((t) => t.stop());
       navigate({ to: "/select-pool" });
