@@ -13,21 +13,24 @@ beforeAll(() => {
 
 // ---- 1) Build one canonical strip image used across all consistency runs ----
 function buildCanonicalStrip(): string {
-  const width = 80, height = 320;
+  const width = 80, height = 400;
   const png = new PNG({ width, height });
-  // FC=3 → [255,180,100], pH=7.6 → [210,80,100], Alk=120 → [80,140,130]
+  // Pad order: TC, TB, FC, pH, TA — using OFFICIAL AquaChek chart colors.
+  // FC=3 → purple, pH=7.2 → red, Alk=120 → dark green
   const pads: [number, number, number][] = [
-    [255, 180, 100],
-    [210, 80, 100],
-    [80, 140, 130],
+    [184, 216, 140],   // TC=3 (yellow-green)
+    [254, 254, 168],   // TB=0
+    [172, 139, 208],   // FC=3 (purple)
+    [225, 80, 50],     // pH=7.2 (red-orange)
+    [72, 111, 54],     // Alk=120 (dark green)
   ];
-  const top = height * 0.2, padH = (height * 0.6) / 3;
+  const top = height * 0.2, padH = (height * 0.6) / 5;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
       let r = 230, g = 230, b = 230;
       const padIdx = Math.floor((y - top) / padH);
-      if (Math.abs(x - width / 2) < width * 0.35 && padIdx >= 0 && padIdx < 3) {
+      if (Math.abs(x - width / 2) < width * 0.35 && padIdx >= 0 && padIdx < 5) {
         [r, g, b] = pads[padIdx];
       }
       png.data[i] = r; png.data[i + 1] = g; png.data[i + 2] = b; png.data[i + 3] = 255;

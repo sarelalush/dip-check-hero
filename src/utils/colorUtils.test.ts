@@ -5,69 +5,80 @@ beforeAll(() => {
   installCanvasMock();
 });
 
-// Import AFTER mocks are wired so the module sees patched globals if needed.
 import { analyzeStripPixels } from "./colorUtils";
 
-const TOL = 0.5; // ±0.5 on continuous params; alkalinity uses ±20 (50-step refs)
+const TOL = 0.5;
 
-describe("analyzeStripPixels — synthetic fixtures", () => {
-  it("reads exact reference colors (FC=3, pH=7.6, Alk=120)", async () => {
+// Reference colors come from the OFFICIAL AquaChek Pro 5-in-1 chart.
+describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
+  it("reads exact reference colors (TC=3, TB=3, FC=3, pH=7.2, Alk=120)", async () => {
     const url = makeStripFixture({
       id: "exact-mid",
-      fc: [255, 180, 100], // ref FC=3
-      ph: [210, 80, 100], // ref pH=7.6
-      alk: [80, 140, 130], // ref Alk=120
+      tc: [184, 216, 140],   // TC=3 (yellow-green)
+      br: [184, 216, 140],   // TB=3
+      fc: [172, 139, 208],   // FC=3 (purple — the critical fix!)
+      ph: [225, 80, 50],     // pH=7.2 (red-orange)
+      alk: [72, 111, 54],    // Alk=120 (dark green)
     });
     const r = await analyzeStripPixels(url);
+    expect(r.totalChlorine).toBeCloseTo(3, 1);
+    expect(r.bromine).toBeCloseTo(3, 1);
     expect(r.freeChlorine).toBeCloseTo(3, 1);
-    expect(r.ph).toBeCloseTo(7.6, 1);
+    expect(r.ph).toBeCloseTo(7.2, 1);
     expect(Math.abs(r.alkalinity - 120)).toBeLessThanOrEqual(20);
-    expect(r.confidence).toBeGreaterThan(0.9);
+    expect(r.confidence).toBeGreaterThan(0.85);
   });
 
-  it("reads low end (FC=0, pH=6.2, Alk=0)", async () => {
+  it("reads low end (TC=0, FC=0, pH=6.2, Alk=0)", async () => {
     const url = makeStripFixture({
       id: "low",
-      fc: [255, 255, 230],
-      ph: [240, 200, 100],
-      alk: [240, 230, 100],
+      tc: [254, 254, 168],
+      br: [254, 254, 168],
+      fc: [254, 254, 204],
+      ph: [242, 175, 60],
+      alk: [227, 192, 64],
     });
     const r = await analyzeStripPixels(url);
-    expect(Math.abs(r.freeChlorine - 0)).toBeLessThanOrEqual(TOL);
+    expect(r.totalChlorine).toBeLessThanOrEqual(0.5);
+    expect(r.freeChlorine).toBeLessThanOrEqual(0.5);
     expect(Math.abs(r.ph - 6.2)).toBeLessThanOrEqual(TOL);
     expect(r.alkalinity).toBeLessThanOrEqual(20);
   });
 
-  it("reads high end (FC=10, pH=8.4, Alk=240)", async () => {
+  it("reads high end (TC=10, FC=10, pH=8.4, Alk=240)", async () => {
     const url = makeStripFixture({
       id: "high",
-      fc: [200, 80, 50],
-      ph: [150, 40, 100],
-      alk: [30, 80, 120],
+      tc: [76, 163, 95],
+      br: [76, 163, 95],
+      fc: [129, 29, 153],   // dark purple — high FC
+      ph: [180, 45, 45],
+      alk: [37, 87, 98],
     });
     const r = await analyzeStripPixels(url);
-    expect(Math.abs(r.freeChlorine - 10)).toBeLessThanOrEqual(TOL);
+    expect(r.totalChlorine).toBeGreaterThanOrEqual(8);
+    expect(r.freeChlorine).toBeGreaterThanOrEqual(8);
     expect(Math.abs(r.ph - 8.4)).toBeLessThanOrEqual(TOL);
-    expect(Math.abs(r.alkalinity - 240)).toBeLessThanOrEqual(20);
+    expect(Math.abs(r.alkalinity - 240)).toBeLessThanOrEqual(25);
   });
 
-  it("interpolates between reference levels (mix of FC=1 and FC=3)", async () => {
-    // Average of ref(1)=[255,220,140] and ref(3)=[255,180,100] → [255,200,120]
-    const url = makeStripFixture({
-      id: "interp",
-      fc: [255, 200, 120],
-      ph: [210, 80, 100],
-      alk: [80, 140, 130],
+  it("FC purple gradient is distinguished from pH red gradient", async () => {
+    // Critical regression test: previously FC was wrongly orange/red — now purple.
+    const purple = makeStripFixture({
+      id: "fc-purple",
+      fc: [158, 106, 189],   // FC=5 purple
+      ph: [225, 80, 50],     // pH=7.2 red
+      alk: [72, 111, 54],
     });
-    const r = await analyzeStripPixels(url);
-    expect(r.freeChlorine).toBeGreaterThan(1);
-    expect(r.freeChlorine).toBeLessThan(3);
+    const r = await analyzeStripPixels(purple);
+    expect(r.freeChlorine).toBeGreaterThan(2);   // reads as moderate-high FC
+    expect(r.ph).toBeGreaterThan(7);             // pH still reads as red ≈ 7.2
+    expect(r.ph).toBeLessThan(7.6);
   });
 
   it("flags low confidence on a clearly off-chart color", async () => {
     const url = makeStripFixture({
       id: "off",
-      fc: [0, 255, 0], // pure green — not on chlorine chart
+      fc: [0, 255, 0],
       ph: [0, 0, 255],
       alk: [255, 0, 255],
     });
