@@ -9,37 +9,38 @@
 //   3. Total Alkalinity  (yellow-green → green → teal)
 //   4. Cyanuric Acid     (white turbidity → tan/gray)
 //
-// AquaChek Pro 5-in-1 — pads top→bottom:
-//   1. Total Chlorine    (yellow → green)
-//   2. Total Bromine     (yellow → green, same chart as TC)
-//   3. Free Chlorine     (cream → purple)
-//   4. pH                (orange → red)
-//   5. Total Alkalinity  (yellow → dark teal)
+// AquaChek Pro 5-in-1 — 4 physical pads, top→bottom from wet tip:
+//   1. Total Chlorine + Total Bromine (combined yellow → green pad)
+//   2. Free Chlorine                  (cream → purple)
+//   3. pH                             (orange → red)
+//   4. Total Alkalinity               (yellow-green → dark teal/blue)
 
 interface ColorRef { value: number; rgb: [number, number, number] }
 
 // ---------- Pro 5-in-1 references ----------
-const TC_TB_REFS: ColorRef[] = [
-  { value: 0,   rgb: [254, 254, 168] },
-  { value: 0.5, rgb: [242, 254, 170] },
-  { value: 1,   rgb: [231, 245, 160] },
-  { value: 3,   rgb: [184, 216, 140] },
-  { value: 5,   rgb: [144, 198, 120] },
-  { value: 10,  rgb: [76,  163, 95]  },
-  { value: 20,  rgb: [40,  120, 70]  },
+const PRO_COMBINED_PAD_COLORS: Array<{ tc: number; tb: number; rgb: [number, number, number] }> = [
+  { tc: 0,   tb: 0,  rgb: [254, 254, 168] },
+  { tc: 0.5, tb: 1,  rgb: [242, 254, 170] },
+  { tc: 1,   tb: 2,  rgb: [231, 245, 160] },
+  { tc: 3,   tb: 5,  rgb: [184, 216, 140] },
+  { tc: 5,   tb: 10, rgb: [100, 180, 105] },
+  { tc: 10,  tb: 20, rgb: [55,  140, 80]  },
 ];
+const PRO_TC_REFS: ColorRef[] = PRO_COMBINED_PAD_COLORS.map((r) => ({ value: r.tc, rgb: r.rgb }));
+const PRO_TB_REFS: ColorRef[] = PRO_COMBINED_PAD_COLORS.map((r) => ({ value: r.tb, rgb: r.rgb }));
 
 const PRO_REFS = {
-  totalChlorine: TC_TB_REFS,
-  bromine: TC_TB_REFS,
+  totalChlorine: PRO_TC_REFS,
+  bromine: PRO_TB_REFS,
   freeChlorine: [
     { value: 0,   rgb: [254, 254, 204] },
-    { value: 0.5, rgb: [247, 249, 225] },
-    { value: 1,   rgb: [230, 223, 215] },
-    { value: 3,   rgb: [172, 139, 208] },
-    { value: 5,   rgb: [158, 106, 189] },
-    { value: 10,  rgb: [129, 29,  153] },
-    { value: 20,  rgb: [60,  10,  90]  },
+    { value: 0.5, rgb: [247, 235, 228] },
+    { value: 1,   rgb: [235, 215, 225] },
+    { value: 2,   rgb: [220, 180, 210] },
+    { value: 4,   rgb: [200, 140, 195] },
+    { value: 6,   rgb: [175, 110, 190] },
+    { value: 10,  rgb: [130, 55,  160] },
+    { value: 20,  rgb: [70,  15,  100] },
   ] as ColorRef[],
   ph: [
     { value: 6.2, rgb: [242, 175, 60]  },
@@ -173,16 +174,16 @@ export interface ClientCvResult {
   confidence: number;
 }
 
-/** AquaChek Pro 5-in-1: 5 pads (TC, TB, FC, pH, TA). */
+/** AquaChek Pro 5-in-1: 4 pads (combined TC+TB, FC, pH, TA). */
 export async function analyzeStripPixels(imageDataUrl: string): Promise<ClientCvResult> {
   const { canvas, ctx } = await loadCanvas(imageDataUrl);
-  const pads = samplePads(ctx, canvas.width, canvas.height, 5);
+  const pads = samplePads(ctx, canvas.width, canvas.height, 4);
   const tc  = bestMatch(pads[0], PRO_REFS.totalChlorine);
-  const br  = bestMatch(pads[1], PRO_REFS.bromine);
-  const fc  = bestMatch(pads[2], PRO_REFS.freeChlorine);
-  const ph  = bestMatch(pads[3], PRO_REFS.ph);
-  const alk = bestMatch(pads[4], PRO_REFS.alkalinity);
-  const avgD = (tc.distance + br.distance + fc.distance + ph.distance + alk.distance) / 5;
+  const br  = bestMatch(pads[0], PRO_REFS.bromine);
+  const fc  = bestMatch(pads[1], PRO_REFS.freeChlorine);
+  const ph  = bestMatch(pads[2], PRO_REFS.ph);
+  const alk = bestMatch(pads[3], PRO_REFS.alkalinity);
+  const avgD = (tc.distance + fc.distance + ph.distance + alk.distance) / 4;
   return {
     totalChlorine: +tc.value.toFixed(1),
     bromine: +br.value.toFixed(1),

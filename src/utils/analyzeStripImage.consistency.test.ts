@@ -15,22 +15,21 @@ beforeAll(() => {
 function buildCanonicalStrip(): string {
   const width = 80, height = 400;
   const png = new PNG({ width, height });
-  // Pad order: TC, TB, FC, pH, TA — using OFFICIAL AquaChek chart colors.
-  // FC=3 → purple, pH=7.2 → red, Alk=120 → dark green
+  // Pad order: combined TC+TB, FC, pH, TA — using OFFICIAL AquaChek chart colors.
+  // FC=4 → purple, pH=7.2 → red, Alk=240 → teal-blue
   const pads: [number, number, number][] = [
-    [184, 216, 140],   // TC=3 (yellow-green)
-    [254, 254, 168],   // TB=0
-    [172, 139, 208],   // FC=3 (purple)
+    [184, 216, 140],   // combined TC=3 / TB=5 (yellow-green)
+    [200, 140, 195],   // FC=4 (purple)
     [225, 80, 50],     // pH=7.2 (red-orange)
-    [72, 111, 54],     // Alk=120 (dark green)
+    [37, 87, 98],      // Alk=240 (teal-blue)
   ];
-  const top = height * 0.2, padH = (height * 0.6) / 5;
+  const top = height * 0.2, padH = (height * 0.6) / 4;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
       let r = 230, g = 230, b = 230;
       const padIdx = Math.floor((y - top) / padH);
-      if (Math.abs(x - width / 2) < width * 0.35 && padIdx >= 0 && padIdx < 5) {
+      if (Math.abs(x - width / 2) < width * 0.35 && padIdx >= 0 && padIdx < 4) {
         [r, g, b] = pads[padIdx];
       }
       png.data[i] = r; png.data[i + 1] = g; png.data[i + 2] = b; png.data[i + 3] = 255;
@@ -45,9 +44,9 @@ function buildCanonicalStrip(): string {
 // AI returns noisy values per call, simulating real model jitter.
 let aiCallIdx = 0;
 const AI_NOISE: Array<{ fc: number; ph: number; alk: number; conf: number }> = [
-  { fc: 2.8, ph: 7.5, alk: 118, conf: 0.82 },
-  { fc: 3.0, ph: 7.6, alk: 120, conf: 0.88 },
-  { fc: 3.2, ph: 7.7, alk: 122, conf: 0.85 },
+  { fc: 3.8, ph: 7.5, alk: 238, conf: 0.82 },
+  { fc: 4.0, ph: 7.6, alk: 240, conf: 0.88 },
+  { fc: 4.2, ph: 7.7, alk: 242, conf: 0.85 },
 ];
 
 vi.mock("@/server/strip-analysis.functions", () => ({
@@ -116,10 +115,10 @@ describe("Consistency — same strip → same reading", () => {
       expect(r.ph).toBe(first.ph);
       expect(r.alk).toBe(first.alk);
     }
-    // Median of [2.8, 3.0, 3.2] = 3.0 — proves the consensus picks the middle
-    expect(first.fc).toBe(3);
+    // Median of [3.8, 4.0, 4.2] = 4.0 — proves the consensus picks the middle
+    expect(first.fc).toBe(4);
     expect(first.ph).toBe(7.6);
-    expect(first.alk).toBe(120);
+    expect(first.alk).toBe(240);
   });
 
   it("Stability under wider AI jitter: median still snaps to truth", async () => {

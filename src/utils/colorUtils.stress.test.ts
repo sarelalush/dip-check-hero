@@ -1,5 +1,5 @@
 // Stress test: generate many synthetic AquaChek Pro 5-in-1 strip fixtures
-// (5 pads each) with noise, lighting drift, and off-center positions.
+// (4 physical pads each) with noise, lighting drift, and off-center positions.
 import { describe, it, expect, beforeAll } from "vitest";
 import { PNG } from "pngjs";
 import { installCanvasMock, registerPng } from "./__fixtures__/canvasMock";
@@ -16,8 +16,8 @@ const TC_TB = [
   { value: 0.5, rgb: [242, 254, 170] },
   { value: 1, rgb: [231, 245, 160] },
   { value: 3, rgb: [184, 216, 140] },
-  { value: 5, rgb: [144, 198, 120] },
-  { value: 10, rgb: [76, 163, 95] },
+  { value: 5, rgb: [100, 180, 105] },
+  { value: 10, rgb: [55, 140, 80] },
 ] as const;
 
 const REFS = {
@@ -25,11 +25,12 @@ const REFS = {
   bromine: TC_TB,
   freeChlorine: [
     { value: 0, rgb: [254, 254, 204] },
-    { value: 0.5, rgb: [247, 249, 225] },
-    { value: 1, rgb: [230, 223, 215] },
-    { value: 3, rgb: [172, 139, 208] },
-    { value: 5, rgb: [158, 106, 189] },
-    { value: 10, rgb: [129, 29, 153] },
+    { value: 0.5, rgb: [247, 235, 228] },
+    { value: 1, rgb: [235, 215, 225] },
+    { value: 2, rgb: [220, 180, 210] },
+    { value: 4, rgb: [200, 140, 195] },
+    { value: 6, rgb: [175, 110, 190] },
+    { value: 10, rgb: [130, 55, 160] },
   ],
   ph: [
     { value: 6.2, rgb: [242, 175, 60] },
@@ -85,14 +86,13 @@ function buildStrip(o: StressOpts): string {
 
   const padTrue: RGB[] = [
     colorForValue(REFS.totalChlorine, o.tc ?? o.fc),
-    colorForValue(REFS.bromine, o.br ?? 0),
     colorForValue(REFS.freeChlorine, o.fc),
     colorForValue(REFS.ph, o.ph),
     colorForValue(REFS.alkalinity, o.alk),
   ];
 
   const top = height * 0.2;
-  const padH = (height * 0.6) / 5;
+  const padH = (height * 0.6) / 4;
   const stripCx = width / 2 + (o.shiftX ?? 0);
   const stripHalfW = width * 0.35;
 
@@ -102,7 +102,7 @@ function buildStrip(o: StressOpts): string {
       let r = 230, g = 230, b = 230;
       const inStrip = Math.abs(x - stripCx) < stripHalfW;
       const padIdx = Math.floor((y - top) / padH);
-      if (inStrip && padIdx >= 0 && padIdx < 5) {
+      if (inStrip && padIdx >= 0 && padIdx < 4) {
         const c = padTrue[padIdx];
         r = c[0]; g = c[1]; b = c[2];
       }
@@ -190,10 +190,10 @@ describe("analyzeStripPixels — stress: many synthetic AquaChek Pro strips", ()
         const idx = (y * 60 + x) * 4;
         png.data[idx] = 230; png.data[idx + 1] = 230; png.data[idx + 2] = 230; png.data[idx + 3] = 255;
       }
-      const top = 80, padH = 48;
-      // Pad order: TC, TB, FC, pH, ALK
-      const pads = [offColors[i][0], offColors[i][0], offColors[i][0], offColors[i][1], offColors[i][2]];
-      for (let p = 0; p < 5; p++) {
+      const top = 80, padH = 60;
+      // Pad order: combined TC+TB, FC, pH, ALK
+      const pads = [offColors[i][0], offColors[i][0], offColors[i][1], offColors[i][2]];
+      for (let p = 0; p < 4; p++) {
         for (let y = top + p * padH; y < top + (p + 1) * padH; y++)
           for (let x = 0; x < 60; x++) {
             const idx = (y * 60 + x) * 4;

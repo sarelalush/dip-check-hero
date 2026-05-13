@@ -1,4 +1,4 @@
-// Realistic pool scenarios for AquaChek Pro 5-in-1 (TC, TB, FC, pH, TA).
+// Realistic pool scenarios for AquaChek Pro 5-in-1 (combined TC+TB, FC, pH, TA).
 // Uses the OFFICIAL chart colors sampled from the AquaChek printed chart.
 import { describe, it, expect, beforeAll } from "vitest";
 import { PNG } from "pngjs";
@@ -17,8 +17,8 @@ const TC_TB = [
   { value: 0.5, rgb: [242, 254, 170] },
   { value: 1, rgb: [231, 245, 160] },
   { value: 3, rgb: [184, 216, 140] },
-  { value: 5, rgb: [144, 198, 120] },
-  { value: 10, rgb: [76, 163, 95] },
+  { value: 5, rgb: [100, 180, 105] },
+  { value: 10, rgb: [55, 140, 80] },
 ] as const;
 
 const REFS = {
@@ -26,11 +26,12 @@ const REFS = {
   bromine: TC_TB,
   freeChlorine: [
     { value: 0, rgb: [254, 254, 204] },
-    { value: 0.5, rgb: [247, 249, 225] },
-    { value: 1, rgb: [230, 223, 215] },
-    { value: 3, rgb: [172, 139, 208] },
-    { value: 5, rgb: [158, 106, 189] },
-    { value: 10, rgb: [129, 29, 153] },
+    { value: 0.5, rgb: [247, 235, 228] },
+    { value: 1, rgb: [235, 215, 225] },
+    { value: 2, rgb: [220, 180, 210] },
+    { value: 4, rgb: [200, 140, 195] },
+    { value: 6, rgb: [175, 110, 190] },
+    { value: 10, rgb: [130, 55, 160] },
   ],
   ph: [
     { value: 6.2, rgb: [242, 175, 60] },
@@ -68,16 +69,15 @@ function colorForValue(refs: readonly { value: number; rgb: readonly number[] }[
 function buildAquachekProStrip(id: string, fc: number, ph: number, alk: number): string {
   const width = 80, height = 400;
   const png = new PNG({ width, height });
-  // Pad order: TC, TB, FC, pH, TA. Use FC as proxy for TC; bromine pad pale.
+  // Pad order: combined TC+TB, FC, pH, TA. Use FC as proxy for TC.
   const pads: RGB[] = [
     colorForValue(REFS.totalChlorine, fc),
-    colorForValue(REFS.bromine, 0),
     colorForValue(REFS.freeChlorine, fc),
     colorForValue(REFS.ph, ph),
     colorForValue(REFS.alkalinity, alk),
   ];
   const top = height * 0.2;
-  const padH = (height * 0.6) / 5;
+  const padH = (height * 0.6) / 4;
   const cx = width / 2;
   const halfW = width * 0.35;
   for (let y = 0; y < height; y++) {
@@ -86,7 +86,7 @@ function buildAquachekProStrip(id: string, fc: number, ph: number, alk: number):
       let r = 230, g = 230, b = 230;
       const inStrip = Math.abs(x - cx) < halfW;
       const padIdx = Math.floor((y - top) / padH);
-      if (inStrip && padIdx >= 0 && padIdx < 5) {
+      if (inStrip && padIdx >= 0 && padIdx < 4) {
         const c = pads[padIdx];
         r = c[0]; g = c[1]; b = c[2];
       }

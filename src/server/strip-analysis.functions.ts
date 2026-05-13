@@ -85,6 +85,9 @@ Pad 4 — Total Alkalinity (yellow-green → green → dark teal).
   TA 120  → dark green      (R72  G111 B54)
   TA 180  → very dark green (R35  G82  B46)
   TA 240  → dark teal-blue  (R37  G87  B98)
+  IMPORTANT: a blue / cyan / turquoise alkalinity pad is HIGH alkalinity.
+  Do NOT report 120 for a teal-blue pad; 120 is dark green only.
+  If pad 4 looks blue/turquoise, report 220-240 (usually 240).
 
 ORIENTATION RULE: if the strip in the image is rotated, identify orientation
 by color signatures: the pH pad is the only orange/red pad; the alkalinity
