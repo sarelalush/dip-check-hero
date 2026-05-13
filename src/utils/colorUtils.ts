@@ -1,19 +1,24 @@
-// Client-side fallback: sample pixel colors from a strip image and match to the
-// OFFICIAL AquaChek Pro 5-in-1 reference chart.
+// Client-side fallback: sample pixel colors from a strip image and match to
+// the OFFICIAL AquaChek reference charts.
 //
-// Strip layout (printed top → bottom):
+// Two brands are supported here:
+//
+// AquaChek Yellow 4-in-1 (DEFAULT) — pads top→bottom on the bottle:
+//   1. Free Chlorine     (white → pink → purple/magenta)
+//   2. pH                (yellow → orange → red)
+//   3. Total Alkalinity  (yellow-green → green → teal)
+//   4. Cyanuric Acid     (white turbidity → tan/gray)
+//
+// AquaChek Pro 5-in-1 — pads top→bottom:
 //   1. Total Chlorine    (yellow → green)
 //   2. Total Bromine     (yellow → green, same chart as TC)
-//   3. Free Chlorine     (cream → purple)        ← was wrongly orange/red before
+//   3. Free Chlorine     (cream → purple)
 //   4. pH                (orange → red)
 //   5. Total Alkalinity  (yellow → dark teal)
-//
-// Reference RGB values were sampled directly from the official AquaChek
-// printed color chart (https://www.masterspaparts.com/aquachek-color-chart/).
 
 interface ColorRef { value: number; rgb: [number, number, number] }
 
-// Total chlorine and total bromine share the same yellow→green chart.
+// ---------- Pro 5-in-1 references ----------
 const TC_TB_REFS: ColorRef[] = [
   { value: 0,   rgb: [254, 254, 168] },
   { value: 0.5, rgb: [242, 254, 170] },
@@ -23,7 +28,7 @@ const TC_TB_REFS: ColorRef[] = [
   { value: 10,  rgb: [76,  163, 95]  },
 ];
 
-const REFS = {
+const PRO_REFS = {
   totalChlorine: TC_TB_REFS,
   bromine: TC_TB_REFS,
   freeChlorine: [
@@ -48,6 +53,39 @@ const REFS = {
     { value: 120, rgb: [72,  111, 54] },
     { value: 180, rgb: [35,  82,  46] },
     { value: 240, rgb: [37,  87,  98] },
+  ] as ColorRef[],
+};
+
+// ---------- Yellow 4-in-1 references ----------
+const YELLOW_REFS = {
+  freeChlorine: [
+    { value: 0,   rgb: [248, 245, 230] },
+    { value: 1,   rgb: [240, 205, 215] },
+    { value: 3,   rgb: [228, 150, 180] },
+    { value: 5,   rgb: [200, 95,  150] },
+    { value: 10,  rgb: [135, 40,  115] },
+  ] as ColorRef[],
+  ph: [
+    { value: 6.2, rgb: [245, 225, 90]  },
+    { value: 6.8, rgb: [240, 180, 80]  },
+    { value: 7.2, rgb: [235, 135, 75]  },
+    { value: 7.8, rgb: [220, 90,  70]  },
+    { value: 8.4, rgb: [180, 55,  55]  },
+  ] as ColorRef[],
+  alkalinity: [
+    { value: 0,   rgb: [235, 210, 80]  },
+    { value: 40,  rgb: [190, 200, 90]  },
+    { value: 80,  rgb: [140, 185, 100] },
+    { value: 120, rgb: [100, 165, 100] },
+    { value: 180, rgb: [50,  130, 90]  },
+    { value: 240, rgb: [35,  110, 120] },
+  ] as ColorRef[],
+  cyanuricAcid: [
+    { value: 0,   rgb: [240, 240, 235] },
+    { value: 30,  rgb: [220, 215, 200] },
+    { value: 50,  rgb: [195, 190, 180] },
+    { value: 100, rgb: [165, 155, 140] },
+    { value: 150, rgb: [120, 110, 100] },
   ] as ColorRef[],
 };
 
@@ -96,62 +134,77 @@ function sampleRegion(
   return [r / n, g / n, b / n];
 }
 
-export interface ClientCvResult {
-  /** AquaChek Pro 5-in-1 readings. Older 3-pad code can keep using fc/ph/alk. */
-  totalChlorine: number;
-  bromine: number;
-  freeChlorine: number;
-  ph: number;
-  alkalinity: number;
-  confidence: number;
-}
-
-/**
- * Read the 5 colored pads of an AquaChek Pro strip and match each one to its
- * official reference chart. Pads are stacked top-to-bottom in this order:
- *   [Total Chlorine, Total Bromine, Free Chlorine, pH, Total Alkalinity]
- *
- * The strip is assumed to be roughly centered horizontally and to occupy the
- * middle 60% of the image vertically.
- */
-export async function analyzeStripPixels(imageDataUrl: string): Promise<ClientCvResult> {
+async function loadCanvas(imageDataUrl: string) {
   const img = new Image();
   img.src = imageDataUrl;
   await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(); });
-
   const canvas = document.createElement("canvas");
   canvas.width = img.naturalWidth;
   canvas.height = img.naturalHeight;
   const ctx = canvas.getContext("2d")!;
   ctx.drawImage(img, 0, 0);
+  return { canvas, ctx };
+}
 
-  const cx = canvas.width / 2;
-  const top = canvas.height * 0.2;
-  const PAD_COUNT = 5;
-  const padH = (canvas.height * 0.6) / PAD_COUNT;
-  const sampleW = Math.max(20, canvas.width * 0.05);
+function samplePads(
+  ctx: CanvasRenderingContext2D,
+  width: number, height: number, padCount: number,
+) {
+  const cx = width / 2;
+  const top = height * 0.2;
+  const padH = (height * 0.6) / padCount;
+  const sampleW = Math.max(20, width * 0.05);
   const sampleH = Math.max(20, padH * 0.5);
-
-  const padRgbs = Array.from({ length: PAD_COUNT }, (_, i) => {
+  return Array.from({ length: padCount }, (_, i) => {
     const cy = top + padH * (i + 0.5);
     return sampleRegion(ctx, cx, cy, sampleW, sampleH);
   });
+}
 
-  const tc  = bestMatch(padRgbs[0], REFS.totalChlorine);
-  const br  = bestMatch(padRgbs[1], REFS.bromine);
-  const fc  = bestMatch(padRgbs[2], REFS.freeChlorine);
-  const ph  = bestMatch(padRgbs[3], REFS.ph);
-  const alk = bestMatch(padRgbs[4], REFS.alkalinity);
+export interface ClientCvResult {
+  totalChlorine?: number;
+  bromine?: number;
+  freeChlorine?: number;
+  ph?: number;
+  alkalinity?: number;
+  cyanuricAcid?: number;
+  confidence: number;
+}
 
+/** AquaChek Pro 5-in-1: 5 pads (TC, TB, FC, pH, TA). */
+export async function analyzeStripPixels(imageDataUrl: string): Promise<Required<Omit<ClientCvResult, "cyanuricAcid">>> {
+  const { canvas, ctx } = await loadCanvas(imageDataUrl);
+  const pads = samplePads(ctx, canvas.width, canvas.height, 5);
+  const tc  = bestMatch(pads[0], PRO_REFS.totalChlorine);
+  const br  = bestMatch(pads[1], PRO_REFS.bromine);
+  const fc  = bestMatch(pads[2], PRO_REFS.freeChlorine);
+  const ph  = bestMatch(pads[3], PRO_REFS.ph);
+  const alk = bestMatch(pads[4], PRO_REFS.alkalinity);
   const avgD = (tc.distance + br.distance + fc.distance + ph.distance + alk.distance) / 5;
-  const confidence = Math.max(0, Math.min(1, 1 - avgD / 50));
-
   return {
     totalChlorine: +tc.value.toFixed(1),
     bromine: +br.value.toFixed(1),
     freeChlorine: +fc.value.toFixed(1),
     ph: +ph.value.toFixed(1),
     alkalinity: Math.round(alk.value),
-    confidence,
+    confidence: Math.max(0, Math.min(1, 1 - avgD / 50)),
+  };
+}
+
+/** AquaChek Yellow 4-in-1: 4 pads (FC, pH, TA, CYA). */
+export async function analyzeStripPixelsYellow(imageDataUrl: string): Promise<ClientCvResult> {
+  const { canvas, ctx } = await loadCanvas(imageDataUrl);
+  const pads = samplePads(ctx, canvas.width, canvas.height, 4);
+  const fc  = bestMatch(pads[0], YELLOW_REFS.freeChlorine);
+  const ph  = bestMatch(pads[1], YELLOW_REFS.ph);
+  const alk = bestMatch(pads[2], YELLOW_REFS.alkalinity);
+  const cya = bestMatch(pads[3], YELLOW_REFS.cyanuricAcid);
+  const avgD = (fc.distance + ph.distance + alk.distance + cya.distance) / 4;
+  return {
+    freeChlorine: +fc.value.toFixed(1),
+    ph: +ph.value.toFixed(1),
+    alkalinity: Math.round(alk.value),
+    cyanuricAcid: Math.round(cya.value),
+    confidence: Math.max(0, Math.min(1, 1 - avgD / 50)),
   };
 }

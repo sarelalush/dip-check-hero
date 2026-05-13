@@ -84,7 +84,7 @@ export const STRIP_BRANDS: StripBrand[] = [
   },
 ];
 
-export const DEFAULT_BRAND_ID = "aquachek-pro-5in1";
+export const DEFAULT_BRAND_ID = "aquachek-yellow-4";
 
 export function getBrand(id?: string): StripBrand {
   return STRIP_BRANDS.find((b) => b.id === id) ?? STRIP_BRANDS[0];

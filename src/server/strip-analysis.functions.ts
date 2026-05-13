@@ -69,6 +69,41 @@ Total Alkalinity (pad 5) — yellow-green → dark teal:
   TA 240  → dark teal-blue  (R37  G87  B98)
 `;
 
+const AQUACHEK_YELLOW_CHART = `
+OFFICIAL AquaChek Yellow 4-in-1 color chart (memorize and use this — do NOT
+guess colors from generic strip knowledge). The strip has EXACTLY 4 pads in
+this printed order from top to bottom:
+
+Pad 1 — Free Chlorine (white → pink → magenta/purple, NOT yellow/green):
+  FC 0    → near-white                  (R248 G245 B230)
+  FC 1    → light pink                  (R240 G205 B215)
+  FC 3    → pink                        (R228 G150 B180)
+  FC 5    → magenta                     (R200 G95  B150)
+  FC 10   → dark purple/magenta         (R135 G40  B115)
+
+Pad 2 — pH (yellow → orange → red):
+  pH 6.2  → bright yellow               (R245 G225 B90)
+  pH 6.8  → orange-yellow               (R240 G180 B80)
+  pH 7.2  → orange                      (R235 G135 B75)
+  pH 7.8  → red-orange                  (R220 G90  B70)
+  pH 8.4  → dark red                    (R180 G55  B55)
+
+Pad 3 — Total Alkalinity (yellow-green → green → teal):
+  TA 0    → yellow                      (R235 G210 B80)
+  TA 40   → yellow-green                (R190 G200 B90)
+  TA 80   → light green                 (R140 G185 B100)
+  TA 120  → green                       (R100 G165 B100)
+  TA 180  → dark green                  (R50  G130 B90)
+  TA 240  → teal/blue-green             (R35  G110 B120)
+
+Pad 4 — Cyanuric Acid (turbidity pad — white → tan/gray, never bright):
+  CYA 0   → white                       (R240 G240 B235)
+  CYA 30  → very light tan              (R220 G215 B200)
+  CYA 50  → light gray-tan              (R195 G190 B180)
+  CYA 100 → tan-gray                    (R165 G155 B140)
+  CYA 150 → dark gray-brown             (R120 G110 B100)
+`;
+
 function buildSystemPrompt(brandNameHe: string, params: ParamKey[]) {
   const padList = params
     .map((p, i) => `${i + 1}. ${p} — ${PARAM_HINTS[p]}`)
@@ -79,6 +114,12 @@ function buildSystemPrompt(brandNameHe: string, params: ParamKey[]) {
     params.includes("freeChlorine") &&
     params.includes("ph") &&
     params.includes("alkalinity");
+  const isAquachekYellow =
+    params.length === 4 &&
+    params.includes("freeChlorine") &&
+    params.includes("ph") &&
+    params.includes("alkalinity") &&
+    params.includes("cyanuricAcid");
   return `You are an expert pool/spa water test strip analyzer.
 The user is using this strip brand: "${brandNameHe}".
 This strip has EXACTLY these pads, in this printed order from top to bottom:
@@ -107,7 +148,7 @@ manufacturer chart for that brand. Critical rules:
   between them; do not snap only to listed values.
 - Account for white balance: if the whole image has a yellow/blue cast,
   mentally neutralize it before comparing colors.
-${isAquachekPro ? AQUACHEK_PRO_CHART : ""}
+${isAquachekPro ? AQUACHEK_PRO_CHART : ""}${isAquachekYellow ? AQUACHEK_YELLOW_CHART : ""}
 Return values via the report_strip tool. Only include the parameters listed
 above — leave the others as 0.`;
 }
