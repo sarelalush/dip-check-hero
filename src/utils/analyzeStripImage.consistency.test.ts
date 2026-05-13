@@ -15,22 +15,21 @@ beforeAll(() => {
 function buildCanonicalStrip(): string {
   const width = 80, height = 400;
   const png = new PNG({ width, height });
-  // Pad order: TC, TB, FC, pH, TA — using OFFICIAL AquaChek chart colors.
-  // FC=3 → purple, pH=7.2 → red, Alk=120 → dark green
+  // Pad order: combined TC+TB, FC, pH, TA — using OFFICIAL AquaChek chart colors.
+  // FC=4 → purple, pH=7.2 → red, Alk=240 → teal-blue
   const pads: [number, number, number][] = [
-    [184, 216, 140],   // TC=3 (yellow-green)
-    [254, 254, 168],   // TB=0
-    [172, 139, 208],   // FC=3 (purple)
+    [184, 216, 140],   // combined TC=3 / TB=5 (yellow-green)
+    [200, 140, 195],   // FC=4 (purple)
     [225, 80, 50],     // pH=7.2 (red-orange)
-    [72, 111, 54],     // Alk=120 (dark green)
+    [37, 87, 98],      // Alk=240 (teal-blue)
   ];
-  const top = height * 0.2, padH = (height * 0.6) / 5;
+  const top = height * 0.2, padH = (height * 0.6) / 4;
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = (y * width + x) * 4;
       let r = 230, g = 230, b = 230;
       const padIdx = Math.floor((y - top) / padH);
-      if (Math.abs(x - width / 2) < width * 0.35 && padIdx >= 0 && padIdx < 5) {
+      if (Math.abs(x - width / 2) < width * 0.35 && padIdx >= 0 && padIdx < 4) {
         [r, g, b] = pads[padIdx];
       }
       png.data[i] = r; png.data[i + 1] = g; png.data[i + 2] = b; png.data[i + 3] = 255;
