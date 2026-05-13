@@ -33,10 +33,52 @@ const PARAM_HINTS: Record<ParamKey, string> = {
   salt: "salt: ppm, typical 0-6000",
 };
 
+const AQUACHEK_PRO_CHART = `
+OFFICIAL AquaChek Pro 5-in-1 color chart (memorize and use this — do NOT
+guess colors from generic strip knowledge):
+
+Total Chlorine + Total Bromine (pads 1 and 2) — yellow → green:
+  TC 0     / TB 0    → very pale cream-yellow  (R254 G254 B168)
+  TC 0.5   / TB 0.5  → pale yellow-green       (R242 G254 B170)
+  TC 1     / TB 1    → light yellow-green      (R231 G245 B160)
+  TC 3     / TB 3    → light green             (R184 G216 B140)
+  TC 5     / TB 5    → medium green            (R144 G198 B120)
+  TC 10    / TB 10   → dark green              (R76  G163 B95)
+
+Free Chlorine (pad 3) — cream → PURPLE (NOT orange or red):
+  FC 0    → pale cream              (R254 G254 B204)
+  FC 0.5  → very pale yellow        (R247 G249 B225)
+  FC 1    → pale beige/lavender     (R230 G223 B215)
+  FC 3    → light purple            (R172 G139 B208)
+  FC 5    → medium purple           (R158 G106 B189)
+  FC 10   → dark purple             (R129 G29  B153)
+
+pH (pad 4) — orange → red:
+  pH 6.2  → orange-yellow   (R242 G175 B60)
+  pH 6.8  → orange          (R234 G106 B45)
+  pH 7.2  → red-orange      (R225 G80  B50)
+  pH 7.8  → red             (R210 G55  B45)
+  pH 8.4  → dark red        (R180 G45  B45)
+
+Total Alkalinity (pad 5) — yellow-green → dark teal:
+  TA 0    → yellow-green    (R227 G192 B64)
+  TA 40   → olive green     (R164 G169 B51)
+  TA 80   → olive green     (R137 G159 B58)
+  TA 120  → dark green      (R72  G111 B54)
+  TA 180  → very dark green (R35  G82  B46)
+  TA 240  → dark teal-blue  (R37  G87  B98)
+`;
+
 function buildSystemPrompt(brandNameHe: string, params: ParamKey[]) {
   const padList = params
     .map((p, i) => `${i + 1}. ${p} — ${PARAM_HINTS[p]}`)
     .join("\n");
+  const isAquachekPro =
+    params.includes("totalChlorine") &&
+    params.includes("bromine") &&
+    params.includes("freeChlorine") &&
+    params.includes("ph") &&
+    params.includes("alkalinity");
   return `You are an expert pool/spa water test strip analyzer.
 The user is using this strip brand: "${brandNameHe}".
 This strip has EXACTLY these pads, in this printed order from top to bottom:
@@ -58,8 +100,16 @@ For low_confidence → isStrip=true, confidence < 0.4.
 Always provide a short, actionable Hebrew tip in notes.
 
 If the strip IS readable, read each pad above by comparing its color to the
-standard manufacturer chart for that brand. Return values via the report_strip
-tool. Only include the parameters listed above — leave the others as 0.`;
+manufacturer chart for that brand. Critical rules:
+- Read pads in the EXACT printed order listed above. Do not reorder by your
+  own assumptions about which color "should" be which parameter.
+- Interpolate between two nearest reference levels when the pad color is
+  between them; do not snap only to listed values.
+- Account for white balance: if the whole image has a yellow/blue cast,
+  mentally neutralize it before comparing colors.
+${isAquachekPro ? AQUACHEK_PRO_CHART : ""}
+Return values via the report_strip tool. Only include the parameters listed
+above — leave the others as 0.`;
 }
 
 export const analyzeStripWithAI = createServerFn({ method: "POST" })
