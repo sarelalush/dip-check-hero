@@ -16,7 +16,7 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
       id: "exact-mid",
       tc: [184, 216, 140],   // combined TC=3 / TB=5 (yellow-green)
       fc: [200, 140, 195],   // FC=4 (purple — the critical fix!)
-      ph: [225, 80, 50],     // pH=7.2 (red-orange)
+      ph: [235, 150, 150],   // pH=7.2 (salmon-pink)
       alk: [72, 111, 54],    // Alk=120 (dark green)
     });
     const r = await analyzeStripPixels(url);
