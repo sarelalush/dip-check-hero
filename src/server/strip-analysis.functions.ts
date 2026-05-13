@@ -55,7 +55,7 @@ on the bottle has 7 levels: 0, 0.5, 1, 3, 5, 10, 20.
   FC 3    → light purple            (R172 G139 B208)
   FC 5    → medium purple           (R158 G106 B189)
   FC 10   → dark purple             (R129 G29  B153)
-  FC 20   → very dark purple        (R85  G15  B110)
+  FC 20   → very dark purple        (R60  G10  B90)
 
 pH (pad 4) — orange → red:
   pH 6.2  → orange-yellow   (R242 G175 B60)
