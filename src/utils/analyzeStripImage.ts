@@ -218,11 +218,15 @@ export async function analyzeStripImage(
     if (cvCompatible) {
       try {
         const cv = await analyzeStripPixels(dataUrl);
-        const cvReadings: StripResults["readings"] = {
-          freeChlorine: makeReading("freeChlorine", cv.freeChlorine),
-          ph: makeReading("ph", cv.ph),
-          alkalinity: makeReading("alkalinity", cv.alkalinity),
-        };
+        const cvReadings: StripResults["readings"] = {};
+        // Only emit readings for pads the brand actually measures.
+        if (brand.parameters.includes("totalChlorine"))
+          cvReadings.totalChlorine = makeReading("totalChlorine", cv.totalChlorine);
+        if (brand.parameters.includes("bromine"))
+          cvReadings.bromine = makeReading("bromine", cv.bromine);
+        cvReadings.freeChlorine = makeReading("freeChlorine", cv.freeChlorine);
+        cvReadings.ph = makeReading("ph", cv.ph);
+        cvReadings.alkalinity = makeReading("alkalinity", cv.alkalinity);
         return attachLegacyAliases({
           brandId: brand.id,
           readings: cvReadings,
