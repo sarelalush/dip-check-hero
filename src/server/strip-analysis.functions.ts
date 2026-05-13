@@ -34,43 +34,62 @@ const PARAM_HINTS: Record<ParamKey, string> = {
 };
 
 const AQUACHEK_PRO_CHART = `
-OFFICIAL AquaChek Pro 5-in-1 color chart (memorize and use this — do NOT
-guess colors from generic strip knowledge):
+OFFICIAL AquaChek Pro color chart (memorize and use this — do NOT guess
+colors from generic strip knowledge).
 
-Total Chlorine + Total Bromine (pads 1 and 2) — yellow → green. The printed
-scale on the bottle has 7 levels: 0, 0.5, 1, 3, 5, 10, 20.
-  TC 0     / TB 0    → very pale cream-yellow  (R254 G254 B168)
-  TC 0.5   / TB 0.5  → pale yellow-green       (R242 G254 B170)
-  TC 1     / TB 1    → light yellow-green      (R231 G245 B160)
-  TC 3     / TB 3    → light green             (R184 G216 B140)
-  TC 5     / TB 5    → medium green            (R144 G198 B120)
-  TC 10    / TB 10   → dark green              (R76  G163 B95)
-  TC 20    / TB 20   → very dark green         (R40  G120 B70)
+CRITICAL — STRIP HAS 4 PHYSICAL PADS, NOT 5. Pad order from the WET TIP
+(end you dipped in the water) toward the HANDLE (dry end you hold):
 
-Free Chlorine (pad 3) — cream → PURPLE (NOT orange or red). The printed scale
-on the bottle has 7 levels: 0, 0.5, 1, 3, 5, 10, 20.
+  Pad 1 (closest to wet tip): Total Chlorine + Total Bromine (COMBINED).
+    One pad, two scales — same color reading gives both TC and TB values.
+  Pad 2: Free Chlorine.
+  Pad 3: pH.
+  Pad 4 (closest to handle / dry end): Total Alkalinity.
+
+Pad 1 — Total Chlorine + Total Bromine (yellow → green → dark green).
+  TC scale: 0, 0.5, 1, 3, 5, 10
+  TB scale: 0, 1,   2, 5, 10, 20
+  (same color, two scales — report BOTH values from this single pad)
+  Level 0    (TC 0   / TB 0)   → very pale cream-yellow  (R254 G254 B168)
+  Level 0.5  (TC 0.5 / TB 1)   → pale yellow-green       (R242 G254 B170)
+  Level 1    (TC 1   / TB 2)   → light yellow-green      (R231 G245 B160)
+  Level 2    (TC ~2  / TB 5)   → light green             (R184 G216 B140)
+  Level 3    (TC 3   / TB ~7)  → medium green            (R144 G198 B120)
+  Level 5    (TC 5   / TB 10)  → darker green            (R100 G180 B105)
+  Level 10   (TC 10  / TB 20)  → very dark green         (R55  G140 B80)
+
+Pad 2 — Free Chlorine (cream → pink → PURPLE, NOT orange or red).
+  Scale: 0, 0.5, 1, 2, 4, 6, 10, 20
   FC 0    → pale cream              (R254 G254 B204)
-  FC 0.5  → very pale yellow        (R247 G249 B225)
-  FC 1    → pale beige/lavender     (R230 G223 B215)
-  FC 3    → light purple            (R172 G139 B208)
-  FC 5    → medium purple           (R158 G106 B189)
-  FC 10   → dark purple             (R129 G29  B153)
-  FC 20   → very dark purple        (R60  G10  B90)
+  FC 0.5  → very pale pink-cream    (R247 G235 B228)
+  FC 1    → pale pink/lavender      (R235 G215 B225)
+  FC 2    → light pink              (R220 G180 B210)
+  FC 4    → pink                    (R200 G140 B195)
+  FC 6    → medium purple-pink      (R175 G110 B190)
+  FC 10   → dark purple             (R130 G55  B160)
+  FC 20   → very dark purple        (R70  G15  B100)
 
-pH (pad 4) — orange → red:
+Pad 3 — pH (orange-yellow → orange → red).
+  Scale: 6.2, 6.8, 7.2, 7.8, 8.4
   pH 6.2  → orange-yellow   (R242 G175 B60)
   pH 6.8  → orange          (R234 G106 B45)
   pH 7.2  → red-orange      (R225 G80  B50)
   pH 7.8  → red             (R210 G55  B45)
   pH 8.4  → dark red        (R180 G45  B45)
 
-Total Alkalinity (pad 5) — yellow-green → dark teal:
+Pad 4 — Total Alkalinity (yellow-green → green → dark teal).
+  Scale: 0, 40, 80, 120, 180, 240
   TA 0    → yellow-green    (R227 G192 B64)
   TA 40   → olive green     (R164 G169 B51)
-  TA 80   → olive green     (R137 G159 B58)
+  TA 80   → green           (R137 G159 B58)
   TA 120  → dark green      (R72  G111 B54)
   TA 180  → very dark green (R35  G82  B46)
   TA 240  → dark teal-blue  (R37  G87  B98)
+
+ORIENTATION RULE: if the strip in the image is rotated, identify orientation
+by color signatures: the pH pad is the only orange/red pad; the alkalinity
+pad is the only one that can look teal/blue. Use those as anchors to
+determine which physical end is the wet tip (pad 1) vs the handle (pad 4).
 `;
 
 const AQUACHEK_YELLOW_CHART = `
@@ -109,9 +128,6 @@ Pad 4 — Cyanuric Acid (turbidity pad — white → tan/gray, never bright):
 `;
 
 function buildSystemPrompt(brandNameHe: string, params: ParamKey[]) {
-  const padList = params
-    .map((p, i) => `${i + 1}. ${p} — ${PARAM_HINTS[p]}`)
-    .join("\n");
   const isAquachekPro =
     params.includes("totalChlorine") &&
     params.includes("bromine") &&
@@ -124,10 +140,22 @@ function buildSystemPrompt(brandNameHe: string, params: ParamKey[]) {
     params.includes("ph") &&
     params.includes("alkalinity") &&
     params.includes("cyanuricAcid");
+
+  // AquaChek Pro: 4 physical pads but 5 measurements (pad 1 = TC + TB combined).
+  const padList = isAquachekPro
+    ? [
+        "Pad 1 (closest to wet tip): combined Total Chlorine + Total Bromine — report BOTH values from this single pad's color.",
+        "Pad 2: Free Chlorine.",
+        "Pad 3: pH.",
+        "Pad 4 (closest to handle / dry end): Total Alkalinity.",
+      ].join("\n")
+    : params.map((p, i) => `${i + 1}. ${p} — ${PARAM_HINTS[p]}`).join("\n");
+
   return `You are an expert pool/spa water test strip analyzer.
 The user is using this strip brand: "${brandNameHe}".
-This strip has EXACTLY these pads, in this printed order from top to bottom:
-${padList}
+${isAquachekPro
+  ? `This strip has EXACTLY 4 PHYSICAL PADS but yields 5 measurements (TC and TB share pad 1). Pad order from the wet tip toward the handle:\n${padList}`
+  : `This strip has EXACTLY these pads, in this printed order from top to bottom:\n${padList}`}
 
 FIRST determine if the image actually shows a pool/spa test strip (a thin plastic strip with multiple colored pads).
 If NOT, set isStrip=false, confidence=0, all values=0, and put a short Hebrew note.

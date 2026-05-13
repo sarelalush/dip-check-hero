@@ -33,8 +33,8 @@ export interface StripBrand {
 export const STRIP_BRANDS: StripBrand[] = [
   {
     id: "aquachek-pro-5in1",
-    nameHe: "AquaChek Pro (5-in-1)",
-    descriptionHe: "ברירת מחדל לדמו. כלור כולל, ברום כולל, כלור חופשי, pH, אלקליניות",
+    nameHe: "AquaChek Pro (4 פדים, 5 מדידות)",
+    descriptionHe: "ברירת מחדל. 4 פדים פיזיים: פד 1 = כלור כולל + ברום כולל (משולב), פד 2 = כלור חופשי, פד 3 = pH, פד 4 = אלקליניות.",
     parameters: ["totalChlorine", "bromine", "freeChlorine", "ph", "alkalinity"],
   },
   {
