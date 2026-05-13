@@ -94,12 +94,14 @@ export function installCanvasMock() {
 }
 
 /**
- * Build a synthetic vertical strip image: 3 stacked solid-color pads matching
- * what analyzeStripPixels expects (free chlorine / pH / alkalinity, top→bottom).
- * Returns a fake data URL key registered in the PNG store.
+ * Build a synthetic vertical AquaChek Pro strip: 5 stacked solid-color pads
+ * matching what analyzeStripPixels expects, top→bottom:
+ *   [Total Chlorine, Total Bromine, Free Chlorine, pH, Total Alkalinity]
  */
 export function makeStripFixture(opts: {
   id: string;
+  tc?: [number, number, number];
+  br?: [number, number, number];
   fc: [number, number, number];
   ph: [number, number, number];
   alk: [number, number, number];
@@ -107,7 +109,7 @@ export function makeStripFixture(opts: {
   height?: number;
 }): string {
   const width = opts.width ?? 60;
-  const height = opts.height ?? 300;
+  const height = opts.height ?? 400;
   const png = new PNG({ width, height });
 
   // Fill background light gray
@@ -121,11 +123,18 @@ export function makeStripFixture(opts: {
     }
   }
 
-  // Strip occupies middle 60% of height, divided into 3 pads (matches analyzeStripPixels)
+  // Strip occupies middle 60% of height, divided into 5 pads
   const top = height * 0.2;
-  const padH = (height * 0.6) / 3;
-  const colors = [opts.fc, opts.ph, opts.alk];
-  for (let p = 0; p < 3; p++) {
+  const padH = (height * 0.6) / 5;
+  // Default TC/Br to FC color when only legacy 3-pad opts are provided.
+  const colors: [number, number, number][] = [
+    opts.tc ?? opts.fc,
+    opts.br ?? opts.fc,
+    opts.fc,
+    opts.ph,
+    opts.alk,
+  ];
+  for (let p = 0; p < 5; p++) {
     const y0 = Math.floor(top + p * padH);
     const y1 = Math.floor(top + (p + 1) * padH);
     const [r, g, b] = colors[p];
