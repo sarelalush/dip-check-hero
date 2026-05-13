@@ -94,9 +94,9 @@ export function installCanvasMock() {
 }
 
 /**
- * Build a synthetic vertical AquaChek Pro strip: 5 stacked solid-color pads
+ * Build a synthetic vertical AquaChek Pro strip: 4 stacked solid-color pads
  * matching what analyzeStripPixels expects, top→bottom:
- *   [Total Chlorine, Total Bromine, Free Chlorine, pH, Total Alkalinity]
+ *   [combined Total Chlorine + Bromine, Free Chlorine, pH, Total Alkalinity]
  */
 export function makeStripFixture(opts: {
   id: string;
@@ -123,18 +123,17 @@ export function makeStripFixture(opts: {
     }
   }
 
-  // Strip occupies middle 60% of height, divided into 5 pads
+  // Strip occupies middle 60% of height, divided into 4 pads
   const top = height * 0.2;
-  const padH = (height * 0.6) / 5;
-  // Default TC/Br to FC color when only legacy 3-pad opts are provided.
+  const padH = (height * 0.6) / 4;
+  // Default combined TC/TB pad to FC color when only legacy 3-pad opts are provided.
   const colors: [number, number, number][] = [
     opts.tc ?? opts.fc,
-    opts.br ?? opts.fc,
     opts.fc,
     opts.ph,
     opts.alk,
   ];
-  for (let p = 0; p < 5; p++) {
+  for (let p = 0; p < 4; p++) {
     const y0 = Math.floor(top + p * padH);
     const y1 = Math.floor(top + (p + 1) * padH);
     const [r, g, b] = colors[p];
