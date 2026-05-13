@@ -21,7 +21,7 @@ function buildCanonicalStrip(): string {
     [184, 216, 140],   // combined TC=3 / TB=5 (yellow-green)
     [200, 140, 195],   // FC=4 (purple)
     [225, 80, 50],     // pH=7.2 (red-orange)
-    [37, 87, 98],      // Alk=240 (teal-blue)
+    [40, 90, 120],      // Alk=240 (teal-blue)
   ];
   const top = height * 0.2, padH = (height * 0.6) / 4;
   for (let y = 0; y < height; y++) {

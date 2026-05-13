@@ -17,7 +17,7 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
       tc: [184, 216, 140],   // combined TC=3 / TB=5 (yellow-green)
       fc: [200, 140, 195],   // FC=4 (purple — the critical fix!)
       ph: [235, 150, 150],   // pH=7.2 (salmon-pink)
-      alk: [72, 111, 54],    // Alk=120 (dark green)
+      alk: [85, 130, 90],    // Alk=120 (dark green)
     });
     const r = await analyzeStripPixels(url);
     expect(r.totalChlorine!).toBeCloseTo(3, 1);
@@ -50,7 +50,7 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
       tc: [55, 140, 80],
       fc: [130, 55, 160],   // dark purple — high FC
       ph: [195, 110, 170],
-      alk: [37, 87, 98],
+      alk: [40, 90, 120],
     });
     const r = await analyzeStripPixels(url);
     expect(r.totalChlorine!).toBeGreaterThanOrEqual(8);
@@ -64,7 +64,7 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
       id: "fc-purple",
       fc: [200, 140, 195],   // FC=4 purple
       ph: [235, 150, 150],   // pH=7.2 salmon-pink
-      alk: [72, 111, 54],
+      alk: [85, 130, 90],
     });
     const r = await analyzeStripPixels(purple);
     expect(r.freeChlorine!).toBeGreaterThan(2);

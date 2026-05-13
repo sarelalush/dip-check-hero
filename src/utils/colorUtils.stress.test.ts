@@ -43,9 +43,9 @@ const REFS = {
     { value: 0, rgb: [227, 192, 64] },
     { value: 40, rgb: [164, 169, 51] },
     { value: 80, rgb: [137, 159, 58] },
-    { value: 120, rgb: [72, 111, 54] },
-    { value: 180, rgb: [35, 82, 46] },
-    { value: 240, rgb: [37, 87, 98] },
+    { value: 120, rgb: [85, 130, 90] },
+    { value: 180, rgb: [55, 105, 100] },
+    { value: 240, rgb: [40, 90, 120] },
   ],
 } as const;
 
