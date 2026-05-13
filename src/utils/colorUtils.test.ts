@@ -21,11 +21,11 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
       alk: [72, 111, 54],    // Alk=120 (dark green)
     });
     const r = await analyzeStripPixels(url);
-    expect(r.totalChlorine).toBeCloseTo(3, 1);
-    expect(r.bromine).toBeCloseTo(3, 1);
-    expect(r.freeChlorine).toBeCloseTo(3, 1);
-    expect(r.ph).toBeCloseTo(7.2, 1);
-    expect(Math.abs(r.alkalinity - 120)).toBeLessThanOrEqual(20);
+    expect(r.totalChlorine!).toBeCloseTo(3, 1);
+    expect(r.bromine!).toBeCloseTo(3, 1);
+    expect(r.freeChlorine!).toBeCloseTo(3, 1);
+    expect(r.ph!).toBeCloseTo(7.2, 1);
+    expect(Math.abs(r.alkalinity! - 120)).toBeLessThanOrEqual(20);
     expect(r.confidence).toBeGreaterThan(0.85);
   });
 
@@ -39,10 +39,10 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
       alk: [227, 192, 64],
     });
     const r = await analyzeStripPixels(url);
-    expect(r.totalChlorine).toBeLessThanOrEqual(0.5);
-    expect(r.freeChlorine).toBeLessThanOrEqual(0.5);
-    expect(Math.abs(r.ph - 6.2)).toBeLessThanOrEqual(TOL);
-    expect(r.alkalinity).toBeLessThanOrEqual(20);
+    expect(r.totalChlorine!).toBeLessThanOrEqual(0.5);
+    expect(r.freeChlorine!).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(r.ph! - 6.2)).toBeLessThanOrEqual(TOL);
+    expect(r.alkalinity!).toBeLessThanOrEqual(20);
   });
 
   it("reads high end (TC=10, FC=10, pH=8.4, Alk=240)", async () => {
@@ -55,10 +55,10 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
       alk: [37, 87, 98],
     });
     const r = await analyzeStripPixels(url);
-    expect(r.totalChlorine).toBeGreaterThanOrEqual(8);
-    expect(r.freeChlorine).toBeGreaterThanOrEqual(8);
-    expect(Math.abs(r.ph - 8.4)).toBeLessThanOrEqual(TOL);
-    expect(Math.abs(r.alkalinity - 240)).toBeLessThanOrEqual(25);
+    expect(r.totalChlorine!).toBeGreaterThanOrEqual(8);
+    expect(r.freeChlorine!).toBeGreaterThanOrEqual(8);
+    expect(Math.abs(r.ph! - 8.4)).toBeLessThanOrEqual(TOL);
+    expect(Math.abs(r.alkalinity! - 240)).toBeLessThanOrEqual(25);
   });
 
   it("FC purple gradient is distinguished from pH red gradient", async () => {
@@ -70,9 +70,9 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
       alk: [72, 111, 54],
     });
     const r = await analyzeStripPixels(purple);
-    expect(r.freeChlorine).toBeGreaterThan(2);   // reads as moderate-high FC
-    expect(r.ph).toBeGreaterThan(7);             // pH still reads as red ≈ 7.2
-    expect(r.ph).toBeLessThan(7.6);
+    expect(r.freeChlorine!).toBeGreaterThan(2);   // reads as moderate-high FC
+    expect(r.ph!).toBeGreaterThan(7);             // pH still reads as red ≈ 7.2
+    expect(r.ph!).toBeLessThan(7.6);
   });
 
   it("flags low confidence on a clearly off-chart color", async () => {

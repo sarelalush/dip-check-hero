@@ -15,7 +15,7 @@ import {
   DEFAULT_BRAND_ID,
 } from "@/config/stripBrands";
 import { analyzeStripWithAI } from "@/server/strip-analysis.functions";
-import { analyzeStripPixels } from "./colorUtils";
+import { analyzeStripPixels, analyzeStripPixelsYellow } from "./colorUtils";
 import { whiteBalanceDataUrl } from "./whiteBalance";
 
 export type Status = "low" | "ok" | "high";
@@ -209,24 +209,26 @@ export async function analyzeStripImage(
       });
     }
 
-    // Below block threshold — try local CV fallback for the 4-pad layout.
-    const cvCompatible =
-      brand.parameters.includes("freeChlorine") &&
-      brand.parameters.includes("ph") &&
-      brand.parameters.includes("alkalinity");
+    // Below block threshold — try local CV fallback.
+    const isYellow = brand.id === "aquachek-yellow-4";
+    const isPro = brand.id === "aquachek-pro-5in1";
 
-    if (cvCompatible) {
+    if (isYellow || isPro) {
       try {
-        const cv = await analyzeStripPixels(dataUrl);
+        const cv = isYellow
+          ? await analyzeStripPixelsYellow(dataUrl)
+          : await analyzeStripPixels(dataUrl);
         const cvReadings: StripResults["readings"] = {};
-        // Only emit readings for pads the brand actually measures.
-        if (brand.parameters.includes("totalChlorine"))
+        if (isPro && cv.totalChlorine !== undefined)
           cvReadings.totalChlorine = makeReading("totalChlorine", cv.totalChlorine);
-        if (brand.parameters.includes("bromine"))
+        if (isPro && cv.bromine !== undefined)
           cvReadings.bromine = makeReading("bromine", cv.bromine);
-        cvReadings.freeChlorine = makeReading("freeChlorine", cv.freeChlorine);
-        cvReadings.ph = makeReading("ph", cv.ph);
-        cvReadings.alkalinity = makeReading("alkalinity", cv.alkalinity);
+        if (cv.freeChlorine !== undefined)
+          cvReadings.freeChlorine = makeReading("freeChlorine", cv.freeChlorine);
+        if (cv.ph !== undefined) cvReadings.ph = makeReading("ph", cv.ph);
+        if (cv.alkalinity !== undefined) cvReadings.alkalinity = makeReading("alkalinity", cv.alkalinity);
+        if (isYellow && cv.cyanuricAcid !== undefined)
+          cvReadings.cyanuricAcid = makeReading("cyanuricAcid", cv.cyanuricAcid);
         return attachLegacyAliases({
           brandId: brand.id,
           readings: cvReadings,
