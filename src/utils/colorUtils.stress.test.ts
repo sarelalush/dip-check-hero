@@ -86,14 +86,13 @@ function buildStrip(o: StressOpts): string {
 
   const padTrue: RGB[] = [
     colorForValue(REFS.totalChlorine, o.tc ?? o.fc),
-    colorForValue(REFS.bromine, o.br ?? 0),
     colorForValue(REFS.freeChlorine, o.fc),
     colorForValue(REFS.ph, o.ph),
     colorForValue(REFS.alkalinity, o.alk),
   ];
 
   const top = height * 0.2;
-  const padH = (height * 0.6) / 5;
+  const padH = (height * 0.6) / 4;
   const stripCx = width / 2 + (o.shiftX ?? 0);
   const stripHalfW = width * 0.35;
 
@@ -103,7 +102,7 @@ function buildStrip(o: StressOpts): string {
       let r = 230, g = 230, b = 230;
       const inStrip = Math.abs(x - stripCx) < stripHalfW;
       const padIdx = Math.floor((y - top) / padH);
-      if (inStrip && padIdx >= 0 && padIdx < 5) {
+      if (inStrip && padIdx >= 0 && padIdx < 4) {
         const c = padTrue[padIdx];
         r = c[0]; g = c[1]; b = c[2];
       }
