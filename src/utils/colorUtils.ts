@@ -39,7 +39,7 @@ const PRO_REFS = {
     { value: 3,   rgb: [172, 139, 208] },
     { value: 5,   rgb: [158, 106, 189] },
     { value: 10,  rgb: [129, 29,  153] },
-    { value: 20,  rgb: [85,  15,  110] },
+    { value: 20,  rgb: [60,  10,  90]  },
   ] as ColorRef[],
   ph: [
     { value: 6.2, rgb: [242, 175, 60]  },
