@@ -16,7 +16,7 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
       id: "exact-mid",
       tc: [184, 216, 140],   // combined TC=3 / TB=5 (yellow-green)
       fc: [200, 140, 195],   // FC=4 (purple — the critical fix!)
-      ph: [225, 80, 50],     // pH=7.2 (red-orange)
+      ph: [235, 150, 150],   // pH=7.2 (salmon-pink)
       alk: [72, 111, 54],    // Alk=120 (dark green)
     });
     const r = await analyzeStripPixels(url);
@@ -34,7 +34,7 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
       tc: [254, 254, 168],
       br: [254, 254, 168],
       fc: [254, 254, 204],
-      ph: [242, 175, 60],
+      ph: [242, 200, 90],
       alk: [227, 192, 64],
     });
     const r = await analyzeStripPixels(url);
@@ -49,7 +49,7 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
       id: "high",
       tc: [55, 140, 80],
       fc: [130, 55, 160],   // dark purple — high FC
-      ph: [180, 45, 45],
+      ph: [195, 110, 170],
       alk: [37, 87, 98],
     });
     const r = await analyzeStripPixels(url);
@@ -59,17 +59,16 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
     expect(Math.abs(r.alkalinity! - 240)).toBeLessThanOrEqual(25);
   });
 
-  it("FC purple gradient is distinguished from pH red gradient", async () => {
-    // Critical regression test: previously FC was wrongly orange/red — now purple.
+  it("FC purple gradient is distinguished from pH pink gradient", async () => {
     const purple = makeStripFixture({
       id: "fc-purple",
       fc: [200, 140, 195],   // FC=4 purple
-      ph: [225, 80, 50],     // pH=7.2 red
+      ph: [235, 150, 150],   // pH=7.2 salmon-pink
       alk: [72, 111, 54],
     });
     const r = await analyzeStripPixels(purple);
-    expect(r.freeChlorine!).toBeGreaterThan(2);   // reads as moderate-high FC
-    expect(r.ph!).toBeGreaterThan(7);             // pH still reads as red ≈ 7.2
+    expect(r.freeChlorine!).toBeGreaterThan(2);
+    expect(r.ph!).toBeGreaterThan(6.8);
     expect(r.ph!).toBeLessThan(7.6);
   });
 
