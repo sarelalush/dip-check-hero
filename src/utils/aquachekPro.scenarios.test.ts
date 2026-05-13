@@ -125,7 +125,7 @@ const SCENARIOS: Scenario[] = [
 describe("AquaChek Pro (5-in-1) — demo brand registered", () => {
   it("הוא ברירת המחדל בדמו", () => {
     const b = getBrand(DEFAULT_BRAND_ID);
-    expect(b.id).toBe("aquachek-pro-5in1");
+    expect(b.id).toBe("aquachek-pro-5in1"); // getBrand by explicit id
     expect(b.parameters).toContain("totalChlorine");
     expect(b.parameters).toContain("bromine");
     expect(b.parameters).toContain("freeChlorine");
