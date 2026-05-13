@@ -128,9 +128,6 @@ Pad 4 — Cyanuric Acid (turbidity pad — white → tan/gray, never bright):
 `;
 
 function buildSystemPrompt(brandNameHe: string, params: ParamKey[]) {
-  const padList = params
-    .map((p, i) => `${i + 1}. ${p} — ${PARAM_HINTS[p]}`)
-    .join("\n");
   const isAquachekPro =
     params.includes("totalChlorine") &&
     params.includes("bromine") &&
@@ -143,10 +140,22 @@ function buildSystemPrompt(brandNameHe: string, params: ParamKey[]) {
     params.includes("ph") &&
     params.includes("alkalinity") &&
     params.includes("cyanuricAcid");
+
+  // AquaChek Pro: 4 physical pads but 5 measurements (pad 1 = TC + TB combined).
+  const padList = isAquachekPro
+    ? [
+        "Pad 1 (closest to wet tip): combined Total Chlorine + Total Bromine — report BOTH values from this single pad's color.",
+        "Pad 2: Free Chlorine.",
+        "Pad 3: pH.",
+        "Pad 4 (closest to handle / dry end): Total Alkalinity.",
+      ].join("\n")
+    : params.map((p, i) => `${i + 1}. ${p} — ${PARAM_HINTS[p]}`).join("\n");
+
   return `You are an expert pool/spa water test strip analyzer.
 The user is using this strip brand: "${brandNameHe}".
-This strip has EXACTLY these pads, in this printed order from top to bottom:
-${padList}
+${isAquachekPro
+  ? `This strip has EXACTLY 4 PHYSICAL PADS but yields 5 measurements (TC and TB share pad 1). Pad order from the wet tip toward the handle:\n${padList}`
+  : `This strip has EXACTLY these pads, in this printed order from top to bottom:\n${padList}`}
 
 FIRST determine if the image actually shows a pool/spa test strip (a thin plastic strip with multiple colored pads).
 If NOT, set isStrip=false, confidence=0, all values=0, and put a short Hebrew note.
