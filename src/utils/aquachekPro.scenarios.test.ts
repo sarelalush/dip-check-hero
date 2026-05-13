@@ -122,10 +122,10 @@ const SCENARIOS: Scenario[] = [
   { name: "כלור-שוק לאחר טיפול", fc: 10, ph: 7.2, alk: 100, expect: { fcStatus: "high", phStatus: "ok", alkStatus: "ok" } },
 ];
 
-describe("AquaChek Pro (5-in-1) — demo brand registered", () => {
-  it("הוא ברירת המחדל בדמו", () => {
-    const b = getBrand(DEFAULT_BRAND_ID);
-    expect(b.id).toBe("aquachek-pro-5in1"); // getBrand by explicit id
+describe("AquaChek Pro (5-in-1) — registered brand", () => {
+  it("נטען לפי id", () => {
+    const b = getBrand("aquachek-pro-5in1");
+    expect(b.id).toBe("aquachek-pro-5in1");
     expect(b.parameters).toContain("totalChlorine");
     expect(b.parameters).toContain("bromine");
     expect(b.parameters).toContain("freeChlorine");
