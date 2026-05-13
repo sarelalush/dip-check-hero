@@ -69,13 +69,17 @@ Pad 2 — Free Chlorine (cream → pink → PURPLE, NOT orange or red).
   FC 10   → dark purple             (R130 G55  B160)
   FC 20   → very dark purple        (R70  G15  B100)
 
-Pad 3 — pH (orange-yellow → orange → red).
+Pad 3 — pH (yellow-orange → peach/salmon → PINK / MAGENTA).
+  IMPORTANT: AquaChek Pro pH does NOT go to deep red. The high end is
+  pink / mauve / magenta. A bright PINK pad means HIGH pH (~8.2–8.4),
+  NOT 7.8. Reserve "red" only if the pad is truly red with no pink tint.
   Scale: 6.2, 6.8, 7.2, 7.8, 8.4
-  pH 6.2  → orange-yellow   (R242 G175 B60)
-  pH 6.8  → orange          (R234 G106 B45)
-  pH 7.2  → red-orange      (R225 G80  B50)
-  pH 7.8  → red             (R210 G55  B45)
-  pH 8.4  → dark red        (R180 G45  B45)
+  pH 6.2  → yellow-orange       (R242 G200 B90)
+  pH 6.8  → peach / light salmon (R240 G170 B130)
+  pH 7.2  → salmon-pink          (R235 G150 B150)
+  pH 7.8  → pink                 (R220 G130 B165)
+  pH 8.4  → magenta / hot pink   (R195 G110 B170)
+  Tie-breaker: if R/B ratio < 1.4 and B > 130, pH ≥ 8.0.
 
 Pad 4 — Total Alkalinity (yellow-green → green → dark teal).
   Scale: 0, 40, 80, 120, 180, 240

@@ -43,11 +43,11 @@ const PRO_REFS = {
     { value: 20,  rgb: [70,  15,  100] },
   ] as ColorRef[],
   ph: [
-    { value: 6.2, rgb: [242, 175, 60]  },
-    { value: 6.8, rgb: [234, 106, 45]  },
-    { value: 7.2, rgb: [225, 80,  50]  },
-    { value: 7.8, rgb: [210, 55,  45]  },
-    { value: 8.4, rgb: [180, 45,  45]  },
+    { value: 6.2, rgb: [242, 200, 90]  },
+    { value: 6.8, rgb: [240, 170, 130] },
+    { value: 7.2, rgb: [235, 150, 150] },
+    { value: 7.8, rgb: [220, 130, 165] },
+    { value: 8.4, rgb: [195, 110, 170] },
   ] as ColorRef[],
   alkalinity: [
     { value: 0,   rgb: [227, 192, 64] },
