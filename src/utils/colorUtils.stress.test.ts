@@ -1,5 +1,5 @@
 // Stress test: generate many synthetic AquaChek Pro 5-in-1 strip fixtures
-// (5 pads each) with noise, lighting drift, and off-center positions.
+// (4 physical pads each) with noise, lighting drift, and off-center positions.
 import { describe, it, expect, beforeAll } from "vitest";
 import { PNG } from "pngjs";
 import { installCanvasMock, registerPng } from "./__fixtures__/canvasMock";
@@ -16,8 +16,8 @@ const TC_TB = [
   { value: 0.5, rgb: [242, 254, 170] },
   { value: 1, rgb: [231, 245, 160] },
   { value: 3, rgb: [184, 216, 140] },
-  { value: 5, rgb: [144, 198, 120] },
-  { value: 10, rgb: [76, 163, 95] },
+  { value: 5, rgb: [100, 180, 105] },
+  { value: 10, rgb: [55, 140, 80] },
 ] as const;
 
 const REFS = {
@@ -25,11 +25,12 @@ const REFS = {
   bromine: TC_TB,
   freeChlorine: [
     { value: 0, rgb: [254, 254, 204] },
-    { value: 0.5, rgb: [247, 249, 225] },
-    { value: 1, rgb: [230, 223, 215] },
-    { value: 3, rgb: [172, 139, 208] },
-    { value: 5, rgb: [158, 106, 189] },
-    { value: 10, rgb: [129, 29, 153] },
+    { value: 0.5, rgb: [247, 235, 228] },
+    { value: 1, rgb: [235, 215, 225] },
+    { value: 2, rgb: [220, 180, 210] },
+    { value: 4, rgb: [200, 140, 195] },
+    { value: 6, rgb: [175, 110, 190] },
+    { value: 10, rgb: [130, 55, 160] },
   ],
   ph: [
     { value: 6.2, rgb: [242, 175, 60] },
