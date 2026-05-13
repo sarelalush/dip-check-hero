@@ -37,21 +37,25 @@ const AQUACHEK_PRO_CHART = `
 OFFICIAL AquaChek Pro 5-in-1 color chart (memorize and use this — do NOT
 guess colors from generic strip knowledge):
 
-Total Chlorine + Total Bromine (pads 1 and 2) — yellow → green:
+Total Chlorine + Total Bromine (pads 1 and 2) — yellow → green. The printed
+scale on the bottle has 7 levels: 0, 0.5, 1, 3, 5, 10, 20.
   TC 0     / TB 0    → very pale cream-yellow  (R254 G254 B168)
   TC 0.5   / TB 0.5  → pale yellow-green       (R242 G254 B170)
   TC 1     / TB 1    → light yellow-green      (R231 G245 B160)
   TC 3     / TB 3    → light green             (R184 G216 B140)
   TC 5     / TB 5    → medium green            (R144 G198 B120)
   TC 10    / TB 10   → dark green              (R76  G163 B95)
+  TC 20    / TB 20   → very dark green         (R40  G120 B70)
 
-Free Chlorine (pad 3) — cream → PURPLE (NOT orange or red):
+Free Chlorine (pad 3) — cream → PURPLE (NOT orange or red). The printed scale
+on the bottle has 7 levels: 0, 0.5, 1, 3, 5, 10, 20.
   FC 0    → pale cream              (R254 G254 B204)
   FC 0.5  → very pale yellow        (R247 G249 B225)
   FC 1    → pale beige/lavender     (R230 G223 B215)
   FC 3    → light purple            (R172 G139 B208)
   FC 5    → medium purple           (R158 G106 B189)
   FC 10   → dark purple             (R129 G29  B153)
+  FC 20   → very dark purple        (R85  G15  B110)
 
 pH (pad 4) — orange → red:
   pH 6.2  → orange-yellow   (R242 G175 B60)
