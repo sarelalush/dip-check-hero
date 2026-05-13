@@ -190,10 +190,10 @@ describe("analyzeStripPixels — stress: many synthetic AquaChek Pro strips", ()
         const idx = (y * 60 + x) * 4;
         png.data[idx] = 230; png.data[idx + 1] = 230; png.data[idx + 2] = 230; png.data[idx + 3] = 255;
       }
-      const top = 80, padH = 48;
-      // Pad order: TC, TB, FC, pH, ALK
-      const pads = [offColors[i][0], offColors[i][0], offColors[i][0], offColors[i][1], offColors[i][2]];
-      for (let p = 0; p < 5; p++) {
+      const top = 80, padH = 60;
+      // Pad order: combined TC+TB, FC, pH, ALK
+      const pads = [offColors[i][0], offColors[i][0], offColors[i][1], offColors[i][2]];
+      for (let p = 0; p < 4; p++) {
         for (let y = top + p * padH; y < top + (p + 1) * padH; y++)
           for (let x = 0; x < 60; x++) {
             const idx = (y * 60 + x) * 4;
