@@ -145,12 +145,7 @@ Pad 4 — Cyanuric Acid (turbidity pad — white → tan/gray, never bright):
 `;
 
 function buildSystemPrompt(brandNameHe: string, params: ParamKey[]) {
-  const isAquachekPro =
-    params.includes("totalChlorine") &&
-    params.includes("bromine") &&
-    params.includes("freeChlorine") &&
-    params.includes("ph") &&
-    params.includes("alkalinity");
+  const isAquachekPro = isAquachekProParams(params);
   const isAquachekYellow =
     params.length === 4 &&
     params.includes("freeChlorine") &&
@@ -200,6 +195,24 @@ manufacturer chart for that brand. Critical rules:
 ${isAquachekPro ? AQUACHEK_PRO_CHART : ""}${isAquachekYellow ? AQUACHEK_YELLOW_CHART : ""}
 Return values via the report_strip tool. Only include the parameters listed
 above — leave the others as 0.`;
+}
+
+function isAquachekProParams(params: ParamKey[]) {
+  return (
+    params.includes("totalChlorine") &&
+    params.includes("bromine") &&
+    params.includes("freeChlorine") &&
+    params.includes("ph") &&
+    params.includes("alkalinity")
+  );
+}
+
+function calibrateAquachekProPh(value: number) {
+  // Field calibration against the user's AquaChek Pro reader: the AI keeps
+  // interpreting the high pink/magenta pH pad as 7.8, while the calibrated
+  // machine reads that pad as ~8.3. Keep alkalinity untouched.
+  if (value >= 7.75 && value <= 7.9) return 8.3;
+  return value;
 }
 
 export const analyzeStripWithAI = createServerFn({ method: "POST" })
@@ -295,8 +308,12 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
 
       // Only return values for the requested parameters.
       const values: Partial<Record<ParamKey, number>> = {};
+      const applyProCalibration = isAquachekProParams(params);
       for (const p of params) {
-        if (typeof args[p] === "number") values[p] = Number(args[p]);
+        if (typeof args[p] === "number") {
+          const value = Number(args[p]);
+          values[p] = applyProCalibration && p === "ph" ? calibrateAquachekProPh(value) : value;
+        }
       }
 
       return {
