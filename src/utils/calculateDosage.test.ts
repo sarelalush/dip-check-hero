@@ -59,7 +59,7 @@ describe("calculateDosage", () => {
       chlorinePool,
     );
     const ph = recs.find((r) => r.paramKey === "ph");
-    expect(ph?.product?.key).toBe("phMinus");
+    expect(ph?.product?.key).toBe("acidHCl");
     expect(ph?.product?.amount).toBeGreaterThan(0);
   });
 
