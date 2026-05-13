@@ -59,12 +59,12 @@ export function calculateDosage(
   if (ph) {
     if (ph.status === "high") {
       const diff = ph.value - phRange.target;
-      const amount = Math.round((diff / 0.1) * productConfig.phMinus.dosePerPpmPer10kL * volumeFactor);
+      const amount = Math.round((diff / 0.1) * productConfig.acidHCl.dosePerPpmPer10kL * volumeFactor);
       recs.push({
         paramKey: "ph", labelHe: ph.labelHe, measured: ph.value,
         target: phRange.target, unit: ph.unit, status: "high",
-        actionHe: `הוסף ${amount} גרם ${productConfig.phMinus.labelHe}`,
-        product: { key: "phMinus", amount, unit: "גרם", labelHe: productConfig.phMinus.labelHe },
+        actionHe: `הוסף ${amount} מ״ל ${productConfig.acidHCl.labelHe}`,
+        product: { key: "acidHCl", amount, unit: "מ״ל", labelHe: productConfig.acidHCl.labelHe },
       });
     } else if (ph.status === "low") {
       const diff = phRange.target - ph.value;
