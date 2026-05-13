@@ -2,8 +2,17 @@ import { describe, it, expect } from "vitest";
 import { STRIP_BRANDS, DEFAULT_BRAND_ID, getBrand, PARAM_LABEL_HE } from "./stripBrands";
 
 describe("stripBrands registry", () => {
-  it("exposes 5 brands", () => {
-    expect(STRIP_BRANDS.length).toBe(5);
+  it("exposes 6 brands including AquaChek Pro demo default", () => {
+    expect(STRIP_BRANDS.length).toBe(6);
+    expect(DEFAULT_BRAND_ID).toBe("aquachek-pro-5in1");
+    expect(STRIP_BRANDS[0].id).toBe("aquachek-pro-5in1");
+    expect(STRIP_BRANDS[0].parameters).toEqual([
+      "totalChlorine",
+      "bromine",
+      "freeChlorine",
+      "ph",
+      "alkalinity",
+    ]);
   });
 
   it("each brand has unique id and at least one parameter", () => {
