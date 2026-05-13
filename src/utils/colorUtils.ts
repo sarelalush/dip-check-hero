@@ -172,7 +172,7 @@ export interface ClientCvResult {
 }
 
 /** AquaChek Pro 5-in-1: 5 pads (TC, TB, FC, pH, TA). */
-export async function analyzeStripPixels(imageDataUrl: string): Promise<Required<Omit<ClientCvResult, "cyanuricAcid">>> {
+export async function analyzeStripPixels(imageDataUrl: string): Promise<ClientCvResult> {
   const { canvas, ctx } = await loadCanvas(imageDataUrl);
   const pads = samplePads(ctx, canvas.width, canvas.height, 5);
   const tc  = bestMatch(pads[0], PRO_REFS.totalChlorine);
