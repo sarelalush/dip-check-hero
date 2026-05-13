@@ -11,19 +11,18 @@ const TOL = 0.5;
 
 // Reference colors come from the OFFICIAL AquaChek Pro 5-in-1 chart.
 describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
-  it("reads exact reference colors (TC=3, TB=3, FC=3, pH=7.2, Alk=120)", async () => {
+  it("reads exact reference colors (TC=3, TB=5, FC=4, pH=7.2, Alk=120)", async () => {
     const url = makeStripFixture({
       id: "exact-mid",
-      tc: [184, 216, 140],   // TC=3 (yellow-green)
-      br: [184, 216, 140],   // TB=3
-      fc: [172, 139, 208],   // FC=3 (purple — the critical fix!)
+      tc: [184, 216, 140],   // combined TC=3 / TB=5 (yellow-green)
+      fc: [200, 140, 195],   // FC=4 (purple — the critical fix!)
       ph: [225, 80, 50],     // pH=7.2 (red-orange)
       alk: [72, 111, 54],    // Alk=120 (dark green)
     });
     const r = await analyzeStripPixels(url);
     expect(r.totalChlorine!).toBeCloseTo(3, 1);
-    expect(r.bromine!).toBeCloseTo(3, 1);
-    expect(r.freeChlorine!).toBeCloseTo(3, 1);
+    expect(r.bromine!).toBeCloseTo(5, 1);
+    expect(r.freeChlorine!).toBeCloseTo(4, 1);
     expect(r.ph!).toBeCloseTo(7.2, 1);
     expect(Math.abs(r.alkalinity! - 120)).toBeLessThanOrEqual(20);
     expect(r.confidence).toBeGreaterThan(0.85);
@@ -48,9 +47,8 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
   it("reads high end (TC=10, FC=10, pH=8.4, Alk=240)", async () => {
     const url = makeStripFixture({
       id: "high",
-      tc: [76, 163, 95],
-      br: [76, 163, 95],
-      fc: [129, 29, 153],   // dark purple — high FC
+      tc: [55, 140, 80],
+      fc: [130, 55, 160],   // dark purple — high FC
       ph: [180, 45, 45],
       alk: [37, 87, 98],
     });
@@ -65,7 +63,7 @@ describe("analyzeStripPixels — synthetic AquaChek fixtures", () => {
     // Critical regression test: previously FC was wrongly orange/red — now purple.
     const purple = makeStripFixture({
       id: "fc-purple",
-      fc: [158, 106, 189],   // FC=5 purple
+      fc: [200, 140, 195],   // FC=4 purple
       ph: [225, 80, 50],     // pH=7.2 red
       alk: [72, 111, 54],
     });
