@@ -32,6 +32,12 @@ export interface StripBrand {
 
 export const STRIP_BRANDS: StripBrand[] = [
   {
+    id: "aquachek-pro-5in1",
+    nameHe: "AquaChek Pro (5-in-1)",
+    descriptionHe: "ברירת מחדל לדמו. כלור כולל, ברום כולל, כלור חופשי, pH, אלקליניות",
+    parameters: ["totalChlorine", "bromine", "freeChlorine", "ph", "alkalinity"],
+  },
+  {
     id: "aquachek-yellow-4",
     nameHe: "AquaChek Yellow (4-in-1)",
     descriptionHe: "כלור חופשי, pH, אלקליניות, חומצה ציאנורית",
@@ -78,7 +84,7 @@ export const STRIP_BRANDS: StripBrand[] = [
   },
 ];
 
-export const DEFAULT_BRAND_ID = "aquachek-yellow-4";
+export const DEFAULT_BRAND_ID = "aquachek-pro-5in1";
 
 export function getBrand(id?: string): StripBrand {
   return STRIP_BRANDS.find((b) => b.id === id) ?? STRIP_BRANDS[0];
