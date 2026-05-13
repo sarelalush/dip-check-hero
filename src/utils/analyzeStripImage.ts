@@ -70,6 +70,13 @@ const MULTI_SHOT_RUNS = 3;
 const CONFIDENCE_WARN_THRESHOLD = 0.55;
 const CONFIDENCE_BLOCK_THRESHOLD = 0.4;
 
+function calibratePhForBrand(value: number, brandId: string): number {
+  // AquaChek Pro field calibration: the user's reference scanner reads the
+  // high pink/magenta pH pad as ~8.3, while the model commonly returns 7.8.
+  if (brandId === "aquachek-pro-5in1" && value >= 7.75 && value <= 7.9) return 8.3;
+  return value;
+}
+
 function statusOf(value: number, key: StripParameter): Status {
   const r = targetRanges[key];
   if (!r) return "ok";
@@ -81,6 +88,11 @@ function statusOf(value: number, key: StripParameter): Status {
 function makeReading(p: StripParameter, value: number, agreement?: number): StripReading {
   const def = PARAM_LABEL_HE[p];
   return { labelHe: def.labelHe, value, unit: def.unit, status: statusOf(value, p), agreement };
+}
+
+function makeBrandReading(brandId: string, p: StripParameter, value: number, agreement?: number): StripReading {
+  const calibrated = p === "ph" ? calibratePhForBrand(value, brandId) : value;
+  return makeReading(p, calibrated, agreement);
 }
 
 async function fileToDataUrl(file: File): Promise<string> {
@@ -114,7 +126,7 @@ export function combineStripResults(results: StripResults[], brandId?: string): 
       .filter((v): v is number => typeof v === "number" && !Number.isNaN(v));
     if (values.length === 0) continue;
     const med = median(values);
-    readings[p] = makeReading(p, +med.toFixed(2), agreementOf(values, med));
+      readings[p] = makeBrandReading(brand.id, p, +med.toFixed(2), agreementOf(values, med));
   }
 
   const meanConfidence = results.reduce((s, r) => s + (r.confidence ?? 0.5), 0) / results.length;
@@ -215,7 +227,7 @@ export async function analyzeStripImage(
       if (values.length === 0) continue;
       const med = median(values);
       const agree = agreementOf(values, med);
-      readings[p] = makeReading(p, +med.toFixed(2), agree);
+      readings[p] = makeBrandReading(brand.id, p, +med.toFixed(2), agree);
     }
 
     const meanConfidence =
