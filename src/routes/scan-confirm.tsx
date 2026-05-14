@@ -134,28 +134,25 @@ function ScanConfirmScreen() {
 
         {/* Manual crop encouragement */}
         {original && (
-          <button
-            onClick={() => setCropping(true)}
-            disabled={analyzing}
-            className="group mt-4 flex w-full items-center gap-3 rounded-2xl border-2 border-primary bg-gradient-to-l from-primary/15 to-primary/5 p-4 text-right transition active:scale-[0.98] disabled:opacity-60"
-          >
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-[var(--shadow-soft)]">
-              <Crop className="h-6 w-6" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <span className="text-base font-extrabold text-foreground">
-                  כוון את החיתוך לסטיק
-                </span>
-                <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
-                  מומלץ
-                </span>
-              </div>
-              <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
-                ככל שהחיתוך מדויק יותר על הריבועים הצבעוניים — כך התוצאה תהיה מדויקת יותר ✨
-              </p>
-            </div>
-          </button>
+          <div className="mt-4">
+            <p className="mb-2 text-center text-sm font-semibold text-foreground">
+              💡 לתוצאה מדויקת יותר — כוון ידנית את החיתוך על הריבועים
+            </p>
+            <button
+              onClick={() => setCropping(true)}
+              disabled={analyzing}
+              className="flex w-full items-center justify-center gap-3 rounded-2xl bg-primary px-6 py-4 text-base font-bold text-primary-foreground shadow-[var(--shadow-soft)] transition active:scale-[0.98] disabled:opacity-60"
+            >
+              <Crop className="h-5 w-5" />
+              פתח כלי חיתוך ידני
+              <span className="rounded-full bg-primary-foreground/20 px-2 py-0.5 text-[10px] font-bold">
+                מומלץ
+              </span>
+            </button>
+            <p className="mt-2 text-center text-xs text-muted-foreground">
+              ככל שהחיתוך מדויק יותר על הריבועים הצבעוניים — התוצאה מדויקת יותר ✨
+            </p>
+          </div>
         )}
 
         {/* Checklist */}
