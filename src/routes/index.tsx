@@ -1,8 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Camera, Droplets, ListChecks, LogOut } from "lucide-react";
+import { Camera, Droplets, ListChecks, LogOut, Sparkles } from "lucide-react";
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { GuestBanner } from "@/components/GuestBanner";
+import { WaterWaves } from "@/components/WaterWaves";
 
 export const Route = createFileRoute("/")({
   head: () => ({
