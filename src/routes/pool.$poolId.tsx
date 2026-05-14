@@ -29,9 +29,9 @@ function PoolDetailScreen() {
       .reverse()
       .map((t) => ({
         date: new Date(t.date).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" }),
-        pH: t.results.readings.pH,
-        כלור: t.results.readings.freeChlorine,
-        אלקליניות: t.results.readings.totalAlkalinity,
+        pH: t.results.readings.ph?.value,
+        כלור: t.results.readings.freeChlorine?.value,
+        אלקליניות: t.results.readings.alkalinity?.value,
       }));
   }, [tests]);
 
@@ -114,14 +114,14 @@ function PoolDetailScreen() {
                       {new Date(t.date).toLocaleDateString("he-IL", { day: "numeric", month: "short", year: "numeric" })}
                     </div>
                     <div className="flex gap-3 text-xs">
-                      {t.results.readings.pH != null && (
-                        <span><span className="text-muted-foreground">pH</span> <b>{t.results.readings.pH}</b></span>
+                      {t.results.readings.ph && (
+                        <span><span className="text-muted-foreground">pH</span> <b>{t.results.readings.ph.value}</b></span>
                       )}
-                      {t.results.readings.freeChlorine != null && (
-                        <span><span className="text-muted-foreground">Cl</span> <b>{t.results.readings.freeChlorine}</b></span>
+                      {t.results.readings.freeChlorine && (
+                        <span><span className="text-muted-foreground">Cl</span> <b>{t.results.readings.freeChlorine.value}</b></span>
                       )}
-                      {t.results.readings.totalAlkalinity != null && (
-                        <span><span className="text-muted-foreground">TA</span> <b>{t.results.readings.totalAlkalinity}</b></span>
+                      {t.results.readings.alkalinity && (
+                        <span><span className="text-muted-foreground">TA</span> <b>{t.results.readings.alkalinity.value}</b></span>
                       )}
                     </div>
                   </div>
