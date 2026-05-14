@@ -14,7 +14,110 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      pools: {
+        Row: {
+          created_at: string
+          id: string
+          last_test_at: string | null
+          name: string
+          strip_brand_id: string | null
+          type: string
+          updated_at: string
+          user_id: string
+          volume_liters: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_test_at?: string | null
+          name: string
+          strip_brand_id?: string | null
+          type: string
+          updated_at?: string
+          user_id: string
+          volume_liters: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_test_at?: string | null
+          name?: string
+          strip_brand_id?: string | null
+          type?: string
+          updated_at?: string
+          user_id?: string
+          volume_liters?: number
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          email: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          email?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      tests: {
+        Row: {
+          created_at: string
+          id: string
+          image_url: string | null
+          pool_id: string
+          recommendations: Json
+          results: Json
+          tested_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          pool_id: string
+          recommendations?: Json
+          results: Json
+          tested_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          image_url?: string | null
+          pool_id?: string
+          recommendations?: Json
+          results?: Json
+          tested_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tests_pool_id_fkey"
+            columns: ["pool_id"]
+            isOneToOne: false
+            referencedRelation: "pools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
