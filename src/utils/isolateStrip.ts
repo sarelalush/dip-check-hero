@@ -1,10 +1,12 @@
 // Auto-detects the test strip in a photo and places it centered on a clean
-// white background. This dramatically improves AI color reading accuracy by
-// removing background distractions (table, hand, pool deck, etc.).
+// white background. Tight crop: only the strip itself, no hand/background.
 //
-// Heuristic: the strip pads are highly saturated colored regions. We compute
-// a saturation map, find the bounding box of saturated pixels, pad it, then
-// composite onto a white canvas.
+// Approach:
+//   1. Build a list of "pad-like" pixels: highly saturated AND not skin-toned.
+//   2. Use a percentile bbox (10–90th) so outliers (a colored shirt sleeve,
+//      a stray sticker) don't blow up the crop.
+//   3. Pad bbox slightly to include the white strip body around the pads,
+//      then composite onto a white canvas.
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -16,12 +18,15 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 export interface IsolateOptions {
-  /** Output canvas width (px). Default 640. */
   outWidth?: number;
-  /** Output canvas height (px). Default 800. */
   outHeight?: number;
-  /** Padding around the strip (px). Default 60. */
   padding?: number;
+}
+
+/** Skin-tone heuristic: warm pixels where R is dominant by a small margin. */
+function isSkinLike(r: number, g: number, b: number): boolean {
+  // Classic skin range: R > G > B, R-B between 15–80, R > 95.
+  return r > 95 && g > 40 && b > 20 && r > g && g >= b && r - b > 15 && r - b < 90;
 }
 
 export async function isolateStripOnWhite(
@@ -37,8 +42,8 @@ export async function isolateStripOnWhite(
   const h = img.naturalHeight;
   if (!w || !h) return dataUrl;
 
-  // Downscale for analysis — speeds up bbox detection on large photos.
-  const ANALYSIS_MAX = 600;
+  // Downscale for analysis.
+  const ANALYSIS_MAX = 640;
   const aScale = Math.min(1, ANALYSIS_MAX / Math.max(w, h));
   const aw = Math.max(1, Math.round(w * aScale));
   const ah = Math.max(1, Math.round(h * aScale));
@@ -51,14 +56,10 @@ export async function isolateStripOnWhite(
   aCtx.drawImage(img, 0, 0, aw, ah);
   const { data } = aCtx.getImageData(0, 0, aw, ah);
 
-  let minX = aw;
-  let minY = ah;
-  let maxX = 0;
-  let maxY = 0;
-  let found = 0;
-
-  // Threshold — pads usually have saturation > 0.25 and aren't too dark.
-  const SAT_THRESH = 0.22;
+  // Collect coordinates of pad-like pixels.
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const SAT_THRESH = 0.32;
   for (let y = 0; y < ah; y++) {
     for (let x = 0; x < aw; x++) {
       const i = (y * aw + x) * 4;
@@ -68,51 +69,57 @@ export async function isolateStripOnWhite(
       const max = Math.max(r, g, b);
       const min = Math.min(r, g, b);
       const sat = max === 0 ? 0 : (max - min) / max;
-      if (sat > SAT_THRESH && max > 70 && max < 250) {
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x > maxX) maxX = x;
-        if (y > maxY) maxY = y;
-        found++;
-      }
+      if (max < 80 || max > 248) continue; // too dark or blown-out
+      if (sat < SAT_THRESH) continue;
+      if (isSkinLike(r, g, b)) continue;
+      xs.push(x);
+      ys.push(y);
     }
   }
 
-  // Map bbox back to original image coordinates, with a generous pad
-  // (the strip usually extends a bit beyond the saturated pads — handle).
   let cropX: number;
   let cropY: number;
   let cropW: number;
   let cropH: number;
 
-  const totalPixels = aw * ah;
-  // Need enough saturated pixels (>0.4%) AND reasonable bbox to trust it.
-  if (
-    found > totalPixels * 0.004 &&
-    maxX > minX + 10 &&
-    maxY > minY + 10
-  ) {
-    const bw = maxX - minX;
-    const bh = maxY - minY;
-    const padX = Math.round(bw * 0.4) + 8;
-    const padY = Math.round(bh * 0.2) + 8;
-    const pMinX = Math.max(0, minX - padX);
-    const pMinY = Math.max(0, minY - padY);
-    const pMaxX = Math.min(aw - 1, maxX + padX);
-    const pMaxY = Math.min(ah - 1, maxY + padY);
+  // Need a reasonable cluster of pad pixels (>0.15% of analysis frame).
+  if (xs.length > aw * ah * 0.0015 && xs.length > 80) {
+    // Percentile bbox — robust to outliers.
+    xs.sort((a, b) => a - b);
+    ys.sort((a, b) => a - b);
+    const pLow = 0.05;
+    const pHigh = 0.95;
+    const xLo = xs[Math.floor(xs.length * pLow)];
+    const xHi = xs[Math.floor(xs.length * pHigh)];
+    const yLo = ys[Math.floor(ys.length * pLow)];
+    const yHi = ys[Math.floor(ys.length * pHigh)];
+
+    const bw = Math.max(4, xHi - xLo);
+    const bh = Math.max(4, yHi - yLo);
+
+    // Strip body extends a bit beyond the colored pads. The pads occupy
+    // most of the strip width and ~80% of its length; padding moderately.
+    const padX = Math.round(bw * 0.45) + 4;
+    const padY = Math.round(bh * 0.12) + 4;
+
+    const pMinX = Math.max(0, xLo - padX);
+    const pMinY = Math.max(0, yLo - padY);
+    const pMaxX = Math.min(aw - 1, xHi + padX);
+    const pMaxY = Math.min(ah - 1, yHi + padY);
+
     cropX = Math.round(pMinX / aScale);
     cropY = Math.round(pMinY / aScale);
     cropW = Math.round((pMaxX - pMinX) / aScale);
     cropH = Math.round((pMaxY - pMinY) / aScale);
   } else {
     // Fallback: assume the user roughly centered the strip.
-    cropW = Math.round(w * 0.42);
-    cropH = Math.round(h * 0.78);
+    cropW = Math.round(w * 0.35);
+    cropH = Math.round(h * 0.7);
     cropX = Math.round((w - cropW) / 2);
     cropY = Math.round((h - cropH) / 2);
   }
 
-  // Compose onto white canvas.
+  // Compose onto white canvas, fitted with padding.
   const out = document.createElement("canvas");
   out.width = outW;
   out.height = outH;
