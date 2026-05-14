@@ -40,8 +40,8 @@ export async function syncFromCloud() {
     id: t.id,
     poolId: t.pool_id,
     date: new Date(t.tested_at).getTime(),
-    results: t.results as TestRecord["results"],
-    recommendations: (t.recommendations as TestRecord["recommendations"]) ?? [],
+    results: t.results as unknown as TestRecord["results"],
+    recommendations: (t.recommendations as unknown as TestRecord["recommendations"]) ?? [],
     imageDataUrl: t.image_url ?? undefined,
   }));
 
@@ -66,15 +66,14 @@ export async function pushPool(pool: Pool) {
 export async function pushTest(test: TestRecord) {
   const { data: u } = await supabase.auth.getUser();
   if (!u.user) return;
-  await supabase.from("tests").insert({
-    id: test.id,
+  await supabase.from("tests").insert([{
     user_id: u.user.id,
     pool_id: test.poolId,
-    results: test.results,
-    recommendations: test.recommendations,
+    results: test.results as never,
+    recommendations: test.recommendations as never,
     image_url: test.imageDataUrl ?? null,
     tested_at: new Date(test.date).toISOString(),
-  });
+  }]);
 }
 
 export async function deletePoolCloud(id: string) {
