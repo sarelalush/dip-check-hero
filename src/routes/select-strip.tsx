@@ -101,24 +101,48 @@ function BrandList({
       </div>
 
       <div className="mt-5 space-y-3">
-        {STRIP_BRANDS.map((b) => (
-          <button
-            key={b.id}
-            onClick={() => onPick(b)}
-            className={`flex w-full items-start gap-3 rounded-2xl border bg-card p-4 text-right shadow-sm transition active:scale-[0.99] hover:border-primary/40 ${
-              selected?.id === b.id ? "border-primary/60 ring-2 ring-primary/20" : "border-border/60"
-            }`}
-          >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary font-bold text-sm">
-              {b.parameters.length}
-            </div>
-            <div className="flex-1">
-              <div className="font-bold text-foreground">{b.nameHe}</div>
-              <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{b.descriptionHe}</div>
-            </div>
-            <ChevronLeft className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
-          </button>
-        ))}
+        {STRIP_BRANDS.map((b) => {
+          const supported = SUPPORTED_BRAND_IDS.has(b.id);
+          const isSelected = selected?.id === b.id;
+          return (
+            <button
+              key={b.id}
+              onClick={() => supported && onPick(b)}
+              disabled={!supported}
+              aria-disabled={!supported}
+              className={`relative flex w-full items-start gap-3 overflow-hidden rounded-2xl border bg-card p-4 text-right shadow-sm transition ${
+                supported
+                  ? `active:scale-[0.99] hover:border-primary/40 ${isSelected ? "border-primary/60 ring-2 ring-primary/20" : "border-border/60"}`
+                  : "cursor-not-allowed border-border/40 opacity-70"
+              }`}
+            >
+              <div
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-bold ${
+                  supported ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {b.parameters.length}
+              </div>
+              <div className="flex-1">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <span className="font-bold text-foreground">{b.nameHe}</span>
+                  {!supported && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-l from-primary/15 to-cyan-300/25 px-2 py-0.5 text-[10px] font-bold tracking-wide text-primary ring-1 ring-primary/20">
+                      <Clock className="h-3 w-3" />
+                      בקרוב
+                    </span>
+                  )}
+                </div>
+                <div className="mt-1 text-xs leading-relaxed text-muted-foreground">{b.descriptionHe}</div>
+              </div>
+              {supported ? (
+                <ChevronLeft className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
+              ) : (
+                <Lock className="mt-1 h-4 w-4 shrink-0 text-muted-foreground/70" />
+              )}
+            </button>
+          );
+        })}
       </div>
 
       <button
