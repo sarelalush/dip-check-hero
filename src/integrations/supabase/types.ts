@@ -77,6 +77,36 @@ export type Database = {
         }
         Relationships: []
       }
+      strip_brand_requests: {
+        Row: {
+          brand_name: string
+          contact_email: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          brand_name: string
+          contact_email?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          user_id?: string | null
+        }
+        Update: {
+          brand_name?: string
+          contact_email?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       tests: {
         Row: {
           created_at: string
