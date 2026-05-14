@@ -34,17 +34,25 @@ function ResultsScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div dir="rtl" className="min-h-screen bg-background">
       <div className="mx-auto max-w-md px-5 pt-6 pb-10">
-        <Link to="/pools" className="inline-flex items-center gap-1 text-sm text-muted-foreground mb-4">
+        <Link to="/pools" className="inline-flex items-center gap-1 text-sm text-muted-foreground mb-4 transition hover:text-foreground">
           <ArrowRight className="h-4 w-4" /> חזרה
         </Link>
 
-        <h1 className="text-2xl font-extrabold text-foreground">תוצאות הבדיקה</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {pool.name} · {pool.volumeLiters.toLocaleString("he-IL")} ליטר ·{" "}
-          {new Date(test.date).toLocaleDateString("he-IL")}
-        </p>
+        {/* Hero header */}
+        <div
+          className="relative overflow-hidden rounded-3xl p-6 text-primary-foreground shadow-[var(--shadow-soft)]"
+          style={{ background: "var(--gradient-hero)" }}
+        >
+          <div className="pointer-events-none absolute -left-10 -bottom-10 h-36 w-36 rounded-full bg-white/15 blur-2xl" />
+          <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/20 blur-xl" />
+          <div className="relative z-10 text-[11px] font-semibold tracking-[0.22em] text-white/80">תוצאות הבדיקה</div>
+          <h1 className="relative z-10 mt-1 text-2xl font-extrabold leading-tight">{pool.name}</h1>
+          <p className="relative z-10 mt-1 text-sm text-white/85">
+            {pool.volumeLiters.toLocaleString("he-IL")} ליטר · {new Date(test.date).toLocaleDateString("he-IL")}
+          </p>
+        </div>
 
         {test.results.source && (
           <div className="mt-3 flex items-center gap-2 text-xs flex-wrap">
