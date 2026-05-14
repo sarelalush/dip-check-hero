@@ -123,8 +123,11 @@ function ScanScreen() {
 
 function Tip({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-xl bg-secondary/60 px-3 py-2 text-sm text-foreground">
-      <span className="text-primary">{icon}</span> {text}
+    <div className="flex flex-col items-center gap-1 rounded-2xl border border-border/60 bg-card px-2 py-3 text-center text-xs font-medium text-foreground shadow-sm">
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary">
+        {icon}
+      </span>
+      {text}
     </div>
   );
 }
