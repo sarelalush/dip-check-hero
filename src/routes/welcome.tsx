@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Droplet, Sparkles } from "lucide-react";
 import { useEffect } from "react";
+import { WaterWaves } from "@/components/WaterWaves";
 import { useAuth } from "@/hooks/useAuth";
 
 export const Route = createFileRoute("/welcome")({
