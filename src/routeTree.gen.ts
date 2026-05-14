@@ -19,6 +19,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResultsTestIdRouteImport } from './routes/results.$testId'
 import { Route as PoolNewRouteImport } from './routes/pool.new'
+import { Route as PoolPoolIdRouteImport } from './routes/pool.$poolId'
 
 const WelcomeRoute = WelcomeRouteImport.update({
   id: '/welcome',
@@ -70,6 +71,11 @@ const PoolNewRoute = PoolNewRouteImport.update({
   path: '/pool/new',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PoolPoolIdRoute = PoolPoolIdRouteImport.update({
+  id: '/pool/$poolId',
+  path: '/pool/$poolId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -80,6 +86,7 @@ export interface FileRoutesByFullPath {
   '/select-pool': typeof SelectPoolRoute
   '/signup': typeof SignupRoute
   '/welcome': typeof WelcomeRoute
+  '/pool/$poolId': typeof PoolPoolIdRoute
   '/pool/new': typeof PoolNewRoute
   '/results/$testId': typeof ResultsTestIdRoute
 }
@@ -92,6 +99,7 @@ export interface FileRoutesByTo {
   '/select-pool': typeof SelectPoolRoute
   '/signup': typeof SignupRoute
   '/welcome': typeof WelcomeRoute
+  '/pool/$poolId': typeof PoolPoolIdRoute
   '/pool/new': typeof PoolNewRoute
   '/results/$testId': typeof ResultsTestIdRoute
 }
@@ -105,6 +113,7 @@ export interface FileRoutesById {
   '/select-pool': typeof SelectPoolRoute
   '/signup': typeof SignupRoute
   '/welcome': typeof WelcomeRoute
+  '/pool/$poolId': typeof PoolPoolIdRoute
   '/pool/new': typeof PoolNewRoute
   '/results/$testId': typeof ResultsTestIdRoute
 }
@@ -119,6 +128,7 @@ export interface FileRouteTypes {
     | '/select-pool'
     | '/signup'
     | '/welcome'
+    | '/pool/$poolId'
     | '/pool/new'
     | '/results/$testId'
   fileRoutesByTo: FileRoutesByTo
@@ -131,6 +141,7 @@ export interface FileRouteTypes {
     | '/select-pool'
     | '/signup'
     | '/welcome'
+    | '/pool/$poolId'
     | '/pool/new'
     | '/results/$testId'
   id:
@@ -143,6 +154,7 @@ export interface FileRouteTypes {
     | '/select-pool'
     | '/signup'
     | '/welcome'
+    | '/pool/$poolId'
     | '/pool/new'
     | '/results/$testId'
   fileRoutesById: FileRoutesById
@@ -156,6 +168,7 @@ export interface RootRouteChildren {
   SelectPoolRoute: typeof SelectPoolRoute
   SignupRoute: typeof SignupRoute
   WelcomeRoute: typeof WelcomeRoute
+  PoolPoolIdRoute: typeof PoolPoolIdRoute
   PoolNewRoute: typeof PoolNewRoute
   ResultsTestIdRoute: typeof ResultsTestIdRoute
 }
@@ -232,6 +245,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PoolNewRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/pool/$poolId': {
+      id: '/pool/$poolId'
+      path: '/pool/$poolId'
+      fullPath: '/pool/$poolId'
+      preLoaderRoute: typeof PoolPoolIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -244,6 +264,7 @@ const rootRouteChildren: RootRouteChildren = {
   SelectPoolRoute: SelectPoolRoute,
   SignupRoute: SignupRoute,
   WelcomeRoute: WelcomeRoute,
+  PoolPoolIdRoute: PoolPoolIdRoute,
   PoolNewRoute: PoolNewRoute,
   ResultsTestIdRoute: ResultsTestIdRoute,
 }
