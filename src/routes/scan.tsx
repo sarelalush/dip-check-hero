@@ -121,7 +121,7 @@ function ScanScreen() {
             className="flex w-full items-center justify-center gap-3 rounded-2xl border-2 border-primary/20 bg-card px-6 py-4 text-base font-semibold text-foreground transition active:scale-[0.98] disabled:opacity-60"
           >
             {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Camera className="h-6 w-6" />}
-            {loading ? "מנתח את הסטיק..." : "צלם תמונה רגילה"}
+            {loading ? "מעבד את התמונה..." : "צלם תמונה רגילה"}
           </button>
           <button
             disabled={loading}

@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Camera, X, Loader2 } from "lucide-react";
 import { analyzeFrameQuality, type FrameQuality } from "@/utils/frameQuality";
-import { analyzeStripImage, combineStripResults, StripNotDetectedError } from "@/utils/analyzeStripImage";
+import { isolateStripOnWhite } from "@/utils/isolateStrip";
 import { scanSession } from "@/utils/scanSession";
 
 export const Route = createFileRoute("/scan-live")({
@@ -11,10 +11,6 @@ export const Route = createFileRoute("/scan-live")({
 });
 
 const STABLE_FRAMES_NEEDED = 4; // ~2s of good frames before auto-capture
-const CONSENSUS_CAPTURES_NEEDED = 3;
-const CONSENSUS_CAPTURE_DELAY_MS = 450;
-
-const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 function LiveScanScreen() {
   const navigate = useNavigate();
