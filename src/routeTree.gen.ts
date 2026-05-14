@@ -9,14 +9,27 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WelcomeRouteImport } from './routes/welcome'
+import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SelectPoolRouteImport } from './routes/select-pool'
 import { Route as ScanLiveRouteImport } from './routes/scan-live'
 import { Route as ScanRouteImport } from './routes/scan'
 import { Route as PoolsRouteImport } from './routes/pools'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResultsTestIdRouteImport } from './routes/results.$testId'
 import { Route as PoolNewRouteImport } from './routes/pool.new'
 
+const WelcomeRoute = WelcomeRouteImport.update({
+  id: '/welcome',
+  path: '/welcome',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SignupRoute = SignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SelectPoolRoute = SelectPoolRouteImport.update({
   id: '/select-pool',
   path: '/select-pool',
@@ -37,6 +50,11 @@ const PoolsRoute = PoolsRouteImport.update({
   path: '/pools',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -55,29 +73,38 @@ const PoolNewRoute = PoolNewRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/pools': typeof PoolsRoute
   '/scan': typeof ScanRoute
   '/scan-live': typeof ScanLiveRoute
   '/select-pool': typeof SelectPoolRoute
+  '/signup': typeof SignupRoute
+  '/welcome': typeof WelcomeRoute
   '/pool/new': typeof PoolNewRoute
   '/results/$testId': typeof ResultsTestIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/pools': typeof PoolsRoute
   '/scan': typeof ScanRoute
   '/scan-live': typeof ScanLiveRoute
   '/select-pool': typeof SelectPoolRoute
+  '/signup': typeof SignupRoute
+  '/welcome': typeof WelcomeRoute
   '/pool/new': typeof PoolNewRoute
   '/results/$testId': typeof ResultsTestIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/login': typeof LoginRoute
   '/pools': typeof PoolsRoute
   '/scan': typeof ScanRoute
   '/scan-live': typeof ScanLiveRoute
   '/select-pool': typeof SelectPoolRoute
+  '/signup': typeof SignupRoute
+  '/welcome': typeof WelcomeRoute
   '/pool/new': typeof PoolNewRoute
   '/results/$testId': typeof ResultsTestIdRoute
 }
@@ -85,44 +112,70 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/login'
     | '/pools'
     | '/scan'
     | '/scan-live'
     | '/select-pool'
+    | '/signup'
+    | '/welcome'
     | '/pool/new'
     | '/results/$testId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/login'
     | '/pools'
     | '/scan'
     | '/scan-live'
     | '/select-pool'
+    | '/signup'
+    | '/welcome'
     | '/pool/new'
     | '/results/$testId'
   id:
     | '__root__'
     | '/'
+    | '/login'
     | '/pools'
     | '/scan'
     | '/scan-live'
     | '/select-pool'
+    | '/signup'
+    | '/welcome'
     | '/pool/new'
     | '/results/$testId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LoginRoute: typeof LoginRoute
   PoolsRoute: typeof PoolsRoute
   ScanRoute: typeof ScanRoute
   ScanLiveRoute: typeof ScanLiveRoute
   SelectPoolRoute: typeof SelectPoolRoute
+  SignupRoute: typeof SignupRoute
+  WelcomeRoute: typeof WelcomeRoute
   PoolNewRoute: typeof PoolNewRoute
   ResultsTestIdRoute: typeof ResultsTestIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/welcome': {
+      id: '/welcome'
+      path: '/welcome'
+      fullPath: '/welcome'
+      preLoaderRoute: typeof WelcomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/signup': {
+      id: '/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/select-pool': {
       id: '/select-pool'
       path: '/select-pool'
@@ -151,6 +204,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PoolsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -177,10 +237,13 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LoginRoute: LoginRoute,
   PoolsRoute: PoolsRoute,
   ScanRoute: ScanRoute,
   ScanLiveRoute: ScanLiveRoute,
   SelectPoolRoute: SelectPoolRoute,
+  SignupRoute: SignupRoute,
+  WelcomeRoute: WelcomeRoute,
   PoolNewRoute: PoolNewRoute,
   ResultsTestIdRoute: ResultsTestIdRoute,
 }
