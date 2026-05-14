@@ -145,6 +145,14 @@ function ScanConfirmScreen() {
             {analyzing ? "מנתח את הסטיק..." : "הצבעים נראים טוב — המשך"}
           </button>
           <button
+            onClick={() => navigate({ to: "/scan-adjust" })}
+            disabled={analyzing || !scanSession.get().rawImageDataUrl}
+            className="flex w-full items-center justify-center gap-3 rounded-2xl border-2 border-primary/30 bg-primary/5 px-6 py-4 text-base font-semibold text-foreground transition active:scale-[0.98] disabled:opacity-60"
+          >
+            <Crop className="h-5 w-5 text-primary" />
+            כוון ידנית את אזור הסטיק
+          </button>
+          <button
             onClick={handleRetake}
             disabled={analyzing}
             className="flex w-full items-center justify-center gap-3 rounded-2xl border-2 border-primary/20 bg-card px-6 py-4 text-base font-semibold text-foreground transition active:scale-[0.98] disabled:opacity-60"
