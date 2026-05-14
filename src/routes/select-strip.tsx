@@ -1,11 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Camera, Check, ChevronLeft, Loader2, Plus, Send } from "lucide-react";
+import { ArrowRight, Camera, Check, ChevronLeft, Clock, Loader2, Lock, Plus, Send } from "lucide-react";
 import { STRIP_BRANDS, type StripBrand } from "@/config/stripBrands";
 import { getBrandSwatches, type ParamSwatches } from "@/config/brandSwatches";
 import { scanSession } from "@/utils/scanSession";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+
+const SUPPORTED_BRAND_IDS = new Set(["aquachek-pro-5in1", "aquachek-yellow-4"]);
 
 export const Route = createFileRoute("/select-strip")({
   head: () => ({ meta: [{ title: "בחירת סטיק בדיקה — AquaSense" }] }),
