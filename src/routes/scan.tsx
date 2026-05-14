@@ -60,6 +60,23 @@ function ScanScreen() {
           </div>
         </div>
 
+        {/* Selected brand confirmation */}
+        <Link
+          to="/select-strip"
+          className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-primary/25 bg-primary/5 px-4 py-3 text-right transition hover:bg-primary/10"
+        >
+          <div className="flex items-center gap-2 text-xs font-semibold text-primary underline-offset-2 hover:underline">
+            החלף סטיק
+          </div>
+          <div className="flex items-center gap-2">
+            <div>
+              <div className="text-[10px] font-semibold tracking-wider text-muted-foreground">סטיק נבחר</div>
+              <div className="text-sm font-bold text-foreground">{getBrand(scanSession.get().brandId).nameHe}</div>
+            </div>
+            <CheckCircle2 className="h-5 w-5 text-primary" />
+          </div>
+        </Link>
+
         {/* Strip frame illustration */}
         <div
           className="relative mt-6 overflow-hidden rounded-3xl p-7 shadow-[var(--shadow-card)]"
