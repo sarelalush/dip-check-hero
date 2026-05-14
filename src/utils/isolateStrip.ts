@@ -119,7 +119,11 @@ function findComponents(mask: Uint8Array, width: number, height: number): Compon
   return components.sort((a, b) => b.area - a.area).slice(0, 30);
 }
 
-function chooseAlignedComponents(components: Component[], width: number, height: number): Component[] {
+function chooseAlignedComponents(
+  components: Component[],
+  width: number,
+  height: number,
+): Component[] {
   if (components.length <= 1) return components;
 
   const sizes = components.map((c) => Math.max(c.maxX - c.minX + 1, c.maxY - c.minY + 1));
@@ -138,16 +142,19 @@ function chooseAlignedComponents(components: Component[], width: number, height:
 
       const ux = dx / dist;
       const uy = dy / dist;
-      const group = components.filter((c) => Math.abs((c.cx - a.cx) * -uy + (c.cy - a.cy) * ux) <= tolerance);
+      const group = components.filter(
+        (c) => Math.abs((c.cx - a.cx) * -uy + (c.cy - a.cy) * ux) <= tolerance,
+      );
       if (group.length < 2) continue;
 
       const ts = group.map((c) => c.cx * ux + c.cy * uy);
       const range = Math.max(...ts) - Math.min(...ts);
       const totalArea = group.reduce((sum, c) => sum + c.area, 0);
-      const centerPenalty = Math.hypot(
-        group.reduce((sum, c) => sum + c.cx, 0) / group.length - width / 2,
-        group.reduce((sum, c) => sum + c.cy, 0) / group.length - height / 2,
-      ) * 0.2;
+      const centerPenalty =
+        Math.hypot(
+          group.reduce((sum, c) => sum + c.cx, 0) / group.length - width / 2,
+          group.reduce((sum, c) => sum + c.cy, 0) / group.length - height / 2,
+        ) * 0.2;
       const score = group.length * 1200 + range * 4 + totalArea * 0.08 - centerPenalty;
       if (score > bestScore) {
         bestScore = score;
