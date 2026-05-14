@@ -43,30 +43,45 @@ function ScanScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div dir="rtl" className="min-h-screen bg-background">
       <div className="mx-auto max-w-md px-5 pt-6 pb-10">
-        <Link to="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground mb-4">
+        <Link to="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground mb-4 transition hover:text-foreground">
           <ArrowRight className="h-4 w-4" /> חזרה
         </Link>
 
-        <h1 className="text-2xl font-extrabold text-foreground">סריקת סטיק בדיקה</h1>
-        <p className="mt-1 text-sm text-muted-foreground">צלם או העלה תמונה של הסטיק שלך</p>
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Camera className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-extrabold text-foreground leading-tight">סריקת סטיק בדיקה</h1>
+            <p className="text-sm text-muted-foreground">צלם או העלה תמונה של הסטיק שלך</p>
+          </div>
+        </div>
 
         {/* Strip frame illustration */}
-        <div className="mt-6 rounded-3xl bg-[var(--gradient-card)] p-6 shadow-[var(--shadow-card)]">
-          <div className="mx-auto flex h-48 w-20 flex-col overflow-hidden rounded-xl border-2 border-dashed border-primary/40 bg-secondary">
+        <div
+          className="relative mt-6 overflow-hidden rounded-3xl p-7 shadow-[var(--shadow-card)]"
+          style={{ background: "var(--gradient-card)" }}
+        >
+          <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/10 blur-3xl" />
+          <div className="pointer-events-none absolute -left-8 -bottom-8 h-32 w-32 rounded-full bg-cyan-200/40 blur-2xl" />
+
+          <div className="relative mx-auto flex h-52 w-24 animate-float-slow flex-col overflow-hidden rounded-2xl border-2 border-dashed border-primary/40 bg-secondary shadow-lg ring-4 ring-primary/5">
             {["#FFE066", "#FF8C42", "#E63946", "#A8DADC", "#457B9D"].map((c) => (
               <div key={c} className="flex-1" style={{ backgroundColor: c }} />
             ))}
           </div>
-          <p className="mt-3 text-center text-xs text-muted-foreground">מקם את הסטיק במרכז המסגרת</p>
+          <p className="relative mt-4 text-center text-xs font-medium text-muted-foreground">
+            מקם את הסטיק במרכז המסגרת
+          </p>
         </div>
 
         {/* Tips */}
-        <div className="mt-6 space-y-2">
-          <Tip icon={<Sun className="h-4 w-4" />} text="צלם באור טוב" />
-          <Tip icon={<Square className="h-4 w-4" />} text="הנח על רקע בהיר" />
-          <Tip icon={<Eye className="h-4 w-4" />} text="ודא שכל הריבועים הצבעוניים נראים בבירור" />
+        <div className="mt-6 grid grid-cols-3 gap-2">
+          <Tip icon={<Sun className="h-4 w-4" />} text="אור טוב" />
+          <Tip icon={<Square className="h-4 w-4" />} text="רקע בהיר" />
+          <Tip icon={<Eye className="h-4 w-4" />} text="כל הריבועים" />
         </div>
 
         {/* Buttons */}
