@@ -140,7 +140,7 @@ function LiveScanScreen() {
       const raw = canvas.toDataURL("image/jpeg", 0.92);
       // Auto-isolate the strip on a clean white background.
       const isolated = await isolateStripOnWhite(raw).catch(() => raw);
-      scanSession.set({ pendingImageDataUrl: isolated, rawImageDataUrl: raw });
+      scanSession.set({ pendingImageDataUrl: isolated });
       // Stop camera before navigation.
       streamRef.current?.getTracks().forEach((t) => t.stop());
       navigate({ to: "/scan-confirm" });
