@@ -137,27 +137,16 @@ function LiveScanScreen() {
     setAnalysisError(null);
     try {
       const canvas = canvasRef.current!;
-      const sess = scanSession.get();
-      const captures: string[] = [];
-      const analyzed = [];
-      for (let i = 0; i < CONSENSUS_CAPTURES_NEEDED; i++) {
-        captures.push(canvas.toDataURL("image/jpeg", 0.9));
-        analyzed.push(await analyzeStripImage(captures[i], sess.brandId));
-        if (i < CONSENSUS_CAPTURES_NEEDED - 1) await wait(CONSENSUS_CAPTURE_DELAY_MS);
-      }
-      const results = combineStripResults(analyzed, sess.brandId);
-      scanSession.set({ results, imageDataUrl: captures[Math.floor(captures.length / 2)] });
-      // stop camera before navigation
+      const raw = canvas.toDataURL("image/jpeg", 0.92);
+      // Auto-isolate the strip on a clean white background.
+      const isolated = await isolateStripOnWhite(raw).catch(() => raw);
+      scanSession.set({ pendingImageDataUrl: isolated });
+      // Stop camera before navigation.
       streamRef.current?.getTracks().forEach((t) => t.stop());
-      navigate({ to: "/select-pool" });
+      navigate({ to: "/scan-confirm" });
     } catch (e) {
       console.error(e);
-      const msg =
-        e instanceof StripNotDetectedError
-          ? e.message
-          : e instanceof Error
-            ? e.message
-            : "שגיאה בניתוח. ממשיך לסרוק...";
+      const msg = e instanceof Error ? e.message : "שגיאה בלכידה. ממשיך לסרוק...";
       setAnalysisError(msg);
       // Resume scanning
       stableCountRef.current = 0;
@@ -267,7 +256,7 @@ function LiveScanScreen() {
         >
           {analyzing ? (
             <span className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> מייצב תוצאה מ-3 פריימים...
+              <Loader2 className="h-4 w-4 animate-spin" /> מעבד את התמונה...
             </span>
           ) : (
             quality?.tipHe ?? "מקם את הסטיק במרכז המסגרת"
