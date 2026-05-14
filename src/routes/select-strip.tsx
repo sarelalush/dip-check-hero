@@ -179,12 +179,12 @@ function BrandPreview({
 
       <div className="mt-5 space-y-4">
         {swatches.map((p) => (
-          <div key={p.paramKey} className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
+          <div key={p.paramKey} dir="ltr" className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
             <div className="flex items-baseline justify-between">
               <div className="text-sm font-bold text-foreground">{p.labelHe}</div>
               {p.unit && <div className="text-[11px] text-muted-foreground">{p.unit}</div>}
             </div>
-            <div dir="ltr" className="mt-3 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${p.swatches.length}, minmax(0, 1fr))` }}>
+            <div className="mt-3 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${p.swatches.length}, minmax(0, 1fr))` }}>
               {p.swatches.map((s) => (
                 <div key={`${p.paramKey}-${s.value}`} className="flex flex-col items-center gap-1">
                   <div
