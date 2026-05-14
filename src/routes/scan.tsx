@@ -1,8 +1,9 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { Camera, Image as ImageIcon, ArrowRight, Loader2, Sun, Square, Eye, AlertTriangle } from "lucide-react";
+import { Camera, Image as ImageIcon, ArrowRight, Loader2, Sun, Square, Eye, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { analyzeStripImage, StripNotDetectedError, type FailureReason } from "@/utils/analyzeStripImage";
 import { scanSession } from "@/utils/scanSession";
+import { getBrand } from "@/config/stripBrands";
 
 export const Route = createFileRoute("/scan")({
   head: () => ({ meta: [{ title: "סריקת סטיק — PoolCheck" }] }),
@@ -45,8 +46,8 @@ function ScanScreen() {
   return (
     <div dir="rtl" className="min-h-screen bg-background">
       <div className="mx-auto max-w-md px-5 pt-6 pb-10">
-        <Link to="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground mb-4 transition hover:text-foreground">
-          <ArrowRight className="h-4 w-4" /> חזרה
+        <Link to="/select-strip" className="inline-flex items-center gap-1 text-sm text-muted-foreground mb-4 transition hover:text-foreground">
+          <ArrowRight className="h-4 w-4" /> חזרה לבחירת סטיק
         </Link>
 
         <div className="flex items-center gap-3">
@@ -58,6 +59,23 @@ function ScanScreen() {
             <p className="text-sm text-muted-foreground">צלם או העלה תמונה של הסטיק שלך</p>
           </div>
         </div>
+
+        {/* Selected brand confirmation */}
+        <Link
+          to="/select-strip"
+          className="mt-4 flex items-center justify-between gap-3 rounded-2xl border border-primary/25 bg-primary/5 px-4 py-3 text-right transition hover:bg-primary/10"
+        >
+          <div className="flex items-center gap-2 text-xs font-semibold text-primary underline-offset-2 hover:underline">
+            החלף סטיק
+          </div>
+          <div className="flex items-center gap-2">
+            <div>
+              <div className="text-[10px] font-semibold tracking-wider text-muted-foreground">סטיק נבחר</div>
+              <div className="text-sm font-bold text-foreground">{getBrand(scanSession.get().brandId).nameHe}</div>
+            </div>
+            <CheckCircle2 className="h-5 w-5 text-primary" />
+          </div>
+        </Link>
 
         {/* Strip frame illustration */}
         <div

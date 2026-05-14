@@ -83,7 +83,7 @@ function HomeScreen() {
         {/* Actions */}
         <div className="mt-6 space-y-3">
           <Link
-            to="/scan"
+            to="/select-strip"
             className="group relative flex items-center justify-center gap-3 overflow-hidden rounded-2xl bg-primary px-6 py-5 text-lg font-bold text-primary-foreground shadow-[var(--shadow-soft)] transition active:scale-[0.98]"
           >
             <span
