@@ -45,8 +45,8 @@ function ScanScreen() {
   return (
     <div dir="rtl" className="min-h-screen bg-background">
       <div className="mx-auto max-w-md px-5 pt-6 pb-10">
-        <Link to="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground mb-4 transition hover:text-foreground">
-          <ArrowRight className="h-4 w-4" /> חזרה
+        <Link to="/select-strip" className="inline-flex items-center gap-1 text-sm text-muted-foreground mb-4 transition hover:text-foreground">
+          <ArrowRight className="h-4 w-4" /> חזרה לבחירת סטיק
         </Link>
 
         <div className="flex items-center gap-3">
