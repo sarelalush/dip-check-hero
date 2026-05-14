@@ -38,7 +38,7 @@ function SignupScreen() {
 
   async function google() {
     const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
-    if (r.error) setErr(typeof r.error === "string" ? r.error : (r.error as Error).message);
+    if ("error" in r && r.error) setErr(r.error instanceof Error ? r.error.message : String(r.error));
   }
 
   return (
