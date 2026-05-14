@@ -14,6 +14,7 @@ import { Route as SignupRouteImport } from './routes/signup'
 import { Route as SelectStripRouteImport } from './routes/select-strip'
 import { Route as SelectPoolRouteImport } from './routes/select-pool'
 import { Route as ScanLiveRouteImport } from './routes/scan-live'
+import { Route as ScanConfirmRouteImport } from './routes/scan-confirm'
 import { Route as ScanRouteImport } from './routes/scan'
 import { Route as PoolsRouteImport } from './routes/pools'
 import { Route as LoginRouteImport } from './routes/login'
@@ -45,6 +46,11 @@ const SelectPoolRoute = SelectPoolRouteImport.update({
 const ScanLiveRoute = ScanLiveRouteImport.update({
   id: '/scan-live',
   path: '/scan-live',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScanConfirmRoute = ScanConfirmRouteImport.update({
+  id: '/scan-confirm',
+  path: '/scan-confirm',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ScanRoute = ScanRouteImport.update({
@@ -88,6 +94,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/pools': typeof PoolsRoute
   '/scan': typeof ScanRoute
+  '/scan-confirm': typeof ScanConfirmRoute
   '/scan-live': typeof ScanLiveRoute
   '/select-pool': typeof SelectPoolRoute
   '/select-strip': typeof SelectStripRoute
@@ -102,6 +109,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/pools': typeof PoolsRoute
   '/scan': typeof ScanRoute
+  '/scan-confirm': typeof ScanConfirmRoute
   '/scan-live': typeof ScanLiveRoute
   '/select-pool': typeof SelectPoolRoute
   '/select-strip': typeof SelectStripRoute
@@ -117,6 +125,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/pools': typeof PoolsRoute
   '/scan': typeof ScanRoute
+  '/scan-confirm': typeof ScanConfirmRoute
   '/scan-live': typeof ScanLiveRoute
   '/select-pool': typeof SelectPoolRoute
   '/select-strip': typeof SelectStripRoute
@@ -133,6 +142,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/pools'
     | '/scan'
+    | '/scan-confirm'
     | '/scan-live'
     | '/select-pool'
     | '/select-strip'
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/pools'
     | '/scan'
+    | '/scan-confirm'
     | '/scan-live'
     | '/select-pool'
     | '/select-strip'
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/pools'
     | '/scan'
+    | '/scan-confirm'
     | '/scan-live'
     | '/select-pool'
     | '/select-strip'
@@ -176,6 +188,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   PoolsRoute: typeof PoolsRoute
   ScanRoute: typeof ScanRoute
+  ScanConfirmRoute: typeof ScanConfirmRoute
   ScanLiveRoute: typeof ScanLiveRoute
   SelectPoolRoute: typeof SelectPoolRoute
   SelectStripRoute: typeof SelectStripRoute
@@ -221,6 +234,13 @@ declare module '@tanstack/react-router' {
       path: '/scan-live'
       fullPath: '/scan-live'
       preLoaderRoute: typeof ScanLiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/scan-confirm': {
+      id: '/scan-confirm'
+      path: '/scan-confirm'
+      fullPath: '/scan-confirm'
+      preLoaderRoute: typeof ScanConfirmRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/scan': {
@@ -280,6 +300,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   PoolsRoute: PoolsRoute,
   ScanRoute: ScanRoute,
+  ScanConfirmRoute: ScanConfirmRoute,
   ScanLiveRoute: ScanLiveRoute,
   SelectPoolRoute: SelectPoolRoute,
   SelectStripRoute: SelectStripRoute,
@@ -292,12 +313,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

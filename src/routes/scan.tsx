@@ -1,7 +1,8 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { Camera, Image as ImageIcon, ArrowRight, Loader2, Sun, Square, Eye, AlertTriangle, CheckCircle2 } from "lucide-react";
-import { analyzeStripImage, StripNotDetectedError, type FailureReason } from "@/utils/analyzeStripImage";
+import { type FailureReason } from "@/utils/analyzeStripImage";
+import { isolateStripOnWhite } from "@/utils/isolateStrip";
 import { scanSession } from "@/utils/scanSession";
 import { getBrand } from "@/config/stripBrands";
 
@@ -26,19 +27,17 @@ function ScanScreen() {
         reader.onload = () => res(reader.result as string);
         reader.readAsDataURL(file);
       });
-      const results = await analyzeStripImage(dataUrl, scanSession.get().brandId);
-      scanSession.set({ results, imageDataUrl: dataUrl });
-      navigate({ to: "/select-pool" });
+      // Auto-detect the strip and place it on a clean white background,
+      // then let the user confirm before AI analysis.
+      const isolated = await isolateStripOnWhite(dataUrl).catch(() => dataUrl);
+      scanSession.set({ pendingImageDataUrl: isolated });
+      navigate({ to: "/scan-confirm" });
     } catch (e) {
       console.error(e);
-      if (e instanceof StripNotDetectedError) {
-        setFailure({ reason: e.reason, message: e.message });
-      } else {
-        setFailure({
-          reason: "unknown",
-          message: e instanceof Error ? e.message : "שגיאה בניתוח התמונה.",
-        });
-      }
+      setFailure({
+        reason: "unknown",
+        message: e instanceof Error ? e.message : "שגיאה בעיבוד התמונה.",
+      });
       setLoading(false);
     }
   }
@@ -122,7 +121,7 @@ function ScanScreen() {
             className="flex w-full items-center justify-center gap-3 rounded-2xl border-2 border-primary/20 bg-card px-6 py-4 text-base font-semibold text-foreground transition active:scale-[0.98] disabled:opacity-60"
           >
             {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Camera className="h-6 w-6" />}
-            {loading ? "מנתח את הסטיק..." : "צלם תמונה רגילה"}
+            {loading ? "מעבד את התמונה..." : "צלם תמונה רגילה"}
           </button>
           <button
             disabled={loading}

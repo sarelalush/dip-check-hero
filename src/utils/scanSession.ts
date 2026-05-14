@@ -4,6 +4,8 @@ import type { StripResults } from "./analyzeStripImage";
 interface Session {
   results?: StripResults;
   imageDataUrl?: string;
+  /** Captured + isolated image awaiting user confirmation before AI analysis. */
+  pendingImageDataUrl?: string;
   includeSalt?: boolean;
   brandId?: string;
 }
