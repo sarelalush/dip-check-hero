@@ -1,10 +1,13 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { Camera, Droplets, ListChecks } from "lucide-react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Camera, Droplets, ListChecks, LogOut } from "lucide-react";
+import { useEffect } from "react";
+import { useAuth } from "@/hooks/useAuth";
+import { GuestBanner } from "@/components/GuestBanner";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "בדיקת מים לבריכה — PoolCheck" },
+      { title: "AquaSense — בדיקת מים לבריכה" },
       { name: "description", content: "צלם סטיק בדיקה וקבל המלצה כמה חומר להוסיף לבריכה" },
     ],
   }),
@@ -12,9 +15,40 @@ export const Route = createFileRoute("/")({
 });
 
 function HomeScreen() {
+  const { isAuthenticated, isGuest, loading, user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!loading && !isAuthenticated && !isGuest) {
+      navigate({ to: "/welcome" });
+    }
+  }, [loading, isAuthenticated, isGuest, navigate]);
+
+  if (loading || (!isAuthenticated && !isGuest)) {
+    return <div className="min-h-screen bg-background" />;
+  }
+
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-md px-5 pt-10 pb-8">
+      <div className="mx-auto max-w-md px-5 pt-6 pb-8">
+        <div className="mb-3 flex items-center justify-between">
+          <button
+            onClick={async () => { await signOut(); navigate({ to: "/welcome" }); }}
+            className="flex items-center gap-1 rounded-full bg-muted px-3 py-1.5 text-xs text-muted-foreground"
+          >
+            <LogOut className="h-3.5 w-3.5" />
+            {isAuthenticated ? "יציאה" : "צא ממצב אורח"}
+          </button>
+          <div className="text-right">
+            <div className="text-xs text-muted-foreground">שלום</div>
+            <div className="text-sm font-bold text-foreground">
+              {isAuthenticated ? (user?.user_metadata?.display_name || user?.email) : "אורח"}
+            </div>
+          </div>
+        </div>
+
+        <GuestBanner />
+
         {/* Hero */}
         <div className="relative overflow-hidden rounded-3xl p-8 text-primary-foreground shadow-[var(--shadow-soft)]"
              style={{ background: "var(--gradient-hero)" }}>
@@ -46,7 +80,7 @@ function HomeScreen() {
         </div>
 
         <p className="mt-10 text-center text-xs text-muted-foreground leading-relaxed">
-          תומך ב-AquaChek Pool Test Strips · MVP
+          תומך ב-AquaChek Pool Test Strips
         </p>
       </div>
     </div>

@@ -54,7 +54,7 @@ function MyPoolsScreen() {
             pools.map((p) => (
               <div key={p.id} className="rounded-2xl bg-card p-4 shadow-[var(--shadow-card)]">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="text-right">
+                  <Link to="/pool/$poolId" params={{ poolId: p.id }} className="flex-1 text-right">
                     <div className="font-bold text-foreground">{p.name}</div>
                     <div className="text-sm text-muted-foreground">
                       {p.type === "salt" ? "בריכת מלח" : "כלור רגיל"} · {p.volumeLiters.toLocaleString("he-IL")} ליטר
@@ -64,7 +64,7 @@ function MyPoolsScreen() {
                         בדיקה אחרונה: {new Date(p.lastTestAt).toLocaleDateString("he-IL")}
                       </div>
                     )}
-                  </div>
+                  </Link>
                   <button onClick={() => remove(p.id)} className="text-destructive p-1">
                     <Trash2 className="h-4 w-4" />
                   </button>
