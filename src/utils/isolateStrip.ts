@@ -340,3 +340,45 @@ export async function isolateStripOnWhite(
 
   return out.toDataURL("image/jpeg", 0.94);
 }
+
+/**
+ * Manual crop: takes a normalized rectangle (0..1) over the original image,
+ * crops it, and composes onto a clean white canvas of `outWidth x outHeight`.
+ * Used when auto-detection fails and the user adjusts the strip area by hand.
+ */
+export async function cropRectToWhite(
+  sourceDataUrl: string,
+  rect: { x: number; y: number; w: number; h: number },
+  options: IsolateOptions = {},
+): Promise<string> {
+  const outWidth = options.outWidth ?? 640;
+  const outHeight = options.outHeight ?? 800;
+  const padding = options.padding ?? 56;
+
+  const img = await loadImage(sourceDataUrl);
+  const sx = Math.max(0, Math.round(rect.x * img.width));
+  const sy = Math.max(0, Math.round(rect.y * img.height));
+  const sw = Math.max(1, Math.round(rect.w * img.width));
+  const sh = Math.max(1, Math.round(rect.h * img.height));
+
+  const out = document.createElement("canvas");
+  out.width = outWidth;
+  out.height = outHeight;
+  const ctx = out.getContext("2d")!;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, outWidth, outHeight);
+
+  const availW = outWidth - padding * 2;
+  const availH = outHeight - padding * 2;
+  const scale = Math.min(availW / sw, availH / sh);
+  const drawW = sw * scale;
+  const drawH = sh * scale;
+  const dx = (outWidth - drawW) / 2;
+  const dy = (outHeight - drawH) / 2;
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, sx, sy, sw, sh, dx, dy, drawW, drawH);
+
+  return out.toDataURL("image/jpeg", 0.94);
+}
