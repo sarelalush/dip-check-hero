@@ -1,8 +1,9 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useRef, useState } from "react";
-import { Camera, Image as ImageIcon, ArrowRight, Loader2, Sun, Square, Eye, AlertTriangle } from "lucide-react";
+import { Camera, Image as ImageIcon, ArrowRight, Loader2, Sun, Square, Eye, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { analyzeStripImage, StripNotDetectedError, type FailureReason } from "@/utils/analyzeStripImage";
 import { scanSession } from "@/utils/scanSession";
+import { getBrand } from "@/config/stripBrands";
 
 export const Route = createFileRoute("/scan")({
   head: () => ({ meta: [{ title: "סריקת סטיק — PoolCheck" }] }),
