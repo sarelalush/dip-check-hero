@@ -6,6 +6,8 @@ interface Session {
   imageDataUrl?: string;
   /** Captured + isolated image awaiting user confirmation before AI analysis. */
   pendingImageDataUrl?: string;
+  /** Original raw capture (pre-isolation) — used for manual re-cropping. */
+  pendingOriginalDataUrl?: string;
   includeSalt?: boolean;
   brandId?: string;
 }

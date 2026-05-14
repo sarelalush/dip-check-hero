@@ -30,7 +30,7 @@ function ScanScreen() {
       // Auto-detect the strip and place it on a clean white background,
       // then let the user confirm before AI analysis.
       const isolated = await isolateStripOnWhite(dataUrl).catch(() => dataUrl);
-      scanSession.set({ pendingImageDataUrl: isolated });
+      scanSession.set({ pendingImageDataUrl: isolated, pendingOriginalDataUrl: dataUrl });
       navigate({ to: "/scan-confirm" });
     } catch (e) {
       console.error(e);
