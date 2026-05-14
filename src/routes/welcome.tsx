@@ -34,18 +34,18 @@ function WelcomeScreen() {
       <WaterWaves tone="light" height="h-40" />
 
       {/* Header / brand */}
-      <div className="z-10 flex w-full items-center justify-end gap-3 pt-2">
-        <div className="text-right">
+      <div className="z-10 flex w-full flex-col items-center gap-3 pt-2">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-white/15 backdrop-blur-sm">
+          <Droplet className="h-7 w-7 text-white" fill="white" />
+        </div>
+        <div className="text-center">
           <div className="text-xs font-semibold tracking-[0.25em] text-white/70">AQUASENSE</div>
           <div className="text-base font-bold text-white">ניהול חכם לבריכה</div>
-        </div>
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/15 backdrop-blur-sm">
-          <Droplet className="h-6 w-6 text-white" fill="white" />
         </div>
       </div>
 
       {/* Hero */}
-      <div className="z-10 mt-10 flex max-w-md flex-col items-end text-right">
+      <div className="z-10 mt-6 flex max-w-md flex-col items-center text-center">
         <Sparkles className="mb-4 h-7 w-7 text-cyan-200" />
         <h1 className="text-4xl font-extrabold leading-tight md:text-5xl">
           מים מאוזנים.
