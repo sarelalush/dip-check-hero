@@ -7,6 +7,7 @@ import {
   Loader2,
   AlertTriangle,
   Sparkles,
+  Crop,
 } from "lucide-react";
 import { scanSession } from "@/utils/scanSession";
 import {
