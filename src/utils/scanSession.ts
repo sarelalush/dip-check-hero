@@ -6,6 +6,8 @@ interface Session {
   imageDataUrl?: string;
   /** Captured + isolated image awaiting user confirmation before AI analysis. */
   pendingImageDataUrl?: string;
+  /** Raw captured image (before auto-isolation), used for manual adjustment. */
+  rawImageDataUrl?: string;
   includeSalt?: boolean;
   brandId?: string;
 }
