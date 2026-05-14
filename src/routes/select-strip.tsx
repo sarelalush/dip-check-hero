@@ -7,7 +7,7 @@ import { scanSession } from "@/utils/scanSession";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 
-const SUPPORTED_BRAND_IDS = new Set(["aquachek-pro-5in1", "aquachek-yellow-4"]);
+const SUPPORTED_BRAND_IDS = new Set(["aquachek-pro-5in1"]);
 
 export const Route = createFileRoute("/select-strip")({
   head: () => ({ meta: [{ title: "בחירת סטיק בדיקה — AquaSense" }] }),
