@@ -184,7 +184,7 @@ function BrandPreview({
               <div className="text-sm font-bold text-foreground">{p.labelHe}</div>
               {p.unit && <div className="text-[11px] text-muted-foreground">{p.unit}</div>}
             </div>
-            <div className="mt-3 grid grid-cols-6 gap-1.5">
+            <div dir="ltr" className="mt-3 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${p.swatches.length}, minmax(0, 1fr))` }}>
               {p.swatches.map((s) => (
                 <div key={`${p.paramKey}-${s.value}`} className="flex flex-col items-center gap-1">
                   <div
