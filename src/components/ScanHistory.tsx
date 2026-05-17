@@ -8,10 +8,10 @@ import {
   TrendingUp,
 } from "lucide-react";
 import {
+  Area,
+  AreaChart,
   CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
+  ReferenceArea,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -60,12 +60,12 @@ const statusLabel: Record<string, string> = {
   high: "גבוה",
 };
 
-const PARAM_META: { key: string; labelHe: string; color: string }[] = [
-  { key: "ph", labelHe: "pH", color: "hsl(220 80% 55%)" },
-  { key: "freeChlorine", labelHe: "כלור חופשי", color: "hsl(140 65% 45%)" },
-  { key: "totalChlorine", labelHe: "כלור כולל", color: "hsl(170 60% 45%)" },
-  { key: "alkalinity", labelHe: "אלקליניות", color: "hsl(30 85% 55%)" },
-  { key: "bromine", labelHe: "ברום", color: "hsl(320 65% 55%)" },
+const PARAM_META: { key: string; labelHe: string; color: string; unit: string; idealMin?: number; idealMax?: number }[] = [
+  { key: "ph", labelHe: "pH", color: "hsl(220 85% 58%)", unit: "", idealMin: 7.2, idealMax: 7.6 },
+  { key: "freeChlorine", labelHe: "כלור חופשי", color: "hsl(140 65% 45%)", unit: "ppm", idealMin: 1, idealMax: 3 },
+  { key: "totalChlorine", labelHe: "כלור כולל", color: "hsl(170 60% 45%)", unit: "ppm", idealMin: 1, idealMax: 3 },
+  { key: "alkalinity", labelHe: "אלקליניות", color: "hsl(30 85% 55%)", unit: "ppm", idealMin: 80, idealMax: 120 },
+  { key: "bromine", labelHe: "ברום", color: "hsl(320 65% 55%)", unit: "ppm", idealMin: 2, idealMax: 4 },
 ];
 
 export function ScanReport({ results, recommendations }: { results: unknown; recommendations: unknown }) {
@@ -235,35 +235,68 @@ export function MySection({
   const myPools = useMemo(() => pools.filter((p) => p.user_id === userId), [pools, userId]);
   const [expandedTest, setExpandedTest] = useState<string | null>(null);
   const [selectedPool, setSelectedPool] = useState<string>("");
+  const [selectedParam, setSelectedParam] = useState<string>("ph");
 
   useEffect(() => {
     if (!selectedPool && myPools.length > 0) setSelectedPool(myPools[0].id);
   }, [myPools, selectedPool]);
 
-  const chartData = useMemo(() => {
-    if (!selectedPool) return [];
+  const poolTests = useMemo(() => {
+    if (!selectedPool) return [] as TestRow[];
     return myTests
       .filter((t) => t.pool_id === selectedPool)
       .slice()
-      .sort((a, b) => +new Date(a.tested_at) - +new Date(b.tested_at))
-      .map((t) => {
-        const r = (t.results ?? {}) as { readings?: Record<string, { value?: number }> };
-        const readings = r.readings ?? {};
-        const row: Record<string, number | string> = {
-          date: new Date(t.tested_at).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit" }),
-        };
-        for (const p of PARAM_META) {
-          const v = readings[p.key]?.value;
-          if (typeof v === "number") row[p.key] = v;
-        }
-        return row;
-      });
+      .sort((a, b) => +new Date(a.tested_at) - +new Date(b.tested_at));
   }, [myTests, selectedPool]);
 
-  const activeParams = useMemo(
-    () => PARAM_META.filter((p) => chartData.some((d) => typeof d[p.key] === "number")),
-    [chartData],
-  );
+  const availableParams = useMemo(() => {
+    return PARAM_META.filter((p) =>
+      poolTests.some((t) => {
+        const r = (t.results ?? {}) as { readings?: Record<string, { value?: number }> };
+        return typeof r.readings?.[p.key]?.value === "number";
+      }),
+    );
+  }, [poolTests]);
+
+  useEffect(() => {
+    if (availableParams.length > 0 && !availableParams.some((p) => p.key === selectedParam)) {
+      setSelectedParam(availableParams[0].key);
+    }
+  }, [availableParams, selectedParam]);
+
+  const param = PARAM_META.find((p) => p.key === selectedParam) ?? PARAM_META[0];
+
+  const chartData = useMemo(() => {
+    return poolTests
+      .map((t) => {
+        const r = (t.results ?? {}) as { readings?: Record<string, { value?: number }> };
+        const v = r.readings?.[selectedParam]?.value;
+        if (typeof v !== "number") return null;
+        const d = new Date(t.tested_at);
+        return {
+          t: d.getTime(),
+          dateLabel: d.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit" }),
+          fullLabel: `${d.toLocaleDateString("he-IL")} ${d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}`,
+          value: v,
+        };
+      })
+      .filter((x): x is { t: number; dateLabel: string; fullLabel: string; value: number } => !!x);
+  }, [poolTests, selectedParam]);
+
+  const yDomain = useMemo<[number, number]>(() => {
+    const values = chartData.map((d) => d.value);
+    if (param.idealMin !== undefined) values.push(param.idealMin);
+    if (param.idealMax !== undefined) values.push(param.idealMax);
+    if (values.length === 0) return [0, 1];
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const pad = (max - min) * 0.15 || max * 0.1 || 1;
+    return [Math.max(0, +(min - pad).toFixed(2)), +(max + pad).toFixed(2)];
+  }, [chartData, param]);
+
+  const latest = chartData[chartData.length - 1];
+  const previous = chartData[chartData.length - 2];
+  const trend = latest && previous ? latest.value - previous.value : 0;
 
   return (
     <div className="space-y-4">
@@ -353,48 +386,144 @@ export function MySection({
             </select>
           )}
         </div>
-        <div className="p-4">
-          {myPools.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">אין בריכות.</div>
-          ) : chartData.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">אין סריקות לבריכה זו.</div>
-          ) : chartData.length === 1 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              צריך לפחות 2 סריקות כדי להציג מגמה. יש כרגע סריקה אחת.
+
+        {myPools.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">אין בריכות.</div>
+        ) : availableParams.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">אין סריקות לבריכה זו.</div>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-1.5 px-4 pt-3">
+              {availableParams.map((p) => {
+                const active = p.key === selectedParam;
+                return (
+                  <button
+                    key={p.key}
+                    onClick={() => setSelectedParam(p.key)}
+                    className={`rounded-full border px-3 py-1 text-xs font-bold transition ${
+                      active
+                        ? "border-transparent text-white shadow-sm"
+                        : "border-border bg-background text-muted-foreground hover:bg-muted/50"
+                    }`}
+                    style={active ? { background: p.color } : undefined}
+                  >
+                    {p.labelHe}
+                  </button>
+                );
+              })}
             </div>
-          ) : (
-            <div dir="ltr" className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    contentStyle={{
-                      borderRadius: 8,
-                      border: "1px solid hsl(var(--border))",
-                      background: "hsl(var(--card))",
-                      fontSize: 12,
-                    }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  {activeParams.map((p) => (
-                    <Line
-                      key={p.key}
-                      type="monotone"
-                      dataKey={p.key}
-                      name={p.labelHe}
-                      stroke={p.color}
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                      connectNulls
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
+
+            <div className="flex flex-wrap items-baseline gap-4 px-4 pt-3 pb-1">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  ערך אחרון
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-extrabold" style={{ color: param.color }}>
+                    {latest ? latest.value : "—"}
+                  </span>
+                  {param.unit && <span className="text-xs text-muted-foreground">{param.unit}</span>}
+                </div>
+              </div>
+              {latest && previous && (
+                <div className="text-[11px] text-muted-foreground">
+                  שינוי:{" "}
+                  <span className={trend > 0 ? "font-bold text-rose-600" : trend < 0 ? "font-bold text-emerald-600" : "font-bold text-muted-foreground"}>
+                    {trend > 0 ? "+" : ""}
+                    {trend.toFixed(2)}
+                  </span>
+                </div>
+              )}
+              {param.idealMin !== undefined && param.idealMax !== undefined && (
+                <div className="text-[11px] text-muted-foreground">
+                  טווח רצוי: <span className="font-bold text-foreground">{param.idealMin}–{param.idealMax}</span>
+                  {param.unit ? ` ${param.unit}` : ""}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            <div className="p-4 pt-2">
+              {chartData.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">אין נתונים לפרמטר זה.</div>
+              ) : (
+                <div dir="ltr" className="h-80 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData} margin={{ top: 16, right: 24, left: 8, bottom: 24 }}>
+                      <defs>
+                        <linearGradient id={`grad-${param.key}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={param.color} stopOpacity={0.35} />
+                          <stop offset="100%" stopColor={param.color} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      {param.idealMin !== undefined && param.idealMax !== undefined && (
+                        <ReferenceArea
+                          y1={param.idealMin}
+                          y2={param.idealMax}
+                          fill="hsl(140 60% 50%)"
+                          fillOpacity={0.08}
+                          stroke="hsl(140 60% 50%)"
+                          strokeOpacity={0.25}
+                          strokeDasharray="4 4"
+                          label={{ value: "טווח רצוי", fontSize: 10, fill: "hsl(140 40% 35%)", position: "insideTopRight" }}
+                        />
+                      )}
+                      <XAxis
+                        dataKey="dateLabel"
+                        tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                        axisLine={{ stroke: "hsl(var(--border))" }}
+                        tickLine={{ stroke: "hsl(var(--border))" }}
+                        label={{ value: "תאריך סריקה", position: "insideBottom", offset: -10, fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                      />
+                      <YAxis
+                        domain={yDomain}
+                        tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                        axisLine={{ stroke: "hsl(var(--border))" }}
+                        tickLine={{ stroke: "hsl(var(--border))" }}
+                        width={48}
+                        label={{ value: `${param.labelHe}${param.unit ? ` (${param.unit})` : ""}`, angle: -90, position: "insideLeft", fontSize: 11, fill: "hsl(var(--muted-foreground))", style: { textAnchor: "middle" } }}
+                      />
+                      <Tooltip
+                        cursor={{ stroke: param.color, strokeOpacity: 0.3, strokeWidth: 1 }}
+                        contentStyle={{
+                          borderRadius: 10,
+                          border: "1px solid hsl(var(--border))",
+                          background: "hsl(var(--card))",
+                          fontSize: 12,
+                          boxShadow: "0 6px 24px rgba(0,0,0,0.08)",
+                        }}
+                        formatter={(value: number) => [`${value}${param.unit ? ` ${param.unit}` : ""}`, param.labelHe]}
+                        labelFormatter={(_, payload) => {
+                          const p = payload?.[0]?.payload as { fullLabel?: string } | undefined;
+                          return p?.fullLabel ?? "";
+                        }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke={param.color}
+                        strokeWidth={2.5}
+                        fill={`url(#grad-${param.key})`}
+                        dot={{
+                          r: 5,
+                          fill: "hsl(var(--card))",
+                          stroke: param.color,
+                          strokeWidth: 2.5,
+                        }}
+                        activeDot={{
+                          r: 7,
+                          fill: param.color,
+                          stroke: "hsl(var(--card))",
+                          strokeWidth: 2.5,
+                        }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
