@@ -60,6 +60,7 @@ function PoolFormScreen() {
     );
   }
 
+  function computeVolume(): number {
     if (method === "manual") {
       const v = parseFloat(manualVal) || 0;
       return unit === "liters" ? v : v * 1000;
