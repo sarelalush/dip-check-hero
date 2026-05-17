@@ -1,6 +1,6 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 import { AuthProvider } from "@/hooks/useAuth";
-import { PaymentTestModeBanner } from "@/components/PaymentTestModeBanner";
+
 
 import appCss from "../styles.css?url";
 
