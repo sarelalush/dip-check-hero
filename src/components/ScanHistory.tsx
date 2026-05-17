@@ -235,35 +235,68 @@ export function MySection({
   const myPools = useMemo(() => pools.filter((p) => p.user_id === userId), [pools, userId]);
   const [expandedTest, setExpandedTest] = useState<string | null>(null);
   const [selectedPool, setSelectedPool] = useState<string>("");
+  const [selectedParam, setSelectedParam] = useState<string>("ph");
 
   useEffect(() => {
     if (!selectedPool && myPools.length > 0) setSelectedPool(myPools[0].id);
   }, [myPools, selectedPool]);
 
-  const chartData = useMemo(() => {
-    if (!selectedPool) return [];
+  const poolTests = useMemo(() => {
+    if (!selectedPool) return [] as TestRow[];
     return myTests
       .filter((t) => t.pool_id === selectedPool)
       .slice()
-      .sort((a, b) => +new Date(a.tested_at) - +new Date(b.tested_at))
-      .map((t) => {
-        const r = (t.results ?? {}) as { readings?: Record<string, { value?: number }> };
-        const readings = r.readings ?? {};
-        const row: Record<string, number | string> = {
-          date: new Date(t.tested_at).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit" }),
-        };
-        for (const p of PARAM_META) {
-          const v = readings[p.key]?.value;
-          if (typeof v === "number") row[p.key] = v;
-        }
-        return row;
-      });
+      .sort((a, b) => +new Date(a.tested_at) - +new Date(b.tested_at));
   }, [myTests, selectedPool]);
 
-  const activeParams = useMemo(
-    () => PARAM_META.filter((p) => chartData.some((d) => typeof d[p.key] === "number")),
-    [chartData],
-  );
+  const availableParams = useMemo(() => {
+    return PARAM_META.filter((p) =>
+      poolTests.some((t) => {
+        const r = (t.results ?? {}) as { readings?: Record<string, { value?: number }> };
+        return typeof r.readings?.[p.key]?.value === "number";
+      }),
+    );
+  }, [poolTests]);
+
+  useEffect(() => {
+    if (availableParams.length > 0 && !availableParams.some((p) => p.key === selectedParam)) {
+      setSelectedParam(availableParams[0].key);
+    }
+  }, [availableParams, selectedParam]);
+
+  const param = PARAM_META.find((p) => p.key === selectedParam) ?? PARAM_META[0];
+
+  const chartData = useMemo(() => {
+    return poolTests
+      .map((t) => {
+        const r = (t.results ?? {}) as { readings?: Record<string, { value?: number }> };
+        const v = r.readings?.[selectedParam]?.value;
+        if (typeof v !== "number") return null;
+        const d = new Date(t.tested_at);
+        return {
+          t: d.getTime(),
+          dateLabel: d.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit" }),
+          fullLabel: `${d.toLocaleDateString("he-IL")} ${d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}`,
+          value: v,
+        };
+      })
+      .filter((x): x is { t: number; dateLabel: string; fullLabel: string; value: number } => !!x);
+  }, [poolTests, selectedParam]);
+
+  const yDomain = useMemo<[number, number]>(() => {
+    const values = chartData.map((d) => d.value);
+    if (param.idealMin !== undefined) values.push(param.idealMin);
+    if (param.idealMax !== undefined) values.push(param.idealMax);
+    if (values.length === 0) return [0, 1];
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const pad = (max - min) * 0.15 || max * 0.1 || 1;
+    return [Math.max(0, +(min - pad).toFixed(2)), +(max + pad).toFixed(2)];
+  }, [chartData, param]);
+
+  const latest = chartData[chartData.length - 1];
+  const previous = chartData[chartData.length - 2];
+  const trend = latest && previous ? latest.value - previous.value : 0;
 
   return (
     <div className="space-y-4">
