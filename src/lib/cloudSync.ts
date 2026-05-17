@@ -82,6 +82,9 @@ export async function syncFromCloud() {
 
   writeLocal(POOLS_KEY, localPools);
   writeLocal(TESTS_KEY, localTests);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("poolcheck:cloud-synced"));
+  }
 }
 
 export async function pushPool(pool: Pool) {
