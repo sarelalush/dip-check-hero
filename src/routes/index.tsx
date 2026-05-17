@@ -1,8 +1,8 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Camera, Droplets, ListChecks, LogOut, Sparkles } from "lucide-react";
+import { Camera, Droplets, ListChecks, LogOut, Sparkles, Shield } from "lucide-react";
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { GuestBanner } from "@/components/GuestBanner";
+import { useIsAdmin } from "@/hooks/useIsAdmin";
 import { WaterWaves } from "@/components/WaterWaves";
 
 export const Route = createFileRoute("/")({
@@ -16,16 +16,17 @@ export const Route = createFileRoute("/")({
 });
 
 function HomeScreen() {
-  const { isAuthenticated, isGuest, loading, user, signOut } = useAuth();
+  const { isAuthenticated, loading, user, signOut } = useAuth();
+  const { isAdmin } = useIsAdmin();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && !isAuthenticated && !isGuest) {
+    if (!loading && !isAuthenticated) {
       navigate({ to: "/welcome" });
     }
-  }, [loading, isAuthenticated, isGuest, navigate]);
+  }, [loading, isAuthenticated, navigate]);
 
-  if (loading || (!isAuthenticated && !isGuest)) {
+  if (loading || !isAuthenticated) {
     return <div className="min-h-screen bg-background" />;
   }
 
@@ -39,13 +40,13 @@ function HomeScreen() {
             className="flex items-center gap-1.5 rounded-full bg-muted/70 px-3 py-1.5 text-xs text-muted-foreground transition hover:bg-muted"
           >
             <LogOut className="h-3.5 w-3.5" />
-            {isAuthenticated ? "יציאה" : "צא ממצב אורח"}
+            יציאה
           </button>
           <div className="flex items-center gap-2.5">
             <div className="text-right">
               <div className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">שלום</div>
               <div className="text-sm font-bold text-foreground">
-                {isAuthenticated ? (user?.user_metadata?.display_name || user?.email) : "אורח"}
+                {user?.user_metadata?.display_name || user?.email}
               </div>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -53,8 +54,6 @@ function HomeScreen() {
             </div>
           </div>
         </div>
-
-        <GuestBanner />
 
         {/* Hero with animated waves */}
         <div
@@ -100,6 +99,16 @@ function HomeScreen() {
             <ListChecks className="h-5 w-5 text-primary" />
             הבריכות שלי
           </Link>
+
+          {isAdmin && (
+            <Link
+              to="/admin"
+              className="flex items-center justify-center gap-3 rounded-2xl border border-amber-400/40 bg-amber-50 px-6 py-4 text-base font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100 active:scale-[0.98]"
+            >
+              <Shield className="h-5 w-5" />
+              לוח ניהול
+            </Link>
+          )}
         </div>
 
         <p className="mt-10 text-center text-xs text-muted-foreground leading-relaxed">
