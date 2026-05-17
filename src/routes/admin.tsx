@@ -224,7 +224,7 @@ function AdminScreen() {
       } else {
         const { error } = await supabase.from("subscriptions").insert({
           user_id: userId,
-          environment: env,
+          environment: "live",
           product_id: "pool_extra_addon",
           price_id: "admin_grant",
           status: "active",
