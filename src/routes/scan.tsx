@@ -5,6 +5,9 @@ import { type FailureReason } from "@/utils/analyzeStripImage";
 import { isolateStripOnWhite } from "@/utils/isolateStrip";
 import { scanSession } from "@/utils/scanSession";
 import { getBrand } from "@/config/stripBrands";
+import { useAuth } from "@/hooks/useAuth";
+import { useSubscription } from "@/hooks/useSubscription";
+import { PaywallCard } from "@/components/PaywallCard";
 
 export const Route = createFileRoute("/scan")({
   head: () => ({ meta: [{ title: "סריקת סטיק — PoolCheck" }] }),
@@ -17,6 +20,28 @@ function ScanScreen() {
   const galleryRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<{ reason: FailureReason; message: string } | null>(null);
+  const { isAuthenticated, isGuest } = useAuth();
+  const { hasBasePlan, freeScansRemaining, loading: subLoading } = useSubscription();
+
+  const blocked: "guest" | "free-exhausted" | null =
+    !subLoading && (isGuest || !isAuthenticated)
+      ? "guest"
+      : !subLoading && !hasBasePlan && freeScansRemaining <= 0
+      ? "free-exhausted"
+      : null;
+
+  if (blocked) {
+    return (
+      <div dir="rtl" className="min-h-screen bg-background">
+        <div className="mx-auto max-w-md px-5 pt-6 pb-10">
+          <Link to="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground mb-4">
+            <ArrowRight className="h-4 w-4" /> חזרה
+          </Link>
+          <PaywallCard reason={blocked} freeScansRemaining={freeScansRemaining} />
+        </div>
+      </div>
+    );
+  }
 
   async function handleFile(file: File) {
     setLoading(true);

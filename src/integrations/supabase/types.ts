@@ -55,6 +55,7 @@ export type Database = {
           created_at: string
           display_name: string | null
           email: string | null
+          free_scans_used: number
           id: string
           updated_at: string
           user_id: string
@@ -63,6 +64,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          free_scans_used?: number
           id?: string
           updated_at?: string
           user_id: string
@@ -71,6 +73,7 @@ export type Database = {
           created_at?: string
           display_name?: string | null
           email?: string | null
+          free_scans_used?: number
           id?: string
           updated_at?: string
           user_id?: string
@@ -104,6 +107,57 @@ export type Database = {
           notes?: string | null
           status?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean | null
+          created_at: string
+          current_period_end: string | null
+          current_period_start: string | null
+          environment: string
+          id: string
+          paddle_customer_id: string
+          paddle_subscription_id: string
+          price_id: string
+          product_id: string
+          quantity: number
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cancel_at_period_end?: boolean | null
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          environment?: string
+          id?: string
+          paddle_customer_id: string
+          paddle_subscription_id: string
+          price_id: string
+          product_id: string
+          quantity?: number
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cancel_at_period_end?: boolean | null
+          created_at?: string
+          current_period_end?: string | null
+          current_period_start?: string | null
+          environment?: string
+          id?: string
+          paddle_customer_id?: string
+          paddle_subscription_id?: string
+          price_id?: string
+          product_id?: string
+          quantity?: number
+          status?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -153,7 +207,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      allowed_pools_count: {
+        Args: { check_env?: string; user_uuid: string }
+        Returns: number
+      }
+      has_active_subscription: {
+        Args: { check_env?: string; user_uuid: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
