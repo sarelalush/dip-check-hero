@@ -21,7 +21,7 @@ interface ProfileRow {
 
 function AdminScreen() {
   const navigate = useNavigate();
-  const { isAuthenticated, loading: authLoading, user } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const { isAdmin, loading: adminLoading } = useIsAdmin();
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [tests, setTests] = useState<TestRow[]>([]);
