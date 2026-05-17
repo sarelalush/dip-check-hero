@@ -88,7 +88,7 @@ function AdminScreen() {
       supabase.from("tests").select("*").order("tested_at", { ascending: false }),
       supabase.from("pools").select("id, user_id, name"),
       supabase.from("user_roles").select("user_id, role"),
-      supabase.from("subscriptions").select("*").eq("environment", env),
+      supabase.from("subscriptions").select("*").eq("environment", "live"),
     ]);
     setProfiles((p.data ?? []) as ProfileRow[]);
     setTests((t.data ?? []) as TestRow[]);
@@ -186,7 +186,7 @@ function AdminScreen() {
       } else {
         const { error } = await supabase.from("subscriptions").insert({
           user_id: userId,
-          environment: env,
+          environment: "live",
           product_id: "pool_base_plan",
           price_id: "admin_grant",
           status: "active",
@@ -224,7 +224,7 @@ function AdminScreen() {
       } else {
         const { error } = await supabase.from("subscriptions").insert({
           user_id: userId,
-          environment: env,
+          environment: "live",
           product_id: "pool_extra_addon",
           price_id: "admin_grant",
           status: "active",
