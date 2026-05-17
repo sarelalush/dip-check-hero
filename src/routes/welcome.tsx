@@ -10,14 +10,14 @@ export const Route = createFileRoute("/welcome")({
 });
 
 function WelcomeScreen() {
-  const { isAuthenticated, isGuest, continueAsGuest, loading } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && (isAuthenticated || isGuest)) {
+    if (!loading && isAuthenticated) {
       navigate({ to: "/" });
     }
-  }, [loading, isAuthenticated, isGuest, navigate]);
+  }, [loading, isAuthenticated, navigate]);
 
   return (
     <div
