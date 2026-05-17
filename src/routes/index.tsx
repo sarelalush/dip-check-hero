@@ -115,6 +115,13 @@ function HomeScreen() {
             <ListChecks className="h-5 w-5 text-primary" />
             הבריכות שלי
           </Link>
+          <Link
+            to="/history"
+            className="flex items-center justify-center gap-3 rounded-2xl border border-primary/15 bg-card px-6 py-4 text-base font-semibold text-foreground shadow-sm transition hover:border-primary/30 active:scale-[0.98]"
+          >
+            <History className="h-5 w-5 text-primary" />
+            ההיסטוריה שלי
+          </Link>
 
           {isAdmin && (
             <Link
