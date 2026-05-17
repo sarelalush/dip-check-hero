@@ -10,14 +10,14 @@ export const Route = createFileRoute("/welcome")({
 });
 
 function WelcomeScreen() {
-  const { isAuthenticated, isGuest, continueAsGuest, loading } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!loading && (isAuthenticated || isGuest)) {
+    if (!loading && isAuthenticated) {
       navigate({ to: "/" });
     }
-  }, [loading, isAuthenticated, isGuest, navigate]);
+  }, [loading, isAuthenticated, navigate]);
 
   return (
     <div
@@ -71,15 +71,9 @@ function WelcomeScreen() {
         >
           התחברות
         </Link>
-        <button
-          onClick={() => {
-            continueAsGuest();
-            navigate({ to: "/" });
-          }}
-          className="block w-full pt-2 text-center text-sm font-medium text-white/80 underline-offset-4 hover:underline"
-        >
-          המשך כאורח
-        </button>
+        <p className="block w-full pt-3 text-center text-xs font-medium text-white/70">
+          3 סריקות חינם לכל משתמש חדש ✨
+        </p>
       </div>
     </div>
   );

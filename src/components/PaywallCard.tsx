@@ -15,8 +15,8 @@ export function PaywallCard({ reason, freeScansRemaining, allowedPools }: Paywal
 
   const content = {
     guest: {
-      title: "התחבר כדי לסרוק",
-      body: "אורחים יכולים לצפות באפליקציה — כדי לסרוק סטיק יש להתחבר. כל משתמש חדש מקבל 3 סריקות חינם.",
+      title: "צריך להתחבר כדי לסרוק",
+      body: "כדי לסרוק סטיק ולשמור את נתוני הבריכה — יש ליצור חשבון. כל משתמש חדש מקבל 3 סריקות חינם.",
       cta: "התחבר / הירשם",
       to: "/login" as const,
     },

@@ -63,17 +63,70 @@ export async function pushPool(pool: Pool) {
   });
 }
 
+// Convert dataURL to Blob for upload
+function dataUrlToBlob(dataUrl: string): Blob | null {
+  try {
+    const [meta, b64] = dataUrl.split(",");
+    const mime = /data:(.*?);base64/.exec(meta)?.[1] ?? "image/jpeg";
+    const bin = atob(b64);
+    const len = bin.length;
+    const arr = new Uint8Array(len);
+    for (let i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime });
+  } catch {
+    return null;
+  }
+}
+
+async function uploadScanImage(userId: string, testId: string, dataUrl: string): Promise<string | null> {
+  const blob = dataUrlToBlob(dataUrl);
+  if (!blob) return null;
+  const ext = blob.type.includes("png") ? "png" : "jpg";
+  const path = `${userId}/${testId}.${ext}`;
+  const { error } = await supabase.storage.from("scan-images").upload(path, blob, {
+    upsert: true,
+    contentType: blob.type,
+  });
+  if (error) {
+    console.error("scan image upload failed", error);
+    return null;
+  }
+  return path;
+}
+
 export async function pushTest(test: TestRecord) {
   const { data: u } = await supabase.auth.getUser();
   if (!u.user) return;
+
+  let imagePath: string | null = null;
+  if (test.imageDataUrl && test.imageDataUrl.startsWith("data:")) {
+    imagePath = await uploadScanImage(u.user.id, test.id, test.imageDataUrl);
+  } else if (test.imageDataUrl) {
+    imagePath = test.imageDataUrl;
+  }
+
   await supabase.from("tests").insert([{
+    id: test.id,
     user_id: u.user.id,
     pool_id: test.poolId,
     results: test.results as never,
     recommendations: test.recommendations as never,
-    image_url: test.imageDataUrl ?? null,
+    image_url: imagePath,
     tested_at: new Date(test.date).toISOString(),
   }]);
+
+  // Increment free_scans_used counter
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("free_scans_used")
+    .eq("user_id", u.user.id)
+    .maybeSingle();
+  if (profile) {
+    await supabase
+      .from("profiles")
+      .update({ free_scans_used: (profile.free_scans_used ?? 0) + 1 })
+      .eq("user_id", u.user.id);
+  }
 }
 
 export async function deletePoolCloud(id: string) {
@@ -84,7 +137,6 @@ export async function deletePoolCloud(id: string) {
 
 export function isAuthedSync(): boolean {
   if (typeof window === "undefined") return false;
-  // Quick check via localStorage supabase session; fine for fire-and-forget pushes
   try {
     const keys = Object.keys(localStorage);
     return keys.some((k) => k.startsWith("sb-") && k.endsWith("-auth-token"));
