@@ -4,7 +4,7 @@ import { ArrowRight, Shield, Users, FlaskConical, Loader2, ChevronDown, ChevronU
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { MySection, TestItem, type TestRow, type PoolRow } from "@/components/ScanHistory";
+import { TestItem, type TestRow, type PoolRow } from "@/components/ScanHistory";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "לוח ניהול — PoolCheck" }] }),
