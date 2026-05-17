@@ -249,14 +249,102 @@ function TestItem({ test, poolName }: { test: TestRow; poolName: string }) {
         </div>
       )}
 
-      <details className="mt-2">
-        <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-          נתוני סריקה (JSON)
-        </summary>
-        <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted p-2 text-[10px] text-foreground">
-          {JSON.stringify({ results: test.results, recommendations: test.recommendations }, null, 2)}
-        </pre>
-      </details>
+      <ScanReport results={test.results} recommendations={test.recommendations} />
+    </div>
+  );
+}
+
+interface Reading {
+  unit?: string;
+  value?: number;
+  status?: "ok" | "low" | "high" | string;
+  labelHe?: string;
+}
+interface Recommendation {
+  labelHe?: string;
+  actionHe?: string;
+  status?: string;
+  measured?: number;
+  target?: number;
+  unit?: string;
+}
+
+const statusStyles: Record<string, string> = {
+  ok: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  low: "bg-amber-100 text-amber-700 border-amber-200",
+  high: "bg-rose-100 text-rose-700 border-rose-200",
+};
+const statusLabel: Record<string, string> = {
+  ok: "תקין",
+  low: "נמוך",
+  high: "גבוה",
+};
+
+function ScanReport({ results, recommendations }: { results: unknown; recommendations: unknown }) {
+  const r = (results ?? {}) as { readings?: Record<string, Reading>; confidence?: number; brandId?: string; source?: string };
+  const readings = r.readings ?? {};
+  const recs = (Array.isArray(recommendations) ? recommendations : []) as Recommendation[];
+  const readingEntries = Object.entries(readings);
+
+  return (
+    <div className="mt-3 space-y-3">
+      {readingEntries.length > 0 && (
+        <div>
+          <div className="mb-1.5 text-xs font-bold text-muted-foreground">תוצאות מדידה</div>
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+            {readingEntries.map(([key, v]) => {
+              const status = String(v.status ?? "ok");
+              return (
+                <div key={key} className="rounded-lg border border-border bg-card px-2.5 py-2">
+                  <div className="text-[10px] text-muted-foreground">{v.labelHe ?? key}</div>
+                  <div className="mt-0.5 flex items-baseline gap-1">
+                    <span className="text-sm font-bold text-foreground">{v.value ?? "—"}</span>
+                    {v.unit && <span className="text-[10px] text-muted-foreground">{v.unit}</span>}
+                  </div>
+                  <span className={`mt-1 inline-block rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${statusStyles[status] ?? statusStyles.ok}`}>
+                    {statusLabel[status] ?? status}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {recs.length > 0 && (
+        <div>
+          <div className="mb-1.5 text-xs font-bold text-muted-foreground">המלצות טיפול</div>
+          <div className="space-y-1.5">
+            {recs.map((rec, i) => {
+              const status = String(rec.status ?? "ok");
+              return (
+                <div key={i} className="flex items-start gap-2 rounded-lg border border-border bg-card px-2.5 py-2">
+                  <span className={`mt-0.5 shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${statusStyles[status] ?? statusStyles.ok}`}>
+                    {statusLabel[status] ?? status}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold text-foreground">{rec.labelHe}</div>
+                    <div className="text-[11px] text-muted-foreground">{rec.actionHe}</div>
+                    {(rec.measured !== undefined || rec.target !== undefined) && (
+                      <div className="mt-0.5 text-[10px] text-muted-foreground">
+                        נמדד: {rec.measured ?? "—"}{rec.unit ? ` ${rec.unit}` : ""} · יעד: {rec.target ?? "—"}{rec.unit ? ` ${rec.unit}` : ""}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {(r.confidence !== undefined || r.brandId) && (
+        <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground">
+          {r.brandId && <span>ערכה: {r.brandId}</span>}
+          {r.confidence !== undefined && <span>· ביטחון: {Math.round((r.confidence ?? 0) * 100)}%</span>}
+          {r.source && <span>· מקור: {r.source}</span>}
+        </div>
+      )}
     </div>
   );
 }
