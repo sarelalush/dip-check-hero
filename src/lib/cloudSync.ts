@@ -31,6 +31,15 @@ function writeLocal<T>(key: string, val: T[]) {
   if (typeof window !== "undefined") localStorage.setItem(key, JSON.stringify(val));
 }
 
+function readLocal<T>(key: string): T[] {
+  if (typeof window === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(key) || "[]") as T[];
+  } catch {
+    return [];
+  }
+}
+
 export function clearLocalCache() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(POOLS_KEY);
@@ -41,6 +50,11 @@ export function clearLocalCache() {
 export async function syncFromCloud() {
   const { data: u } = await supabase.auth.getUser();
   if (!u.user) return;
+
+  const localPoolsBeforeSync = readLocal<Pool>(POOLS_KEY);
+  const localTestsBeforeSync = readLocal<TestRecord>(TESTS_KEY);
+  await Promise.all(localPoolsBeforeSync.map((pool) => pushPool(pool).catch(console.error)));
+  await Promise.all(localTestsBeforeSync.map((test) => pushTest(test).catch(console.error)));
 
   const [{ data: pools }, { data: tests }] = await Promise.all([
     supabase.from("pools").select("*").order("created_at", { ascending: false }),
