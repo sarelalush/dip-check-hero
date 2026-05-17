@@ -1,8 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Camera, Droplets, ListChecks, LogOut, Sparkles, Shield } from "lucide-react";
+import { Camera, Droplets, ListChecks, LogOut, Sparkles, Shield, Crown, Gift } from "lucide-react";
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { useSubscription } from "@/hooks/useSubscription";
 import { WaterWaves } from "@/components/WaterWaves";
 
 export const Route = createFileRoute("/")({
@@ -18,6 +19,7 @@ export const Route = createFileRoute("/")({
 function HomeScreen() {
   const { isAuthenticated, loading, user, signOut } = useAuth();
   const { isAdmin } = useIsAdmin();
+  const { isEarlyBird, isPaying } = useSubscription();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -29,6 +31,14 @@ function HomeScreen() {
   if (loading || !isAuthenticated) {
     return <div className="min-h-screen bg-background" />;
   }
+
+  const badge = isAdmin
+    ? { icon: Shield, label: "מנהל", className: "bg-amber-100 text-amber-900 border-amber-300" }
+    : isPaying
+      ? { icon: Crown, label: "פרימיום", className: "bg-primary/10 text-primary border-primary/30" }
+      : isEarlyBird
+        ? { icon: Gift, label: "חודש חינם", className: "bg-emerald-100 text-emerald-900 border-emerald-300" }
+        : null;
 
   return (
     <div dir="rtl" className="min-h-screen bg-background">
@@ -48,6 +58,12 @@ function HomeScreen() {
               <div className="text-sm font-bold text-foreground">
                 {user?.user_metadata?.display_name || user?.email}
               </div>
+              {badge && (
+                <div className={`mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badge.className}`}>
+                  <badge.icon className="h-3 w-3" />
+                  {badge.label}
+                </div>
+              )}
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
               <Droplets className="h-5 w-5" fill="currentColor" />

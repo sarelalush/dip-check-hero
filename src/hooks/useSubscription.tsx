@@ -23,6 +23,9 @@ interface SubscriptionState {
   rows: SubscriptionRow[];
   freeScansUsed: number;
   freeScansRemaining: number;
+  isAdmin: boolean;
+  isEarlyBird: boolean;
+  isPaying: boolean; // has an actual paid subscription
   refetch: () => Promise<void>;
 }
 
@@ -45,17 +48,21 @@ export function useSubscription(): SubscriptionState {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<SubscriptionRow[]>([]);
   const [freeScansUsed, setFreeScansUsed] = useState(0);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isEarlyBird, setIsEarlyBird] = useState(false);
 
   const fetchAll = useCallback(async () => {
     if (!user) {
       setRows([]);
       setFreeScansUsed(0);
+      setIsAdmin(false);
+      setIsEarlyBird(false);
       setLoading(false);
       return;
     }
     setLoading(true);
     const env = getPaddleEnvironment();
-    const [{ data: subs }, { data: prof }] = await Promise.all([
+    const [{ data: subs }, { data: prof }, { data: adminRow }, { data: earlyBird }] = await Promise.all([
       supabase
         .from("subscriptions")
         .select("*")
@@ -67,9 +74,18 @@ export function useSubscription(): SubscriptionState {
         .select("free_scans_used")
         .eq("user_id", user.id)
         .maybeSingle(),
+      supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id)
+        .eq("role", "admin")
+        .maybeSingle(),
+      supabase.rpc("is_early_bird_free", { user_uuid: user.id }),
     ]);
     setRows((subs as unknown as SubscriptionRow[]) || []);
     setFreeScansUsed((prof?.free_scans_used as number) ?? 0);
+    setIsAdmin(!!adminRow);
+    setIsEarlyBird(!!earlyBird);
     setLoading(false);
   }, [user]);
 
@@ -93,13 +109,18 @@ export function useSubscription(): SubscriptionState {
   }, [user, fetchAll]);
 
   const activeRows = rows.filter(isRowActive);
-  const hasBasePlan = activeRows.some((r) => r.product_id === "pool_base_plan");
+  const isPaying = activeRows.some((r) => r.product_id === "pool_base_plan");
+  const hasBasePlan = isPaying || isAdmin || isEarlyBird;
   const extraPools = hasBasePlan
     ? activeRows
         .filter((r) => r.product_id === "pool_extra_addon")
         .reduce((s, r) => s + (r.quantity || 0), 0)
     : 0;
-  const allowedPools = hasBasePlan ? 1 + extraPools : 0;
+  const allowedPools = isAdmin
+    ? 999
+    : hasBasePlan
+      ? 1 + extraPools
+      : 0;
   const freeScansRemaining = Math.max(0, FREE_SCAN_LIMIT - freeScansUsed);
 
   return {
@@ -110,6 +131,9 @@ export function useSubscription(): SubscriptionState {
     rows,
     freeScansUsed,
     freeScansRemaining,
+    isAdmin,
+    isEarlyBird,
+    isPaying,
     refetch: fetchAll,
   };
 }
