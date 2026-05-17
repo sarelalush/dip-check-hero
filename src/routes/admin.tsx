@@ -4,7 +4,7 @@ import { ArrowRight, Shield, Users, FlaskConical, Loader2, ChevronDown, ChevronU
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { MySection, TestItem, type TestRow, type PoolRow } from "@/components/ScanHistory";
+import { TestItem, type TestRow, type PoolRow } from "@/components/ScanHistory";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "לוח ניהול — PoolCheck" }] }),
@@ -21,7 +21,7 @@ interface ProfileRow {
 
 function AdminScreen() {
   const navigate = useNavigate();
-  const { isAuthenticated, loading: authLoading, user } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   const { isAdmin, loading: adminLoading } = useIsAdmin();
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [tests, setTests] = useState<TestRow[]>([]);
@@ -115,16 +115,6 @@ function AdminScreen() {
           <StatCard icon={<Users className="h-5 w-5" />} label="משתמשים רשומים" value={profiles.length} />
           <StatCard icon={<FlaskConical className="h-5 w-5" />} label="סך סריקות" value={totalScans} />
         </div>
-
-        {/* My scans table + chart */}
-        {user && (
-          <MySection
-            userId={user.id}
-            tests={tests}
-            pools={pools}
-            poolName={poolName}
-          />
-        )}
 
         {loading ? (
           <div className="mt-10 flex justify-center">
