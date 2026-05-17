@@ -7,6 +7,9 @@ import { scanSession } from "@/utils/scanSession";
 import { calculateDosage } from "@/utils/calculateDosage";
 import { testStorage } from "@/utils/storage";
 import { z } from "zod";
+import { useAuth } from "@/hooks/useAuth";
+import { useSubscription } from "@/hooks/useSubscription";
+import { PaywallCard } from "@/components/PaywallCard";
 
 const searchSchema = z.object({ continueScan: z.coerce.number().optional() });
 
@@ -22,6 +25,17 @@ type Unit = "liters" | "cubic";
 function PoolFormScreen() {
   const navigate = useNavigate();
   const { continueScan } = Route.useSearch();
+  const { isAuthenticated, isGuest } = useAuth();
+  const { allowedPools, loading: subLoading } = useSubscription();
+  const existingCount = typeof window !== "undefined" ? poolStorage.list().length : 0;
+
+  const blocked: "guest" | "pool-limit" | null =
+    !isAuthenticated || isGuest
+      ? "guest"
+      : !subLoading && existingCount >= allowedPools
+      ? "pool-limit"
+      : null;
+
   const [name, setName] = useState("");
   const [type, setType] = useState<PoolType>("chlorine");
   const [method, setMethod] = useState<Method>("manual");
@@ -33,7 +47,19 @@ function PoolFormScreen() {
   const [diameter, setDiameter] = useState("");
   const [depth, setDepth] = useState("");
 
-  function computeVolume(): number {
+  if (blocked) {
+    return (
+      <div dir="rtl" className="min-h-screen bg-background">
+        <div className="mx-auto max-w-md px-5 pt-6 pb-10">
+          <Link to="/pools" className="inline-flex items-center gap-1 text-sm text-muted-foreground mb-4">
+            <ArrowRight className="h-4 w-4" /> חזרה
+          </Link>
+          <PaywallCard reason={blocked} allowedPools={allowedPools} />
+        </div>
+      </div>
+    );
+  }
+
     if (method === "manual") {
       const v = parseFloat(manualVal) || 0;
       return unit === "liters" ? v : v * 1000;
