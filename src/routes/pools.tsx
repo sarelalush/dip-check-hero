@@ -14,7 +14,12 @@ function MyPoolsScreen() {
   const [pools, setPools] = useState<Pool[]>([]);
 
   function refresh() { setPools(poolStorage.list()); }
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    refresh();
+    const onSync = () => refresh();
+    window.addEventListener("poolcheck:cloud-synced", onSync);
+    return () => window.removeEventListener("poolcheck:cloud-synced", onSync);
+  }, []);
 
   function startScanFor(pool: Pool) {
     scanSession.set({ includeSalt: pool.type === "salt" });
