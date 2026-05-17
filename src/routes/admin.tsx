@@ -88,7 +88,7 @@ function AdminScreen() {
       supabase.from("tests").select("*").order("tested_at", { ascending: false }),
       supabase.from("pools").select("id, user_id, name"),
       supabase.from("user_roles").select("user_id, role"),
-      supabase.from("subscriptions").select("*").eq("environment", env),
+      supabase.from("subscriptions").select("*").eq("environment", "live"),
     ]);
     setProfiles((p.data ?? []) as ProfileRow[]);
     setTests((t.data ?? []) as TestRow[]);
