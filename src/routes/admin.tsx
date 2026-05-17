@@ -308,8 +308,10 @@ function AdminScreen() {
               const isUserAdmin = adminIds.has(p.user_id);
               const userSubs = subsByUser.get(p.user_id) ?? {};
               const hasPaid = !!userSubs.base;
+              const isEarlyBird = earlyBirdIds.has(p.user_id);
+              const hasAccess = hasPaid || isUserAdmin || isEarlyBird;
               const extraPools = userSubs.addon?.quantity ?? 0;
-              const allowedPools = (hasPaid || isUserAdmin ? 1 : 0) + extraPools + (isUserAdmin ? 0 : 0);
+              const allowedPools = isUserAdmin ? 999 : (hasPaid || isEarlyBird ? 1 : 0) + extraPools;
 
               return (
                 <div key={p.user_id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
