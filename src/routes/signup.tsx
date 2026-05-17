@@ -42,6 +42,7 @@ function SignupScreen() {
     if ("error" in r && r.error) {
       window.sessionStorage.removeItem("aquasense:postOAuthRedirect");
       setErr(r.error instanceof Error ? r.error.message : String(r.error));
+      return;
     }
     if (!("redirected" in r) || !r.redirected) navigate({ to: "/select-strip", replace: true });
   }
