@@ -71,15 +71,9 @@ function WelcomeScreen() {
         >
           התחברות
         </Link>
-        <button
-          onClick={() => {
-            continueAsGuest();
-            navigate({ to: "/" });
-          }}
-          className="block w-full pt-2 text-center text-sm font-medium text-white/80 underline-offset-4 hover:underline"
-        >
-          המשך כאורח
-        </button>
+        <p className="block w-full pt-3 text-center text-xs font-medium text-white/70">
+          3 סריקות חינם לכל משתמש חדש ✨
+        </p>
       </div>
     </div>
   );
