@@ -23,6 +23,9 @@ interface SubscriptionState {
   rows: SubscriptionRow[];
   freeScansUsed: number;
   freeScansRemaining: number;
+  isAdmin: boolean;
+  isEarlyBird: boolean;
+  isPaying: boolean; // has an actual paid subscription
   refetch: () => Promise<void>;
 }
 
