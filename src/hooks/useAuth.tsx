@@ -18,6 +18,18 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const POST_OAUTH_REDIRECT_KEY = "aquasense:postOAuthRedirect";
+
+function consumePostOAuthRedirect(sess: Session | null) {
+  if (!sess?.user || typeof window === "undefined") return;
+  const target = window.sessionStorage.getItem(POST_OAUTH_REDIRECT_KEY);
+  if (!target) return;
+  window.sessionStorage.removeItem(POST_OAUTH_REDIRECT_KEY);
+  const safeTarget = target.startsWith("/") ? target : "/select-strip";
+  if (window.location.pathname !== safeTarget) {
+    window.location.replace(safeTarget);
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -28,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_evt, sess) => {
       setSession(sess);
       setUser(sess?.user ?? null);
+      consumePostOAuthRedirect(sess);
       if (sess?.user) {
         setTimeout(() => syncFromCloud().catch(console.error), 0);
       }
@@ -36,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
       setSession(s);
       setUser(s?.user ?? null);
+      consumePostOAuthRedirect(s);
       if (s?.user) syncFromCloud().catch(console.error);
       setLoading(false);
     });
