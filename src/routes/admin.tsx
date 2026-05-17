@@ -130,6 +130,16 @@ function AdminScreen() {
           <StatCard icon={<FlaskConical className="h-5 w-5" />} label="סך סריקות" value={totalScans} />
         </div>
 
+        {/* My scans table + chart */}
+        {user && (
+          <MySection
+            userId={user.id}
+            tests={tests}
+            pools={pools}
+            poolName={poolName}
+          />
+        )}
+
         {loading ? (
           <div className="mt-10 flex justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
