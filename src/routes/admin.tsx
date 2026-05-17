@@ -131,6 +131,20 @@ function AdminScreen() {
 
   const adminIds = useMemo(() => new Set(roles.filter((r) => r.role === "admin").map((r) => r.user_id)), [roles]);
 
+  // First 20 registered users get one free month (matches public.is_early_bird_free)
+  const earlyBirdIds = useMemo(() => {
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const sorted = [...profiles].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    return new Set(
+      sorted
+        .slice(0, 20)
+        .filter((p) => new Date(p.created_at).getTime() > cutoff)
+        .map((p) => p.user_id),
+    );
+  }, [profiles]);
+
   const subsByUser = useMemo(() => {
     const map = new Map<string, { base?: SubscriptionRow; addon?: SubscriptionRow }>();
     for (const s of subs) {
