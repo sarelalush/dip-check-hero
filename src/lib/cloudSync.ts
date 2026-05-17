@@ -137,9 +137,7 @@ export async function pushTest(test: TestRecord) {
   const cloudTestId = getCloudId(test.id);
   const cloudPoolId = getCloudId(test.poolId);
 
-  const pool = typeof window !== "undefined"
-    ? (JSON.parse(localStorage.getItem(POOLS_KEY) || "[]") as Pool[]).find((p) => p.id === test.poolId)
-    : undefined;
+  const pool = readLocal<Pool>(POOLS_KEY).find((p) => p.id === test.poolId);
   if (pool) await pushPool(pool);
 
   let imagePath: string | null = null;
