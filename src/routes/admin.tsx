@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Shield, Users, FlaskConical, Loader2, Image as ImageIcon, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowRight, Shield, Users, FlaskConical, Loader2, Image as ImageIcon, ChevronDown, ChevronUp, FileText, TrendingUp } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
