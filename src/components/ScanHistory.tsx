@@ -60,12 +60,12 @@ const statusLabel: Record<string, string> = {
   high: "גבוה",
 };
 
-const PARAM_META: { key: string; labelHe: string; color: string }[] = [
-  { key: "ph", labelHe: "pH", color: "hsl(220 80% 55%)" },
-  { key: "freeChlorine", labelHe: "כלור חופשי", color: "hsl(140 65% 45%)" },
-  { key: "totalChlorine", labelHe: "כלור כולל", color: "hsl(170 60% 45%)" },
-  { key: "alkalinity", labelHe: "אלקליניות", color: "hsl(30 85% 55%)" },
-  { key: "bromine", labelHe: "ברום", color: "hsl(320 65% 55%)" },
+const PARAM_META: { key: string; labelHe: string; color: string; unit: string; idealMin?: number; idealMax?: number }[] = [
+  { key: "ph", labelHe: "pH", color: "hsl(220 85% 58%)", unit: "", idealMin: 7.2, idealMax: 7.6 },
+  { key: "freeChlorine", labelHe: "כלור חופשי", color: "hsl(140 65% 45%)", unit: "ppm", idealMin: 1, idealMax: 3 },
+  { key: "totalChlorine", labelHe: "כלור כולל", color: "hsl(170 60% 45%)", unit: "ppm", idealMin: 1, idealMax: 3 },
+  { key: "alkalinity", labelHe: "אלקליניות", color: "hsl(30 85% 55%)", unit: "ppm", idealMin: 80, idealMax: 120 },
+  { key: "bromine", labelHe: "ברום", color: "hsl(320 65% 55%)", unit: "ppm", idealMin: 2, idealMax: 4 },
 ];
 
 export function ScanReport({ results, recommendations }: { results: unknown; recommendations: unknown }) {
