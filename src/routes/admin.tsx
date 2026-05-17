@@ -201,55 +201,79 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
 }
 
 function TestItem({ test, poolName }: { test: TestRow; poolName: string }) {
+  const [open, setOpen] = useState(false);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [loadingImg, setLoadingImg] = useState(false);
+  const [imgError, setImgError] = useState<string | null>(null);
 
-  async function viewImage() {
-    if (!test.image_url) return;
-    setLoadingImg(true);
-    // If it's already a URL, use directly. Otherwise generate signed URL from storage.
-    if (test.image_url.startsWith("http") || test.image_url.startsWith("data:")) {
-      setSignedUrl(test.image_url);
-    } else {
-      const { data } = await supabase.storage
+  useEffect(() => {
+    if (!open || !test.image_url || signedUrl) return;
+    let cancelled = false;
+    (async () => {
+      if (test.image_url!.startsWith("http") || test.image_url!.startsWith("data:")) {
+        if (!cancelled) setSignedUrl(test.image_url);
+        return;
+      }
+      const { data, error } = await supabase.storage
         .from("scan-images")
-        .createSignedUrl(test.image_url, 60 * 60);
-      setSignedUrl(data?.signedUrl ?? null);
-    }
-    setLoadingImg(false);
-  }
+        .createSignedUrl(test.image_url!, 60 * 60);
+      if (cancelled) return;
+      if (error || !data?.signedUrl) {
+        setImgError(error?.message ?? "לא נמצאה תמונה");
+      } else {
+        setSignedUrl(data.signedUrl);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, test.image_url, signedUrl]);
+
+  const date = new Date(test.tested_at);
+  const dateStr = date.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const timeStr = date.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div className="rounded-xl bg-card border border-border p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-xs text-muted-foreground">
-          {new Date(test.tested_at).toLocaleString("he-IL")}
+    <div className="rounded-xl border border-border bg-card overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-right transition hover:bg-muted/50"
+      >
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          {test.image_url && <ImageIcon className="h-3.5 w-3.5" />}
+          {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </div>
-        <div className="text-xs font-semibold text-foreground">בריכה: {poolName}</div>
-      </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold text-foreground">{dateStr} · {timeStr}</div>
+          <div className="text-[11px] text-muted-foreground truncate">בריכה: {poolName}</div>
+        </div>
+      </button>
 
-      {test.image_url && (
-        <div className="mt-2">
-          {!signedUrl ? (
-            <button
-              onClick={viewImage}
-              disabled={loadingImg}
-              className="flex items-center gap-1.5 rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary hover:bg-primary/20 disabled:opacity-60"
-            >
-              {loadingImg ? <Loader2 className="h-3 w-3 animate-spin" /> : <ImageIcon className="h-3 w-3" />}
-              צפה בתמונת הסריקה
-            </button>
+      {open && (
+        <div className="border-t border-border bg-background/60 px-3 py-3">
+          {test.image_url ? (
+            signedUrl ? (
+              <img
+                src={signedUrl}
+                alt="תמונת סריקה"
+                className="mb-3 max-h-72 w-full rounded-lg border border-border bg-white object-contain"
+              />
+            ) : imgError ? (
+              <div className="mb-3 rounded-lg border border-border bg-muted/40 p-3 text-center text-xs text-muted-foreground">
+                לא ניתן לטעון תמונה: {imgError}
+              </div>
+            ) : (
+              <div className="mb-3 flex h-32 items-center justify-center rounded-lg border border-border bg-muted/40">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
+            )
           ) : (
-            <img
-              src={signedUrl}
-              alt="תמונת סריקה"
-              className="mt-1 max-h-64 rounded-lg border border-border bg-white"
-            />
+            <div className="mb-3 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-center text-xs text-muted-foreground">
+              לא נשמרה תמונה לסריקה זו
+            </div>
           )}
+          <ScanReport results={test.results} recommendations={test.recommendations} />
         </div>
       )}
-
-      <ScanReport results={test.results} recommendations={test.recommendations} />
     </div>
   );
 }
