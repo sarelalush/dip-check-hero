@@ -131,6 +131,20 @@ function AdminScreen() {
 
   const adminIds = useMemo(() => new Set(roles.filter((r) => r.role === "admin").map((r) => r.user_id)), [roles]);
 
+  // First 20 registered users get one free month (matches public.is_early_bird_free)
+  const earlyBirdIds = useMemo(() => {
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const sorted = [...profiles].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    return new Set(
+      sorted
+        .slice(0, 20)
+        .filter((p) => new Date(p.created_at).getTime() > cutoff)
+        .map((p) => p.user_id),
+    );
+  }, [profiles]);
+
   const subsByUser = useMemo(() => {
     const map = new Map<string, { base?: SubscriptionRow; addon?: SubscriptionRow }>();
     for (const s of subs) {
@@ -294,8 +308,10 @@ function AdminScreen() {
               const isUserAdmin = adminIds.has(p.user_id);
               const userSubs = subsByUser.get(p.user_id) ?? {};
               const hasPaid = !!userSubs.base;
+              const isEarlyBird = earlyBirdIds.has(p.user_id);
+              const hasAccess = hasPaid || isUserAdmin || isEarlyBird;
               const extraPools = userSubs.addon?.quantity ?? 0;
-              const allowedPools = (hasPaid || isUserAdmin ? 1 : 0) + extraPools + (isUserAdmin ? 0 : 0);
+              const allowedPools = isUserAdmin ? 999 : (hasPaid || isEarlyBird ? 1 : 0) + extraPools;
 
               return (
                 <div key={p.user_id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
@@ -325,6 +341,16 @@ function AdminScreen() {
                         {hasPaid && (
                           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
                             <CreditCard className="h-3 w-3" /> בתשלום
+                          </span>
+                        )}
+                        {isEarlyBird && !hasPaid && !isUserAdmin && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+                            🎁 חודש חינם
+                          </span>
+                        )}
+                        {!hasAccess && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                            ללא גישה
                           </span>
                         )}
                       </div>
