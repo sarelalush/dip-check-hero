@@ -25,11 +25,11 @@ function LoginScreen() {
     const { error } = await signInWithEmail(email.trim(), password);
     setBusy(false);
     if (error) setErr(error);
-    else navigate({ to: "/" });
+    else navigate({ to: "/select-strip" });
   }
 
   async function google() {
-    const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
+    const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: `${window.location.origin}/select-strip` });
     if ("error" in r && r.error) setErr(r.error instanceof Error ? r.error.message : String(r.error));
   }
 
