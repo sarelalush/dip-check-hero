@@ -15,7 +15,7 @@ function WelcomeScreen() {
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
-      navigate({ to: "/" });
+      navigate({ to: "/select-strip", replace: true });
     }
   }, [loading, isAuthenticated, navigate]);
 
