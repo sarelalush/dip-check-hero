@@ -383,3 +383,198 @@ function ScanReport({ results, recommendations }: { results: unknown; recommenda
     </div>
   );
 }
+
+// ===== My scans table + chart =====
+
+const PARAM_META: { key: string; labelHe: string; color: string }[] = [
+  { key: "ph", labelHe: "pH", color: "hsl(220 80% 55%)" },
+  { key: "freeChlorine", labelHe: "כלור חופשי", color: "hsl(140 65% 45%)" },
+  { key: "totalChlorine", labelHe: "כלור כולל", color: "hsl(170 60% 45%)" },
+  { key: "alkalinity", labelHe: "אלקליניות", color: "hsl(30 85% 55%)" },
+  { key: "bromine", labelHe: "ברום", color: "hsl(320 65% 55%)" },
+];
+
+function MySection({
+  userId,
+  tests,
+  pools,
+  poolName,
+}: {
+  userId: string;
+  tests: TestRow[];
+  pools: PoolRow[];
+  poolName: Map<string, string>;
+}) {
+  const myTests = useMemo(
+    () => tests.filter((t) => t.user_id === userId).sort((a, b) => +new Date(b.tested_at) - +new Date(a.tested_at)),
+    [tests, userId],
+  );
+  const myPools = useMemo(() => pools.filter((p) => p.user_id === userId), [pools, userId]);
+  const [expandedTest, setExpandedTest] = useState<string | null>(null);
+  const [selectedPool, setSelectedPool] = useState<string>("");
+
+  useEffect(() => {
+    if (!selectedPool && myPools.length > 0) setSelectedPool(myPools[0].id);
+  }, [myPools, selectedPool]);
+
+  const chartData = useMemo(() => {
+    if (!selectedPool) return [];
+    return myTests
+      .filter((t) => t.pool_id === selectedPool)
+      .slice()
+      .sort((a, b) => +new Date(a.tested_at) - +new Date(b.tested_at))
+      .map((t) => {
+        const r = (t.results ?? {}) as { readings?: Record<string, { value?: number }> };
+        const readings = r.readings ?? {};
+        const row: Record<string, number | string> = {
+          date: new Date(t.tested_at).toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit" }),
+        };
+        for (const p of PARAM_META) {
+          const v = readings[p.key]?.value;
+          if (typeof v === "number") row[p.key] = v;
+        }
+        return row;
+      });
+  }, [myTests, selectedPool]);
+
+  const activeParams = useMemo(
+    () => PARAM_META.filter((p) => chartData.some((d) => typeof d[p.key] === "number")),
+    [chartData],
+  );
+
+  return (
+    <div className="mt-6 space-y-4">
+      {/* Table */}
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-4 py-3">
+          <FileText className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-extrabold text-foreground">הסריקות שלי</h2>
+          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">
+            {myTests.length}
+          </span>
+        </div>
+        {myTests.length === 0 ? (
+          <div className="p-6 text-center text-sm text-muted-foreground">עדיין לא ביצעת סריקות.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-right text-sm">
+              <thead className="bg-muted/20 text-xs text-muted-foreground">
+                <tr>
+                  <th className="px-4 py-2 font-semibold">תאריך</th>
+                  <th className="px-4 py-2 font-semibold">בריכה</th>
+                  <th className="px-4 py-2 font-semibold">תמונה</th>
+                  <th className="px-4 py-2 font-semibold"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {myTests.map((t) => {
+                  const isOpen = expandedTest === t.id;
+                  const d = new Date(t.tested_at);
+                  return (
+                    <Fragment key={t.id}>
+                      <tr className="border-t border-border hover:bg-muted/20">
+                        <td className="px-4 py-2.5 align-middle">
+                          <div className="font-semibold text-foreground">
+                            {d.toLocaleDateString("he-IL")}
+                          </div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 align-middle text-foreground">
+                          {poolName.get(t.pool_id) ?? "—"}
+                        </td>
+                        <td className="px-4 py-2.5 align-middle text-muted-foreground">
+                          {t.image_url ? <ImageIcon className="h-4 w-4 text-primary" /> : "—"}
+                        </td>
+                        <td className="px-4 py-2.5 align-middle">
+                          <button
+                            onClick={() => setExpandedTest(isOpen ? null : t.id)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-xs font-bold text-primary-foreground hover:opacity-90"
+                          >
+                            {isOpen ? "סגור" : "פתח דוח"}
+                            {isOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                          </button>
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr className="bg-muted/20">
+                          <td colSpan={4} className="px-4 py-3">
+                            <TestItem test={t} poolName={poolName.get(t.pool_id) ?? "—"} defaultOpen />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Chart */}
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-muted/30 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-extrabold text-foreground">מגמת נתוני סריקות</h2>
+          </div>
+          {myPools.length > 0 && (
+            <select
+              value={selectedPool}
+              onChange={(e) => setSelectedPool(e.target.value)}
+              className="rounded-lg border border-border bg-background px-2 py-1 text-xs font-semibold text-foreground"
+            >
+              {myPools.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="p-4">
+          {myPools.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">אין בריכות.</div>
+          ) : chartData.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">אין סריקות לבריכה זו.</div>
+          ) : chartData.length === 1 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              צריך לפחות 2 סריקות כדי להציג מגמה. יש כרגע סריקה אחת.
+            </div>
+          ) : (
+            <div dir="ltr" className="h-72 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip
+                    contentStyle={{
+                      borderRadius: 8,
+                      border: "1px solid hsl(var(--border))",
+                      background: "hsl(var(--card))",
+                      fontSize: 12,
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  {activeParams.map((p) => (
+                    <Line
+                      key={p.key}
+                      type="monotone"
+                      dataKey={p.key}
+                      name={p.labelHe}
+                      stroke={p.color}
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                      connectNulls
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
