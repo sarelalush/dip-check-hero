@@ -1,10 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Fragment, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Shield, Users, FlaskConical, Loader2, Image as ImageIcon, ChevronDown, ChevronUp, FileText, TrendingUp } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowRight, Shield, Users, FlaskConical, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
+import { MySection, TestItem, type TestRow, type PoolRow } from "@/components/ScanHistory";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({ meta: [{ title: "לוח ניהול — PoolCheck" }] }),
@@ -17,20 +17,6 @@ interface ProfileRow {
   email: string | null;
   created_at: string;
   free_scans_used: number;
-}
-interface TestRow {
-  id: string;
-  user_id: string;
-  pool_id: string;
-  tested_at: string;
-  image_url: string | null;
-  results: unknown;
-  recommendations: unknown;
-}
-interface PoolRow {
-  id: string;
-  user_id: string;
-  name: string;
 }
 
 function AdminScreen() {
