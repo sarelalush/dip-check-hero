@@ -1,6 +1,6 @@
 import type { StripResults } from "./analyzeStripImage";
 import type { DosageRecommendation } from "./calculateDosage";
-import { pushPool, pushTest, deletePoolCloud, isAuthedSync } from "@/lib/cloudSync";
+import { pushPool, pushTest, deletePoolCloud } from "@/lib/cloudSync";
 
 export type PoolType = "chlorine" | "salt";
 
