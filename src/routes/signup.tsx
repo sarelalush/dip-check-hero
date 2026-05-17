@@ -37,8 +37,13 @@ function SignupScreen() {
   }
 
   async function google() {
-    const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: window.location.origin });
-    if ("error" in r && r.error) setErr(r.error instanceof Error ? r.error.message : String(r.error));
+    window.sessionStorage.setItem("aquasense:postOAuthRedirect", "/select-strip");
+    const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: `${window.location.origin}/select-strip` });
+    if ("error" in r && r.error) {
+      window.sessionStorage.removeItem("aquasense:postOAuthRedirect");
+      setErr(r.error instanceof Error ? r.error.message : String(r.error));
+    }
+    if (!("redirected" in r) || !r.redirected) navigate({ to: "/select-strip", replace: true });
   }
 
   return (
