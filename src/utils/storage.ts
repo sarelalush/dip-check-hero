@@ -1,6 +1,6 @@
 import type { StripResults } from "./analyzeStripImage";
 import type { DosageRecommendation } from "./calculateDosage";
-import { pushPool, pushTest, deletePoolCloud, isAuthedSync } from "@/lib/cloudSync";
+import { pushPool, pushTest, deletePoolCloud } from "@/lib/cloudSync";
 
 export type PoolType = "chlorine" | "salt";
 
@@ -49,12 +49,12 @@ export const poolStorage = {
     if (idx >= 0) all[idx] = pool;
     else all.push(pool);
     write(POOLS_KEY, all);
-    if (isAuthedSync()) pushPool(pool).catch(console.error);
+    pushPool(pool).catch(console.error);
   },
   remove: (id: string) => {
     write(POOLS_KEY, read<Pool>(POOLS_KEY).filter((p) => p.id !== id));
     write(TESTS_KEY, read<TestRecord>(TESTS_KEY).filter((t) => t.poolId !== id));
-    if (isAuthedSync()) deletePoolCloud(id).catch(console.error);
+    deletePoolCloud(id).catch(console.error);
   },
 };
 
@@ -70,7 +70,7 @@ export const testStorage = {
       pool.lastTestAt = test.date;
       poolStorage.save(pool);
     }
-    if (isAuthedSync()) pushTest(test).catch(console.error);
+    pushTest(test).catch(console.error);
   },
 };
 
