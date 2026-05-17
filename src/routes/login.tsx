@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { lovable } from "@/integrations/lovable";
@@ -10,13 +10,19 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginScreen() {
-  const { signInWithEmail } = useAuth();
+  const { signInWithEmail, isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!loading && isAuthenticated) {
+      navigate({ to: "/select-strip", replace: true });
+    }
+  }, [loading, isAuthenticated, navigate]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,6 +37,7 @@ function LoginScreen() {
   async function google() {
     const r = await lovable.auth.signInWithOAuth("google", { redirect_uri: `${window.location.origin}/select-strip` });
     if ("error" in r && r.error) setErr(r.error instanceof Error ? r.error.message : String(r.error));
+    if (!("redirected" in r) || !r.redirected) navigate({ to: "/select-strip", replace: true });
   }
 
   return (
