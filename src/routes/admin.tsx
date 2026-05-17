@@ -211,8 +211,8 @@ function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string
   );
 }
 
-function TestItem({ test, poolName }: { test: TestRow; poolName: string }) {
-  const [open, setOpen] = useState(false);
+function TestItem({ test, poolName, defaultOpen = false }: { test: TestRow; poolName: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [imgError, setImgError] = useState<string | null>(null);
 
