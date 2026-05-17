@@ -8,10 +8,10 @@ import {
   TrendingUp,
 } from "lucide-react";
 import {
+  Area,
+  AreaChart,
   CartesianGrid,
-  Legend,
-  Line,
-  LineChart,
+  ReferenceArea,
   ResponsiveContainer,
   Tooltip,
   XAxis,
