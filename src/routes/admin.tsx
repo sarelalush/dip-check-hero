@@ -343,6 +343,16 @@ function AdminScreen() {
                             <CreditCard className="h-3 w-3" /> בתשלום
                           </span>
                         )}
+                        {isEarlyBird && !hasPaid && !isUserAdmin && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+                            🎁 חודש חינם
+                          </span>
+                        )}
+                        {!hasAccess && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">
+                            ללא גישה
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs text-muted-foreground truncate">
                         {p.email} · נרשם {new Date(p.created_at).toLocaleDateString("he-IL")}
