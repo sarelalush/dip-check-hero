@@ -1,0 +1,1 @@
+CREATE POLICY "users update own scan images" ON storage.objects FOR UPDATE TO public USING (bucket_id = 'scan-images' AND (auth.uid())::text = (storage.foldername(name))[1]);
