@@ -386,48 +386,144 @@ export function MySection({
             </select>
           )}
         </div>
-        <div className="p-4">
-          {myPools.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">אין בריכות.</div>
-          ) : chartData.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">אין סריקות לבריכה זו.</div>
-          ) : chartData.length === 1 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              צריך לפחות 2 סריקות כדי להציג מגמה. יש כרגע סריקה אחת.
+
+        {myPools.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">אין בריכות.</div>
+        ) : availableParams.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">אין סריקות לבריכה זו.</div>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-1.5 px-4 pt-3">
+              {availableParams.map((p) => {
+                const active = p.key === selectedParam;
+                return (
+                  <button
+                    key={p.key}
+                    onClick={() => setSelectedParam(p.key)}
+                    className={`rounded-full border px-3 py-1 text-xs font-bold transition ${
+                      active
+                        ? "border-transparent text-white shadow-sm"
+                        : "border-border bg-background text-muted-foreground hover:bg-muted/50"
+                    }`}
+                    style={active ? { background: p.color } : undefined}
+                  >
+                    {p.labelHe}
+                  </button>
+                );
+              })}
             </div>
-          ) : (
-            <div dir="ltr" className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData} margin={{ top: 10, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip
-                    contentStyle={{
-                      borderRadius: 8,
-                      border: "1px solid hsl(var(--border))",
-                      background: "hsl(var(--card))",
-                      fontSize: 12,
-                    }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: 12 }} />
-                  {activeParams.map((p) => (
-                    <Line
-                      key={p.key}
-                      type="monotone"
-                      dataKey={p.key}
-                      name={p.labelHe}
-                      stroke={p.color}
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                      connectNulls
-                    />
-                  ))}
-                </LineChart>
-              </ResponsiveContainer>
+
+            <div className="flex flex-wrap items-baseline gap-4 px-4 pt-3 pb-1">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  ערך אחרון
+                </div>
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-2xl font-extrabold" style={{ color: param.color }}>
+                    {latest ? latest.value : "—"}
+                  </span>
+                  {param.unit && <span className="text-xs text-muted-foreground">{param.unit}</span>}
+                </div>
+              </div>
+              {latest && previous && (
+                <div className="text-[11px] text-muted-foreground">
+                  שינוי:{" "}
+                  <span className={trend > 0 ? "font-bold text-rose-600" : trend < 0 ? "font-bold text-emerald-600" : "font-bold text-muted-foreground"}>
+                    {trend > 0 ? "+" : ""}
+                    {trend.toFixed(2)}
+                  </span>
+                </div>
+              )}
+              {param.idealMin !== undefined && param.idealMax !== undefined && (
+                <div className="text-[11px] text-muted-foreground">
+                  טווח רצוי: <span className="font-bold text-foreground">{param.idealMin}–{param.idealMax}</span>
+                  {param.unit ? ` ${param.unit}` : ""}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+
+            <div className="p-4 pt-2">
+              {chartData.length === 0 ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">אין נתונים לפרמטר זה.</div>
+              ) : (
+                <div dir="ltr" className="h-80 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData} margin={{ top: 16, right: 24, left: 8, bottom: 24 }}>
+                      <defs>
+                        <linearGradient id={`grad-${param.key}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={param.color} stopOpacity={0.35} />
+                          <stop offset="100%" stopColor={param.color} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      {param.idealMin !== undefined && param.idealMax !== undefined && (
+                        <ReferenceArea
+                          y1={param.idealMin}
+                          y2={param.idealMax}
+                          fill="hsl(140 60% 50%)"
+                          fillOpacity={0.08}
+                          stroke="hsl(140 60% 50%)"
+                          strokeOpacity={0.25}
+                          strokeDasharray="4 4"
+                          label={{ value: "טווח רצוי", fontSize: 10, fill: "hsl(140 40% 35%)", position: "insideTopRight" }}
+                        />
+                      )}
+                      <XAxis
+                        dataKey="dateLabel"
+                        tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                        axisLine={{ stroke: "hsl(var(--border))" }}
+                        tickLine={{ stroke: "hsl(var(--border))" }}
+                        label={{ value: "תאריך סריקה", position: "insideBottom", offset: -10, fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                      />
+                      <YAxis
+                        domain={yDomain}
+                        tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                        axisLine={{ stroke: "hsl(var(--border))" }}
+                        tickLine={{ stroke: "hsl(var(--border))" }}
+                        width={48}
+                        label={{ value: `${param.labelHe}${param.unit ? ` (${param.unit})` : ""}`, angle: -90, position: "insideLeft", fontSize: 11, fill: "hsl(var(--muted-foreground))", style: { textAnchor: "middle" } }}
+                      />
+                      <Tooltip
+                        cursor={{ stroke: param.color, strokeOpacity: 0.3, strokeWidth: 1 }}
+                        contentStyle={{
+                          borderRadius: 10,
+                          border: "1px solid hsl(var(--border))",
+                          background: "hsl(var(--card))",
+                          fontSize: 12,
+                          boxShadow: "0 6px 24px rgba(0,0,0,0.08)",
+                        }}
+                        formatter={(value: number) => [`${value}${param.unit ? ` ${param.unit}` : ""}`, param.labelHe]}
+                        labelFormatter={(_, payload) => {
+                          const p = payload?.[0]?.payload as { fullLabel?: string } | undefined;
+                          return p?.fullLabel ?? "";
+                        }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke={param.color}
+                        strokeWidth={2.5}
+                        fill={`url(#grad-${param.key})`}
+                        dot={{
+                          r: 5,
+                          fill: "hsl(var(--card))",
+                          stroke: param.color,
+                          strokeWidth: 2.5,
+                        }}
+                        activeDot={{
+                          r: 7,
+                          fill: param.color,
+                          stroke: "hsl(var(--card))",
+                          strokeWidth: 2.5,
+                        }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
