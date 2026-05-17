@@ -18,6 +18,9 @@ function SelectPoolScreen() {
 
   useEffect(() => {
     setPools(poolStorage.list());
+    const onSync = () => setPools(poolStorage.list());
+    window.addEventListener("poolcheck:cloud-synced", onSync);
+    return () => window.removeEventListener("poolcheck:cloud-synced", onSync);
   }, []);
 
   function selectPool(pool: Pool) {
