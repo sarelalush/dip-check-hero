@@ -40,7 +40,7 @@ describe("calculateDosage", () => {
     expect(fc?.product?.amount).toBe(750);
   });
 
-  it("defers chlorine treatment when pH is out of range", () => {
+  it("does not surface chlorine action when pH is out of range", () => {
     const recs = calculateDosage(
       makeResults({
         ph: { labelHe: "pH", value: 8.2, unit: "", status: "high" },
@@ -48,10 +48,41 @@ describe("calculateDosage", () => {
       }),
       chlorinePool,
     );
-    const fc = recs.find((r) => r.paramKey === "freeChlorine");
-    expect(fc?.blocked).toBe(true);
-    expect(fc?.product).toBeUndefined();
+    // Only alkalinity (ok) + pH (active) should appear; chlorine deferred.
+    expect(recs.find((r) => r.paramKey === "freeChlorine")).toBeUndefined();
+    expect(recs.find((r) => r.paramKey === "ph")?.product?.key).toBe("acidHCl");
   });
+
+  it("does not surface pH action when alkalinity is out of range", () => {
+    const recs = calculateDosage(
+      makeResults({
+        alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
+        ph: { labelHe: "pH", value: 8.2, unit: "", status: "high" },
+        freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
+      }),
+      chlorinePool,
+    );
+    expect(recs.find((r) => r.paramKey === "alkalinity")?.status).toBe("low");
+    expect(recs.find((r) => r.paramKey === "ph")).toBeUndefined();
+    expect(recs.find((r) => r.paramKey === "freeChlorine")).toBeUndefined();
+  });
+
+  it("switches to pH (aeration) when alkalinity is high but pH is already low", () => {
+    const recs = calculateDosage(
+      makeResults({
+        alkalinity: { labelHe: "אלקליניות", value: 180, unit: "ppm", status: "high" },
+        ph: { labelHe: "pH", value: 7.0, unit: "", status: "low" },
+      }),
+      chlorinePool,
+    );
+    const ph = recs.find((r) => r.paramKey === "ph");
+    expect(ph).toBeDefined();
+    expect(ph?.product).toBeUndefined();
+    expect(ph?.actionHe).toMatch(/אוורור|סחרור|מפלים/);
+    // No acid recommendation should appear.
+    expect(recs.find((r) => r.product?.key === "acidHCl")).toBeUndefined();
+  });
+
 
   it("waits instead of dosing when free chlorine is only slightly high", () => {
     const recs = calculateDosage(
