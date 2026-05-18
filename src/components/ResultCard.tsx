@@ -9,13 +9,23 @@ export function ResultCard({ rec }: { rec: DosageRecommendation }) {
   } as const;
   const s = statusMap[rec.status];
   const Icon = s.icon;
+  const isActive = rec.active;
 
   return (
-    <div className={`rounded-2xl border ${s.border} ${s.bg} p-5 shadow-[var(--shadow-card)]`}>
+    <div
+      className={`rounded-2xl border ${s.border} ${s.bg} p-5 ${
+        isActive ? "ring-2 ring-primary shadow-[var(--shadow-elegant)]" : "shadow-[var(--shadow-card)]"
+      }`}
+    >
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Icon className={`h-5 w-5 ${s.color}`} />
           <h3 className="text-lg font-bold text-foreground">{rec.labelHe}</h3>
+          {isActive && (
+            <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
+              לטיפול עכשיו
+            </span>
+          )}
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${s.color} ${s.bg} border ${s.border}`}>
           {s.label}
@@ -31,10 +41,14 @@ export function ResultCard({ rec }: { rec: DosageRecommendation }) {
           <div className="font-bold text-foreground">{rec.target} {rec.unit}</div>
         </div>
       </div>
-      <div className="mt-3 rounded-xl bg-card p-3">
-        <div className="text-xs text-muted-foreground mb-1">המלצה</div>
-        <div className="font-semibold text-foreground">{rec.actionHe}</div>
-      </div>
+      {isActive ? (
+        <div className="mt-3 rounded-xl bg-card p-3">
+          <div className="text-xs text-muted-foreground mb-1">המלצה</div>
+          <div className="font-semibold text-foreground">{rec.actionHe}</div>
+        </div>
+      ) : rec.status !== "ok" ? (
+        <div className="mt-3 text-xs text-muted-foreground">ממתין — נטפל לאחר השלמת הצעד הקודם.</div>
+      ) : null}
     </div>
   );
 }
