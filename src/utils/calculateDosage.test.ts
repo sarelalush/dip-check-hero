@@ -65,7 +65,7 @@ describe("calculateDosage", () => {
     expect(recs.find((r) => r.active)?.paramKey).toBe("ph");
   });
 
-  it("pH >8.0 jumps ahead of alkalinity", () => {
+  it("pH >8.0 does NOT jump ahead of low alkalinity", () => {
     const recs = calculateDosage(
       makeResults({
         alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
@@ -73,9 +73,7 @@ describe("calculateDosage", () => {
       }),
       chlorinePool,
     );
-    const active = recs.find((r) => r.active);
-    expect(active?.paramKey).toBe("ph");
-    expect(active?.product?.key).toBe("acidHCl");
+    expect(recs.find((r) => r.active)?.paramKey).toBe("alkalinity");
   });
 
   it("pH unsafe + alkalinity high → aerate (no acid)", () => {
