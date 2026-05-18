@@ -218,9 +218,9 @@ export function calculateDosage(
   if (hardness && hardness.status !== "ok") {
     if (hardness.status === "high") {
       const pct = Math.round(((hardness.value - targetRanges.hardness.target) / hardness.value) * 100);
-      setActive("hardness", { actionHe: `קשיות גבוהה — החלף ~${pct}% מהמים.` });
+      setActive("hardness", { actionHe: steps(`החלף כ־${pct}% מהמים בבריכה.`) });
     } else {
-      setActive("hardness", { actionHe: "קשיות נמוכה — הוסף Calcium Hardness Increaser." });
+      setActive("hardness", { actionHe: steps(`הוסף Calcium Hardness Increaser לפי הוראות היצרן.`) });
     }
   }
 
