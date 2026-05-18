@@ -42,17 +42,17 @@ describe("calculateDosage", () => {
     expect(active.length).toBe(1);
   });
 
-  it("alkalinity gets the active flag when all three are off", () => {
+  it("alkalinity gets the active flag when it's the only primary issue", () => {
     const recs = calculateDosage(
       makeResults({
         alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
-        ph: { labelHe: "pH", value: 7.0, unit: "", status: "low" },
         freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
       }),
       chlorinePool,
     );
     expect(recs.find((r) => r.active)?.paramKey).toBe("alkalinity");
   });
+
 
   it("pH <7.2 jumps ahead of alkalinity", () => {
     const recs = calculateDosage(
