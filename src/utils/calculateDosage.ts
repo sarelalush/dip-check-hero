@@ -95,16 +95,24 @@ export function calculateDosage(
   const fc = readings.freeChlorine;
   const phUnsafe = !!ph && ph.value < PH_FLOOR;
 
+  // Standard footer for every action — uniform UX, no totals shown to user.
+  const steps = (firstAction: string) => [
+    firstAction,
+    `הפעל את משאבת הסחרור והשאר אותה דולקת.`,
+    `המתן 4–6 שעות.`,
+    `בצע סריקה חדשה של סטיק לבדיקת המצב.`,
+  ].join("\n");
+
   // ── pH safety override — ONLY low pH wins over alkalinity ──
   if (ph && phUnsafe) {
     if (alk?.status === "high") {
       setActive("ph", {
-        actionHe: `pH נמוך מ־${PH_FLOOR}. העלה pH על ידי אוורור (סחרור/מפלים/ג׳טים). אל תוסיף חומצה.`,
+        actionHe: steps(`pH נמוך מדי. פתח את משאבת הסחרור ואת המפלים/ג׳טים לאוורור. אל תוסיף חומצה.`),
       });
     } else {
       const grams = Math.max(100, Math.round((targetRanges.ph.target - ph.value) * volumeM3 * 100));
       setActive("ph", {
-        actionHe: `pH נמוך מ־${PH_FLOOR}. הוסף ${grams} גרם pH Plus וסחרר.`,
+        actionHe: steps(`הוסף ${grams} גרם pH Plus ופזר באזורי הסחרור.`),
         product: { key: "phPlus", amount: grams, unit: "גרם", labelHe: productConfig.phPlus.labelHe },
       });
     }
@@ -116,21 +124,15 @@ export function calculateDosage(
     if (alk.status === "low") {
       const kg = round1(((targetRanges.alkalinity.target - alk.value) * volumeM3) / 670);
       setActive("alkalinity", {
-        actionHe: `הוסף ${kg} ק״ג סודה לשתייה (Alkalinity Increaser) בהדרגה וסחרר.`,
+        actionHe: steps(`פזר ${kg} ק״ג סודה לשתייה (Alkalinity Increaser) באזורי הסחרור.`),
         product: { key: "phPlus", amount: kg * 1000, unit: "גרם", labelHe: "Alkalinity Increaser" },
       });
     } else {
       const liters = round1(((alk.value - targetRanges.alkalinity.target) * volumeM3) / 500);
       const portion = round1(liters / 3);
       setActive("alkalinity", {
-        actionHe: [
-          `בכל פעימה: ${portion} ל׳ חומצת מלח 33% לאיזון האלקליניות.`,
-          `חזור על הפעולה 3 פעמים (סה״כ ${liters} ל׳) עד לאיזון מלא.`,
-          `בין בדיקה לבדיקה: המתן 4–6 שעות.`,
-          `השאר את משאבת הסחרור דולקת בזמן ההמתנה.`,
-          `עצור אם pH יורד מתחת ל־${PH_FLOOR}.`,
-        ].join("\n"),
-        product: { key: "acidHCl", amount: liters * 1000, unit: "מ״ל", labelHe: productConfig.acidHCl.labelHe },
+        actionHe: steps(`הוסף ${portion} ל׳ חומצת מלח 33% לאזורי הסחרור.`),
+        product: { key: "acidHCl", amount: portion * 1000, unit: "מ״ל", labelHe: productConfig.acidHCl.labelHe },
       });
     }
     return [...cards.values()].sort(sortByPriority);
@@ -141,13 +143,13 @@ export function calculateDosage(
     if (ph.status === "high") {
       const ml = Math.max(50, Math.round(((ph.value - targetRanges.ph.target) * volumeM3) / 20 * 1000));
       setActive("ph", {
-        actionHe: `הוסף ${ml} מ״ל חומצת מלח 33% בהדרגה וסחרר.`,
+        actionHe: steps(`הוסף ${ml} מ״ל חומצת מלח 33% לאזורי הסחרור.`),
         product: { key: "acidHCl", amount: ml, unit: "מ״ל", labelHe: productConfig.acidHCl.labelHe },
       });
     } else {
       const grams = Math.max(50, Math.round((targetRanges.ph.target - ph.value) * volumeM3 * 100));
       setActive("ph", {
-        actionHe: `הוסף ${grams} גרם pH Plus (סודה אש) בהדרגה וסחרר.`,
+        actionHe: steps(`פזר ${grams} גרם pH Plus באזורי הסחרור.`),
         product: { key: "phPlus", amount: grams, unit: "גרם", labelHe: productConfig.phPlus.labelHe },
       });
     }
@@ -159,17 +161,19 @@ export function calculateDosage(
     if (fc.status === "low") {
       const ml = Math.max(50, Math.round(((targetRanges.freeChlorine.target - fc.value) * volumeM3) / 100 * 1000));
       setActive("freeChlorine", {
-        actionHe: `הוסף ${ml} מ״ל כלור נוזלי 12% וסחרר.`,
+        actionHe: steps(`הוסף ${ml} מ״ל כלור נוזלי 12% לאזורי הסחרור.`),
         product: { key: "chlorineLiquid10", amount: ml, unit: "מ״ל", labelHe: "כלור נוזלי 12%" },
       });
     } else {
       const delta = fc.value - targetRanges.freeChlorine.target;
       if (delta <= 2) {
-        setActive("freeChlorine", { actionHe: "כלור מעט גבוה. המתן, סחרר ובדוק שוב." });
+        setActive("freeChlorine", {
+          actionHe: steps(`הפעל את משאבת הסחרור — אין צורך להוסיף חומר.`),
+        });
       } else {
         const grams = Math.round(delta * volumeM3);
         setActive("freeChlorine", {
-          actionHe: `כלור גבוה משמעותית. הוסף ${grams} גרם אנטי־כלור או המתן וסחרר.`,
+          actionHe: steps(`הוסף ${grams} גרם אנטי־כלור לאזורי הסחרור.`),
         });
       }
     }
@@ -182,10 +186,12 @@ export function calculateDosage(
     if (cya.status === "high") {
       const pct = Math.round(((cya.value - targetRanges.cyanuricAcid.target) / cya.value) * 100);
       setActive("cyanuricAcid", {
-        actionHe: `CYA גבוה — החלף ~${pct}% מהמים. לא לרוקן במלואה.`,
+        actionHe: steps(`החלף כ־${pct}% מהמים בבריכה (לא לרוקן לחלוטין).`),
       });
     } else {
-      setActive("cyanuricAcid", { actionHe: "CYA נמוך — הוסף Stabilizer לפי הוראות יצרן." });
+      setActive("cyanuricAcid", {
+        actionHe: steps(`הוסף Stabilizer (CYA) לפי הוראות היצרן.`),
+      });
     }
     return [...cards.values()].sort(sortByPriority);
   }
@@ -196,12 +202,14 @@ export function calculateDosage(
       const diff = targetRanges.salt.target - salt.value;
       const kg = round1(diff * productConfig.poolSalt.dosePerPpmPer10kL * (pool.volumeLiters / 10000));
       setActive("salt", {
-        actionHe: `הוסף ${kg} ק״ג ${productConfig.poolSalt.labelHe} וסחרר.`,
+        actionHe: steps(`פזר ${kg} ק״ג ${productConfig.poolSalt.labelHe} באזורי הסחרור.`),
         product: { key: "poolSalt", amount: kg, unit: "ק״ג", labelHe: productConfig.poolSalt.labelHe },
       });
     } else {
       const pct = Math.round(((salt.value - targetRanges.salt.target) / salt.value) * 100);
-      setActive("salt", { actionHe: `מלח גבוה — החלף ~${pct}% מהמים.` });
+      setActive("salt", {
+        actionHe: steps(`החלף כ־${pct}% מהמים בבריכה.`),
+      });
     }
     return [...cards.values()].sort(sortByPriority);
   }
@@ -210,9 +218,9 @@ export function calculateDosage(
   if (hardness && hardness.status !== "ok") {
     if (hardness.status === "high") {
       const pct = Math.round(((hardness.value - targetRanges.hardness.target) / hardness.value) * 100);
-      setActive("hardness", { actionHe: `קשיות גבוהה — החלף ~${pct}% מהמים.` });
+      setActive("hardness", { actionHe: steps(`החלף כ־${pct}% מהמים בבריכה.`) });
     } else {
-      setActive("hardness", { actionHe: "קשיות נמוכה — הוסף Calcium Hardness Increaser." });
+      setActive("hardness", { actionHe: steps(`הוסף Calcium Hardness Increaser לפי הוראות היצרן.`) });
     }
   }
 
