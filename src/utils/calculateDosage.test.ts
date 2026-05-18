@@ -143,7 +143,7 @@ describe("calculateDosage", () => {
     expect(a?.product?.amount).toBeLessThan(3500);
   });
 
-  it("alkalinity is sorted before pH and chlorine", () => {
+  it("emits only alkalinity when all three are off (one-at-a-time)", () => {
     const recs = calculateDosage(
       makeResults({
         alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
@@ -152,8 +152,10 @@ describe("calculateDosage", () => {
       }),
       chlorinePool,
     );
-    expect(recs.map((r) => r.paramKey)).toEqual(["alkalinity", "ph", "freeChlorine"]);
+    expect(recs.map((r) => r.paramKey)).toEqual(["alkalinity"]);
+    expect(recs[0].product?.labelHe).toMatch(/Alkalinity Increaser|סודה לשתייה/);
   });
+
 
   it("returns 'ok' actions when all readings are in range", () => {
     const recs = calculateDosage(makeResults(), chlorinePool);
