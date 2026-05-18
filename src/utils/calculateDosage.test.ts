@@ -43,7 +43,7 @@ describe("calculateDosage", () => {
   it("does not surface chlorine action when pH is out of range", () => {
     const recs = calculateDosage(
       makeResults({
-        ph: { labelHe: "pH", value: 8.2, unit: "", status: "high" },
+        ph: { labelHe: "pH", value: 7.9, unit: "", status: "high" },
         freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
       }),
       chlorinePool,
@@ -57,7 +57,7 @@ describe("calculateDosage", () => {
     const recs = calculateDosage(
       makeResults({
         alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
-        ph: { labelHe: "pH", value: 8.2, unit: "", status: "high" },
+        ph: { labelHe: "pH", value: 7.9, unit: "", status: "high" },
         freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
       }),
       chlorinePool,
