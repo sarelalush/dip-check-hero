@@ -13,30 +13,36 @@ export interface DosageRecommendation {
   /** Hebrew, user-friendly recommendation. */
   actionHe: string;
   product?: { key: ProductKey; amount: number; unit: string; labelHe: string };
-  /** True when treatment is deferred because a higher-priority parameter is off. */
+  /** True only for THE ONE parameter currently being treated. */
+  active?: boolean;
+  /** True when a higher-priority issue is pending — show as informational. */
   blocked?: boolean;
 }
 
 /**
- * Treatment-order priority for pool chemistry:
- *   1. Alkalinity (buffers pH; treat first)
- *   2. pH         (only after TA is balanced)
- *   3. Free Chlorine (effectiveness depends on pH)
+ * Treatment-order priority:
+ *   1. Alkalinity
+ *   2. pH
+ *   3. Free Chlorine
  *   4. CYA / salt / hardness
  *
- * We emit ONE active action at a time — lower-priority parameters are not
- * even evaluated until the higher-priority one is in range.
+ * Hard pH safety override: pH <7.2 or >8.0 jumps to the top — never add
+ * chemicals that worsen the safety bound.
+ *
+ * Output contract: every reading present gets a card. EXACTLY ONE card is
+ * marked `active: true` (the next action). Others are status-only.
  */
 const PRIORITY_ORDER = [
   "alkalinity", "ph", "freeChlorine", "cyanuricAcid", "salt", "hardness",
 ] as const;
 
-function round1(n: number) {
-  return Math.round(n * 10) / 10;
-}
+const PH_FLOOR = 7.2;
+const PH_CEILING = 8.0;
+
+function round1(n: number) { return Math.round(n * 10) / 10; }
 
 function getReading(results: StripResults, key: string): StripReading | undefined {
-  // @ts-expect-error dynamic key (back-compat shortcuts + readings map)
+  // @ts-expect-error dynamic key
   return results[key] ?? results.readings?.[key];
 }
 
@@ -51,272 +57,170 @@ export function calculateDosage(
   pool: Pool,
 ): DosageRecommendation[] {
   const volumeM3 = pool.volumeLiters / 1000;
-  const out: DosageRecommendation[] = [];
 
-  const alk = getReading(results, "alkalinity");
-  const ph = getReading(results, "ph");
-  const fc = getReading(results, "freeChlorine");
+  const readings = {
+    alkalinity: getReading(results, "alkalinity"),
+    ph: getReading(results, "ph"),
+    freeChlorine: getReading(results, "freeChlorine"),
+    cyanuricAcid: getReading(results, "cyanuricAcid"),
+    salt: getReading(results, "salt"),
+    hardness: getReading(results, "hardness"),
+  } as const;
 
-  const alkRange = targetRanges.alkalinity;
-  const phRange = targetRanges.ph;
-  const fcRange = targetRanges.freeChlorine;
-
-  // Hard safety bounds — if pH crosses these, pH becomes the #1 priority
-  // and ALL other treatments are paused (even alkalinity).
-  // Acidic water below ~7.0 corrodes equipment and is unsafe; above ~8.0 the
-  // chlorine is practically inert and skin/eyes are irritated.
-  const PH_SAFETY_FLOOR = 7.0;
-  const PH_SAFETY_CEILING = 8.0;
-  const phUnsafe = !!ph && (ph.value < PH_SAFETY_FLOOR || ph.value > PH_SAFETY_CEILING);
-
-  const okRec = (
-    key: string, r: StripReading, range: { target: number }, msg: string,
-  ): DosageRecommendation => ({
-    paramKey: key, labelHe: r.labelHe, measured: r.value, target: range.target,
-    unit: r.unit, status: "ok", actionHe: msg,
+  // Build a card for every reading we have; default to status-only (no action).
+  const cards = new Map<string, DosageRecommendation>();
+  const statusCard = (key: string, r: StripReading): DosageRecommendation => ({
+    paramKey: key,
+    labelHe: r.labelHe,
+    measured: r.value,
+    target: targetRanges[key]?.target ?? r.value,
+    unit: r.unit,
+    status: r.status,
+    actionHe: r.status === "ok" ? "תקין" : r.status === "low" ? "נמוך" : "גבוה",
+    blocked: r.status !== "ok",
   });
+  for (const [k, r] of Object.entries(readings)) {
+    if (r) cards.set(k, statusCard(k, r));
+  }
 
-  let primaryBalanced = true;
+  // Pick THE next action. Sets `active: true` on the chosen card and rewrites
+  // its actionHe/product. All other off-spec cards stay informational.
+  const setActive = (key: string, patch: Partial<DosageRecommendation>) => {
+    const c = cards.get(key);
+    if (!c) return;
+    cards.set(key, { ...c, ...patch, active: true, blocked: false });
+  };
 
-  // ──────────────────── 0. pH SAFETY OVERRIDE ────────────────────
-  // pH crossed a hard safety bound → handle pH first, regardless of alkalinity.
+  const alk = readings.alkalinity;
+  const ph = readings.ph;
+  const fc = readings.freeChlorine;
+  const phUnsafe = !!ph && (ph.value < PH_FLOOR || ph.value > PH_CEILING);
+
+  // ── pH safety override — wins over everything ──
   if (ph && phUnsafe) {
-    primaryBalanced = false;
-    if (ph.value < PH_SAFETY_FLOOR) {
-      // pH way too low: never recommend more acid. Always raise.
-      // If alkalinity is also high, prefer aeration (won't push TA further up).
-      if (alk && alk.status === "high") {
-        out.push({
-          paramKey: "ph", labelHe: ph.labelHe, measured: ph.value,
-          target: phRange.target, unit: ph.unit, status: "low",
-          actionHe: `ה־pH ירד מתחת לרף הבטיחות (${PH_SAFETY_FLOOR}). זו עדיפות עליונה — לפני כל טיפול אחר יש להעלות pH על ידי אוורור (סחרור, מפלים, ג׳טים). לא להוסיף חומצה. רק כשה־pH יחזור לטווח נטפל באלקליניות.`,
+    if (ph.value < PH_FLOOR) {
+      if (alk?.status === "high") {
+        setActive("ph", {
+          actionHe: `pH נמוך מ־${PH_FLOOR}. העלה pH על ידי אוורור (סחרור/מפלים/ג׳טים). אל תוסיף חומצה.`,
         });
       } else {
-        const delta = phRange.target - ph.value;
-        const grams = Math.max(100, Math.round(delta * volumeM3 * 100));
-        out.push({
-          paramKey: "ph", labelHe: ph.labelHe, measured: ph.value,
-          target: phRange.target, unit: ph.unit, status: "low",
-          actionHe: `ה־pH ירד מתחת לרף הבטיחות (${PH_SAFETY_FLOOR}). זו עדיפות עליונה — הוסף כ־${grams} גרם pH Plus (סודה אש) בהדרגה, הפעל סחרור, ובדוק שוב. רק כשה־pH יחזור לטווח נטפל בערכים האחרים.`,
+        const grams = Math.max(100, Math.round((targetRanges.ph.target - ph.value) * volumeM3 * 100));
+        setActive("ph", {
+          actionHe: `pH נמוך מ־${PH_FLOOR}. הוסף ${grams} גרם pH Plus וסחרר.`,
           product: { key: "phPlus", amount: grams, unit: "גרם", labelHe: productConfig.phPlus.labelHe },
         });
       }
     } else {
-      // pH way too high: add acid. Even if alkalinity is low, the safety risk
-      // of high pH (chlorine ineffective, irritation) outranks the TA drop.
-      const delta = ph.value - phRange.target;
-      const liters = round1((delta * volumeM3) / 20);
-      const ml = Math.max(50, Math.round(liters * 1000));
-      out.push({
-        paramKey: "ph", labelHe: ph.labelHe, measured: ph.value,
-        target: phRange.target, unit: ph.unit, status: "high",
-        actionHe: `ה־pH עלה מעל לרף הבטיחות (${PH_SAFETY_CEILING}). זו עדיפות עליונה — הוסף כ־${ml} מ״ל חומצת מלח 33% בהדרגה, הפעל סחרור, ובדוק שוב לפני שממשיכים לערכים אחרים.`,
+      const ml = Math.max(50, Math.round(((ph.value - targetRanges.ph.target) * volumeM3) / 20 * 1000));
+      setActive("ph", {
+        actionHe: `pH גבוה מ־${PH_CEILING}. הוסף ${ml} מ״ל חומצת מלח 33% בהדרגה.`,
         product: { key: "acidHCl", amount: ml, unit: "מ״ל", labelHe: productConfig.acidHCl.labelHe },
       });
     }
-
-    // Show alkalinity / chlorine as informational only (no action).
-    if (alk) {
-      out.push({
-        paramKey: "alkalinity", labelHe: alk.labelHe, measured: alk.value,
-        target: alkRange.target, unit: alk.unit, status: alk.status,
-        blocked: true,
-        actionHe: "ממתינים להתאזנות pH לפני שממשיכים.",
-      });
-    }
-    if (fc) {
-      out.push({
-        paramKey: "freeChlorine", labelHe: fc.labelHe, measured: fc.value,
-        target: fcRange.target, unit: fc.unit, status: fc.status,
-        blocked: true,
-        actionHe: "ממתינים להתאזנות pH לפני שממשיכים.",
-      });
-    }
-    return out; // keep pH first; do not re-sort under safety override.
-
+    return [...cards.values()].sort(sortByPriority);
   }
 
-  // ──────────────────── 1. ALKALINITY ────────────────────
+  // ── 1. Alkalinity ──
   if (alk && alk.status !== "ok") {
-    primaryBalanced = false;
-
-
-
     if (alk.status === "low") {
-      const delta = alkRange.target - alk.value;
-      const kg = round1((delta * volumeM3) / 670);
-      out.push({
-        paramKey: "alkalinity", labelHe: alk.labelHe, measured: alk.value,
-        target: alkRange.target, unit: alk.unit, status: "low",
-        actionHe: `האלקליניות נמוכה. הוסף כ־${kg} ק״ג סודה לשתייה (Alkalinity Increaser) בהדרגה, הפעל סחרור, ובדוק שוב לפני שממשיכים לטפל ב־pH או בכלור.`,
-        product: { key: "phPlus", amount: kg * 1000, unit: "גרם", labelHe: "Alkalinity Increaser (סודה לשתייה)" },
+      const kg = round1(((targetRanges.alkalinity.target - alk.value) * volumeM3) / 670);
+      setActive("alkalinity", {
+        actionHe: `הוסף ${kg} ק״ג סודה לשתייה (Alkalinity Increaser) בהדרגה וסחרר.`,
+        product: { key: "phPlus", amount: kg * 1000, unit: "גרם", labelHe: "Alkalinity Increaser" },
       });
     } else {
-      // alk.status === "high".
-      // Acid lowers BOTH alkalinity AND pH. If pH is already low/at the floor,
-      // we must NOT add acid — switch to fixing pH first (aerate raises pH
-      // without raising TA).
-      const phAlreadyLow = ph && (ph.status === "low" || ph.value <= 7.3);
-
-      if (phAlreadyLow) {
-        out.push({
-          paramKey: "ph", labelHe: ph!.labelHe, measured: ph!.value,
-          target: phRange.target, unit: ph!.unit, status: ph!.status,
-          actionHe: "האלקליניות גבוהה, אבל ה־pH כבר נמוך — אסור להוסיף חומצה כרגע. קודם להעלות pH באמצעות אוורור (סחרור, מפלים, ג׳טים), ורק כשה־pH יציב נחזור לטפל באלקליניות.",
-        });
-      } else {
-        const delta = alk.value - alkRange.target;
-        const liters = round1((delta * volumeM3) / 500);
-        const portion = round1(liters / 3);
-        out.push({
-          paramKey: "alkalinity", labelHe: alk.labelHe, measured: alk.value,
-          target: alkRange.target, unit: alk.unit, status: "high",
-          actionHe: `האלקליניות גבוהה. סה״כ כ־${liters} ליטר חומצת מלח 33% — הוסף בהדרגה כ־${portion} ליטר בכל פעם, הפעל סחרור, ובדוק שוב pH ואלקליניות. שים לב: החומצה מורידה גם את ה־pH. אם ה־pH יורד מתחת ל־7.2, עצור את הטיפול באלקליניות ועבור להעלאת pH (אוורור) לפני המשך.`,
-          product: { key: "acidHCl", amount: liters * 1000, unit: "מ״ל", labelHe: productConfig.acidHCl.labelHe },
-        });
-      }
+      const liters = round1(((alk.value - targetRanges.alkalinity.target) * volumeM3) / 500);
+      const portion = round1(liters / 3);
+      setActive("alkalinity", {
+        actionHe: `סה״כ ${liters} ל׳ חומצת מלח 33% — הוסף ~${portion} ל׳ בכל פעם, סחרר, בדוק שוב. עצור אם pH יורד מתחת ל־${PH_FLOOR}.`,
+        product: { key: "acidHCl", amount: liters * 1000, unit: "מ״ל", labelHe: productConfig.acidHCl.labelHe },
+      });
     }
-  } else if (alk) {
-    out.push(okRec("alkalinity", alk, alkRange, "אלקליניות תקינה."));
+    return [...cards.values()].sort(sortByPriority);
   }
 
-  // ──────────────────── 2. pH ────────────────────
-  // Evaluated ONLY if alkalinity is balanced.
-  if (primaryBalanced && ph) {
-    if (ph.status === "ok") {
-      out.push(okRec("ph", ph, phRange, "ה־pH תקין."));
+  // ── 2. pH ──
+  if (ph && ph.status !== "ok") {
+    if (ph.status === "high") {
+      const ml = Math.max(50, Math.round(((ph.value - targetRanges.ph.target) * volumeM3) / 20 * 1000));
+      setActive("ph", {
+        actionHe: `הוסף ${ml} מ״ל חומצת מלח 33% בהדרגה וסחרר.`,
+        product: { key: "acidHCl", amount: ml, unit: "מ״ל", labelHe: productConfig.acidHCl.labelHe },
+      });
     } else {
-      primaryBalanced = false;
-      if (ph.status === "high") {
-        const delta = ph.value - phRange.target;
-        const liters = round1((delta * volumeM3) / 20);
-        const ml = Math.max(50, Math.round(liters * 1000));
-        out.push({
-          paramKey: "ph", labelHe: ph.labelHe, measured: ph.value,
-          target: phRange.target, unit: ph.unit, status: "high",
-          actionHe: `ה־pH גבוה. הוסף כ־${ml} מ״ל חומצת מלח 33% בהדרגה, הפעל סחרור, ובדוק שוב לפני המשך.`,
-          product: { key: "acidHCl", amount: ml, unit: "מ״ל", labelHe: productConfig.acidHCl.labelHe },
-        });
-      } else {
-        const delta = phRange.target - ph.value;
-        const grams = Math.max(50, Math.round(delta * volumeM3 * 100));
-        out.push({
-          paramKey: "ph", labelHe: ph.labelHe, measured: ph.value,
-          target: phRange.target, unit: ph.unit, status: "low",
-          actionHe: `ה־pH נמוך. הוסף כ־${grams} גרם pH Plus (סודה אש) בהדרגה, הפעל סחרור, ובדוק שוב.`,
-          product: { key: "phPlus", amount: grams, unit: "גרם", labelHe: productConfig.phPlus.labelHe },
-        });
-      }
+      const grams = Math.max(50, Math.round((targetRanges.ph.target - ph.value) * volumeM3 * 100));
+      setActive("ph", {
+        actionHe: `הוסף ${grams} גרם pH Plus (סודה אש) בהדרגה וסחרר.`,
+        product: { key: "phPlus", amount: grams, unit: "גרם", labelHe: productConfig.phPlus.labelHe },
+      });
     }
+    return [...cards.values()].sort(sortByPriority);
   }
 
-  // ──────────────────── 3. FREE CHLORINE ────────────────────
-  // Evaluated ONLY if alkalinity AND pH are both balanced.
-  if (primaryBalanced && fc) {
-    if (fc.status === "ok") {
-      out.push(okRec("freeChlorine", fc, fcRange, "רמת הכלור תקינה."));
-    } else if (fc.status === "low") {
-      const delta = fcRange.target - fc.value;
-      const liters = (delta * volumeM3) / 100;
-      const ml = Math.max(50, Math.round(liters * 1000));
-      out.push({
-        paramKey: "freeChlorine", labelHe: fc.labelHe, measured: fc.value,
-        target: fcRange.target, unit: fc.unit, status: "low",
-        actionHe: `רמת הכלור נמוכה. הוסף כ־${ml} מ״ל כלור נוזלי 12%, הפעל סחרור ובדוק שוב.`,
+  // ── 3. Free chlorine ──
+  if (fc && fc.status !== "ok") {
+    if (fc.status === "low") {
+      const ml = Math.max(50, Math.round(((targetRanges.freeChlorine.target - fc.value) * volumeM3) / 100 * 1000));
+      setActive("freeChlorine", {
+        actionHe: `הוסף ${ml} מ״ל כלור נוזלי 12% וסחרר.`,
         product: { key: "chlorineLiquid10", amount: ml, unit: "מ״ל", labelHe: "כלור נוזלי 12%" },
       });
-      primaryBalanced = false;
     } else {
-      const delta = fc.value - fcRange.target;
+      const delta = fc.value - targetRanges.freeChlorine.target;
       if (delta <= 2) {
-        out.push({
-          paramKey: "freeChlorine", labelHe: fc.labelHe, measured: fc.value,
-          target: fcRange.target, unit: fc.unit, status: "high",
-          actionHe: "רמת הכלור מעט גבוהה. מומלץ להמתין מספר שעות, להפעיל סחרור, ולבדוק שוב לפני כל פעולה.",
-        });
+        setActive("freeChlorine", { actionHe: "כלור מעט גבוה. המתן, סחרר ובדוק שוב." });
       } else {
         const grams = Math.round(delta * volumeM3);
-        out.push({
-          paramKey: "freeChlorine", labelHe: fc.labelHe, measured: fc.value,
-          target: fcRange.target, unit: fc.unit, status: "high",
-          actionHe: `רמת הכלור גבוהה משמעותית. ניתן להוסיף כ־${grams} גרם אנטי־כלור (Sodium Thiosulfate), או להמתין ולסחרר ולבדוק שוב.`,
+        setActive("freeChlorine", {
+          actionHe: `כלור גבוה משמעותית. הוסף ${grams} גרם אנטי־כלור או המתן וסחרר.`,
         });
       }
-      primaryBalanced = false;
     }
+    return [...cards.values()].sort(sortByPriority);
   }
 
-  // ──────────────────── 4. SECONDARY (CYA / salt / hardness) ────────────────────
-  // Only surfaced once ALL primaries are balanced.
-  if (!primaryBalanced) {
-    return out.sort(sortByPriority);
-  }
-
-  const cya = getReading(results, "cyanuricAcid");
-  if (cya) {
-    const range = targetRanges.cyanuricAcid;
+  // ── 4. Secondary (only when 1-3 are OK) ──
+  const cya = readings.cyanuricAcid;
+  if (cya && cya.status !== "ok") {
     if (cya.status === "high") {
-      const pct = Math.round(((cya.value - range.target) / cya.value) * 100);
-      out.push({
-        paramKey: "cyanuricAcid", labelHe: cya.labelHe, measured: cya.value,
-        target: range.target, unit: cya.unit, status: "high",
-        actionHe: `רמת המייצב (CYA) גבוהה. אין דרך טובה להוריד אותה בכימיקלים — מומלץ להחליף כ־${pct}% מהמים. אין לרוקן את הבריכה לחלוטין ללא ייעוץ איש מקצוע.`,
-      });
-    } else if (cya.status === "low") {
-      out.push({
-        paramKey: "cyanuricAcid", labelHe: cya.labelHe, measured: cya.value,
-        target: range.target, unit: cya.unit, status: "low",
-        actionHe: "רמת המייצב (CYA) נמוכה. הוסף Stabilizer לפי הוראות יצרן. ללא מייצב, הכלור מתפרק מהר בשמש.",
+      const pct = Math.round(((cya.value - targetRanges.cyanuricAcid.target) / cya.value) * 100);
+      setActive("cyanuricAcid", {
+        actionHe: `CYA גבוה — החלף ~${pct}% מהמים. לא לרוקן במלואה.`,
       });
     } else {
-      out.push(okRec("cyanuricAcid", cya, range, "רמת המייצב תקינה."));
+      setActive("cyanuricAcid", { actionHe: "CYA נמוך — הוסף Stabilizer לפי הוראות יצרן." });
     }
+    return [...cards.values()].sort(sortByPriority);
   }
 
-  const salt = getReading(results, "salt");
-  if (salt && pool.type === "salt") {
-    const range = targetRanges.salt;
+  const salt = readings.salt;
+  if (salt && pool.type === "salt" && salt.status !== "ok") {
     if (salt.status === "low") {
-      const diff = range.target - salt.value;
+      const diff = targetRanges.salt.target - salt.value;
       const kg = round1(diff * productConfig.poolSalt.dosePerPpmPer10kL * (pool.volumeLiters / 10000));
-      out.push({
-        paramKey: "salt", labelHe: salt.labelHe, measured: salt.value,
-        target: range.target, unit: salt.unit, status: "low",
-        actionHe: `רמת המלח נמוכה. הוסף כ־${kg} ק״ג ${productConfig.poolSalt.labelHe}, הפעל סחרור ובדוק שוב לאחר שהמלח מתמוסס.`,
+      setActive("salt", {
+        actionHe: `הוסף ${kg} ק״ג ${productConfig.poolSalt.labelHe} וסחרר.`,
         product: { key: "poolSalt", amount: kg, unit: "ק״ג", labelHe: productConfig.poolSalt.labelHe },
       });
-    } else if (salt.status === "high") {
-      const pct = Math.round(((salt.value - range.target) / salt.value) * 100);
-      out.push({
-        paramKey: "salt", labelHe: salt.labelHe, measured: salt.value,
-        target: range.target, unit: salt.unit, status: "high",
-        actionHe: `רמת המלח גבוהה. מומלץ החלפת מים חלקית של כ־${pct}%. אין לרוקן את הבריכה לחלוטין ללא ייעוץ איש מקצוע.`,
-      });
     } else {
-      out.push(okRec("salt", salt, range, "רמת המלח תקינה."));
+      const pct = Math.round(((salt.value - targetRanges.salt.target) / salt.value) * 100);
+      setActive("salt", { actionHe: `מלח גבוה — החלף ~${pct}% מהמים.` });
     }
+    return [...cards.values()].sort(sortByPriority);
   }
 
-  const hardness = getReading(results, "hardness");
-  if (hardness) {
-    const range = targetRanges.hardness;
+  const hardness = readings.hardness;
+  if (hardness && hardness.status !== "ok") {
     if (hardness.status === "high") {
-      const pct = Math.round(((hardness.value - range.target) / hardness.value) * 100);
-      out.push({
-        paramKey: "hardness", labelHe: hardness.labelHe, measured: hardness.value,
-        target: range.target, unit: hardness.unit, status: "high",
-        actionHe: `הקשיות גבוהה. אין דרך להוריד בכימיקלים — מומלץ החלפת מים חלקית של כ־${pct}%.`,
-      });
-    } else if (hardness.status === "low") {
-      out.push({
-        paramKey: "hardness", labelHe: hardness.labelHe, measured: hardness.value,
-        target: range.target, unit: hardness.unit, status: "low",
-        actionHe: "הקשיות נמוכה. מומלץ להוסיף Calcium Hardness Increaser לפי הוראות יצרן.",
-      });
+      const pct = Math.round(((hardness.value - targetRanges.hardness.target) / hardness.value) * 100);
+      setActive("hardness", { actionHe: `קשיות גבוהה — החלף ~${pct}% מהמים.` });
     } else {
-      out.push(okRec("hardness", hardness, range, "הקשיות תקינה."));
+      setActive("hardness", { actionHe: "קשיות נמוכה — הוסף Calcium Hardness Increaser." });
     }
   }
 
-  return out.sort(sortByPriority);
+  // Salt card for chlorine pools should be removed (not relevant).
+  if (pool.type !== "salt") cards.delete("salt");
+
+  return [...cards.values()].sort(sortByPriority);
 }
