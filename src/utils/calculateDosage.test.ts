@@ -43,7 +43,7 @@ describe("calculateDosage", () => {
   it("does not surface chlorine action when pH is out of range", () => {
     const recs = calculateDosage(
       makeResults({
-        ph: { labelHe: "pH", value: 8.2, unit: "", status: "high" },
+        ph: { labelHe: "pH", value: 7.9, unit: "", status: "high" },
         freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
       }),
       chlorinePool,
@@ -57,7 +57,7 @@ describe("calculateDosage", () => {
     const recs = calculateDosage(
       makeResults({
         alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
-        ph: { labelHe: "pH", value: 8.2, unit: "", status: "high" },
+        ph: { labelHe: "pH", value: 7.9, unit: "", status: "high" },
         freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
       }),
       chlorinePool,
@@ -128,6 +128,47 @@ describe("calculateDosage", () => {
     expect(ph?.product).toBeUndefined();
     expect(ph?.actionHe).toMatch(/אוורור|סחרור|מפלים/);
   });
+  it("pH safety floor (<7.0) overrides alkalinity — pH becomes #1", () => {
+    const recs = calculateDosage(
+      makeResults({
+        alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
+        ph: { labelHe: "pH", value: 6.8, unit: "", status: "low" },
+      }),
+      chlorinePool,
+    );
+    // pH is first; alkalinity is blocked (informational only).
+    expect(recs[0].paramKey).toBe("ph");
+    expect(recs[0].product?.key).toBe("phPlus");
+    const a = recs.find((r) => r.paramKey === "alkalinity");
+    expect(a?.blocked).toBe(true);
+    expect(a?.product).toBeUndefined();
+  });
+
+  it("pH safety ceiling (>8.0) overrides alkalinity — pH becomes #1", () => {
+    const recs = calculateDosage(
+      makeResults({
+        alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
+        ph: { labelHe: "pH", value: 8.3, unit: "", status: "high" },
+      }),
+      chlorinePool,
+    );
+    expect(recs[0].paramKey).toBe("ph");
+    expect(recs[0].product?.key).toBe("acidHCl");
+  });
+
+  it("pH unsafe + alkalinity high → aerate (no acid recommended)", () => {
+    const recs = calculateDosage(
+      makeResults({
+        alkalinity: { labelHe: "אלקליניות", value: 180, unit: "ppm", status: "high" },
+        ph: { labelHe: "pH", value: 6.8, unit: "", status: "low" },
+      }),
+      chlorinePool,
+    );
+    expect(recs[0].paramKey).toBe("ph");
+    expect(recs[0].product).toBeUndefined();
+    expect(recs[0].actionHe).toMatch(/אוורור|סחרור/);
+  });
+
 
   it("recommends sodium bicarbonate when alkalinity is low", () => {
     const recs = calculateDosage(
