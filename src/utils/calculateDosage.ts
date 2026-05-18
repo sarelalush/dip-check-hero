@@ -132,7 +132,8 @@ export function calculateDosage(
         actionHe: "ממתינים להתאזנות pH לפני שממשיכים.",
       });
     }
-    return out.sort(sortByPriority);
+    return out; // keep pH first; do not re-sort under safety override.
+
   }
 
   // ──────────────────── 1. ALKALINITY ────────────────────
