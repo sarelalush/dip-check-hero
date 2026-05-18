@@ -26,8 +26,8 @@ export interface DosageRecommendation {
  *   3. Free Chlorine
  *   4. CYA / salt / hardness
  *
- * Hard pH safety override: pH <7.2 or >8.0 jumps to the top — never add
- * chemicals that worsen the safety bound.
+ * pH safety override: ONLY pH < 7.2 jumps to the top (low pH is dangerous).
+ * High pH is treated in the normal order — alkalinity first if needed.
  *
  * Output contract: every reading present gets a card. EXACTLY ONE card is
  * marked `active: true` (the next action). Others are status-only.
@@ -37,7 +37,6 @@ const PRIORITY_ORDER = [
 ] as const;
 
 const PH_FLOOR = 7.2;
-const PH_CEILING = 8.0;
 
 function round1(n: number) { return Math.round(n * 10) / 10; }
 
