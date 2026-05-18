@@ -43,8 +43,25 @@ export function ResultCard({ rec }: { rec: DosageRecommendation }) {
       </div>
       {isActive ? (
         <div className="mt-3 rounded-xl bg-card p-3">
-          <div className="text-xs text-muted-foreground mb-1">המלצה</div>
-          <div className="font-semibold text-foreground">{rec.actionHe}</div>
+          <div className="text-xs text-muted-foreground mb-2">המלצה</div>
+          {(() => {
+            const lines = rec.actionHe.split("\n").map((l) => l.trim()).filter(Boolean);
+            if (lines.length <= 1) {
+              return <div className="font-semibold text-foreground">{rec.actionHe}</div>;
+            }
+            return (
+              <ol className="space-y-2">
+                {lines.map((line, i) => (
+                  <li key={i} className="flex gap-2.5 text-sm text-foreground">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
+                      {i + 1}
+                    </span>
+                    <span className="leading-relaxed">{line}</span>
+                  </li>
+                ))}
+              </ol>
+            );
+          })()}
         </div>
       ) : rec.status !== "ok" ? (
         <div className="mt-3 text-xs text-muted-foreground">ממתין — נטפל לאחר השלמת הצעד הקודם.</div>

@@ -123,7 +123,13 @@ export function calculateDosage(
       const liters = round1(((alk.value - targetRanges.alkalinity.target) * volumeM3) / 500);
       const portion = round1(liters / 3);
       setActive("alkalinity", {
-        actionHe: `סה״כ ${liters} ל׳ חומצת מלח 33% — הוסף ~${portion} ל׳ בכל פעם, סחרר, בדוק שוב. עצור אם pH יורד מתחת ל־${PH_FLOOR}.`,
+        actionHe: [
+          `בכל פעימה: ${portion} ל׳ חומצת מלח 33% לאיזון האלקליניות.`,
+          `חזור על הפעולה 3 פעמים (סה״כ ${liters} ל׳) עד לאיזון מלא.`,
+          `בין בדיקה לבדיקה: המתן 4–6 שעות.`,
+          `השאר את משאבת הסחרור דולקת בזמן ההמתנה.`,
+          `עצור אם pH יורד מתחת ל־${PH_FLOOR}.`,
+        ].join("\n"),
         product: { key: "acidHCl", amount: liters * 1000, unit: "מ״ל", labelHe: productConfig.acidHCl.labelHe },
       });
     }
