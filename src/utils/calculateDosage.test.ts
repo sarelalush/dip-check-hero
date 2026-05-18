@@ -27,7 +27,7 @@ function makeResults(overrides: Partial<StripResults> = {}): StripResults {
 }
 
 describe("calculateDosage", () => {
-  it("recommends chlorine when free chlorine is low", () => {
+  it("recommends chlorine when free chlorine is low and pH/TA ok", () => {
     const recs = calculateDosage(
       makeResults({
         freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
@@ -36,24 +36,37 @@ describe("calculateDosage", () => {
     );
     const fc = recs.find((r) => r.paramKey === "freeChlorine");
     expect(fc?.status).toBe("low");
-    expect(fc?.product?.key).toBe("chlorineLiquid10");
-    // diff=1.5 ppm * 100 ml/ppm/10kL * 5 (50,000L) = 750 ml
+    // 1.5 ppm × 50 m³ / 100 = 0.75 L = 750 ml
     expect(fc?.product?.amount).toBe(750);
   });
 
-  it("warns when free chlorine is high without dosing product", () => {
+  it("defers chlorine treatment when pH is out of range", () => {
     const recs = calculateDosage(
       makeResults({
-        freeChlorine: { labelHe: "כלור חופשי", value: 5, unit: "ppm", status: "high" },
+        ph: { labelHe: "pH", value: 8.2, unit: "", status: "high" },
+        freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
+      }),
+      chlorinePool,
+    );
+    const fc = recs.find((r) => r.paramKey === "freeChlorine");
+    expect(fc?.blocked).toBe(true);
+    expect(fc?.product).toBeUndefined();
+  });
+
+  it("waits instead of dosing when free chlorine is only slightly high", () => {
+    const recs = calculateDosage(
+      makeResults({
+        freeChlorine: { labelHe: "כלור חופשי", value: 4, unit: "ppm", status: "high" },
       }),
       chlorinePool,
     );
     const fc = recs.find((r) => r.paramKey === "freeChlorine");
     expect(fc?.status).toBe("high");
     expect(fc?.product).toBeUndefined();
+    expect(fc?.actionHe).toMatch(/המתין/);
   });
 
-  it("recommends pH minus when pH is high", () => {
+  it("recommends acid when pH is high and TA ok", () => {
     const recs = calculateDosage(
       makeResults({ ph: { labelHe: "pH", value: 7.8, unit: "", status: "high" } }),
       chlorinePool,
@@ -63,13 +76,52 @@ describe("calculateDosage", () => {
     expect(ph?.product?.amount).toBeGreaterThan(0);
   });
 
-  it("recommends pH plus when pH is low", () => {
+  it("recommends pH plus when pH is low and TA ok", () => {
     const recs = calculateDosage(
       makeResults({ ph: { labelHe: "pH", value: 7.0, unit: "", status: "low" } }),
       chlorinePool,
     );
     const ph = recs.find((r) => r.paramKey === "ph");
     expect(ph?.product?.key).toBe("phPlus");
+  });
+
+  it("aerates instead of acid when pH is low but alkalinity is high", () => {
+    const recs = calculateDosage(
+      makeResults({
+        alkalinity: { labelHe: "אלקליניות", value: 180, unit: "ppm", status: "high" },
+        ph: { labelHe: "pH", value: 7.0, unit: "", status: "low" },
+      }),
+      chlorinePool,
+    );
+    const ph = recs.find((r) => r.paramKey === "ph");
+    expect(ph?.product).toBeUndefined();
+    expect(ph?.actionHe).toMatch(/אוורור|סחרור|מפלים/);
+  });
+
+  it("recommends sodium bicarbonate when alkalinity is low", () => {
+    const recs = calculateDosage(
+      makeResults({
+        alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
+      }),
+      chlorinePool,
+    );
+    const a = recs.find((r) => r.paramKey === "alkalinity");
+    expect(a?.status).toBe("low");
+    // (100-60) × 50 / 670 ≈ 2.98 kg → grams ≈ 3000
+    expect(a?.product?.amount).toBeGreaterThan(2500);
+    expect(a?.product?.amount).toBeLessThan(3500);
+  });
+
+  it("alkalinity is sorted before pH and chlorine", () => {
+    const recs = calculateDosage(
+      makeResults({
+        alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
+        ph: { labelHe: "pH", value: 7.0, unit: "", status: "low" },
+        freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
+      }),
+      chlorinePool,
+    );
+    expect(recs.map((r) => r.paramKey)).toEqual(["alkalinity", "ph", "freeChlorine"]);
   });
 
   it("returns 'ok' actions when all readings are in range", () => {
