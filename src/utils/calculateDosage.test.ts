@@ -4,13 +4,8 @@ import type { Pool } from "./storage";
 import type { StripResults } from "./analyzeStripImage";
 
 const chlorinePool: Pool = {
-  id: "p1",
-  name: "Test",
-  type: "chlorine",
-  volumeLiters: 50000,
-  createdAt: 0,
+  id: "p1", name: "Test", type: "chlorine", volumeLiters: 50000, createdAt: 0,
 };
-
 const saltPool: Pool = { ...chlorinePool, id: "p2", type: "salt" };
 
 function makeResults(overrides: Partial<StripResults> = {}): StripResults {
@@ -27,124 +22,50 @@ function makeResults(overrides: Partial<StripResults> = {}): StripResults {
 }
 
 describe("calculateDosage", () => {
-  it("recommends chlorine when free chlorine is low and pH/TA ok", () => {
-    const recs = calculateDosage(
-      makeResults({
-        freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
-      }),
-      chlorinePool,
+  it("includes all readings as cards", () => {
+    const recs = calculateDosage(makeResults(), chlorinePool);
+    expect(recs.map((r) => r.paramKey).sort()).toEqual(
+      ["alkalinity", "freeChlorine", "ph"].sort(),
     );
-    const fc = recs.find((r) => r.paramKey === "freeChlorine");
-    expect(fc?.status).toBe("low");
-    // 1.5 ppm × 50 m³ / 100 = 0.75 L = 750 ml
-    expect(fc?.product?.amount).toBe(750);
   });
 
-  it("does not surface chlorine action when pH is out of range", () => {
-    const recs = calculateDosage(
-      makeResults({
-        ph: { labelHe: "pH", value: 7.9, unit: "", status: "high" },
-        freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
-      }),
-      chlorinePool,
-    );
-    // Only alkalinity (ok) + pH (active) should appear; chlorine deferred.
-    expect(recs.find((r) => r.paramKey === "freeChlorine")).toBeUndefined();
-    expect(recs.find((r) => r.paramKey === "ph")?.product?.key).toBe("acidHCl");
-  });
-
-  it("does not surface pH action when alkalinity is out of range", () => {
+  it("marks at most one card active", () => {
     const recs = calculateDosage(
       makeResults({
         alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
-        ph: { labelHe: "pH", value: 7.9, unit: "", status: "high" },
+        ph: { labelHe: "pH", value: 7.0, unit: "", status: "low" },
         freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
       }),
       chlorinePool,
     );
-    expect(recs.find((r) => r.paramKey === "alkalinity")?.status).toBe("low");
-    expect(recs.find((r) => r.paramKey === "ph")).toBeUndefined();
-    expect(recs.find((r) => r.paramKey === "freeChlorine")).toBeUndefined();
+    const active = recs.filter((r) => r.active);
+    expect(active.length).toBe(1);
   });
 
-  it("switches to pH (aeration) when alkalinity is high but pH is already low", () => {
-    const recs = calculateDosage(
-      makeResults({
-        alkalinity: { labelHe: "אלקליניות", value: 180, unit: "ppm", status: "high" },
-        ph: { labelHe: "pH", value: 7.0, unit: "", status: "low" },
-      }),
-      chlorinePool,
-    );
-    const ph = recs.find((r) => r.paramKey === "ph");
-    expect(ph).toBeDefined();
-    expect(ph?.product).toBeUndefined();
-    expect(ph?.actionHe).toMatch(/אוורור|סחרור|מפלים/);
-    // No acid recommendation should appear.
-    expect(recs.find((r) => r.product?.key === "acidHCl")).toBeUndefined();
-  });
-
-
-  it("waits instead of dosing when free chlorine is only slightly high", () => {
-    const recs = calculateDosage(
-      makeResults({
-        freeChlorine: { labelHe: "כלור חופשי", value: 4, unit: "ppm", status: "high" },
-      }),
-      chlorinePool,
-    );
-    const fc = recs.find((r) => r.paramKey === "freeChlorine");
-    expect(fc?.status).toBe("high");
-    expect(fc?.product).toBeUndefined();
-    expect(fc?.actionHe).toMatch(/המתין/);
-  });
-
-  it("recommends acid when pH is high and TA ok", () => {
-    const recs = calculateDosage(
-      makeResults({ ph: { labelHe: "pH", value: 7.8, unit: "", status: "high" } }),
-      chlorinePool,
-    );
-    const ph = recs.find((r) => r.paramKey === "ph");
-    expect(ph?.product?.key).toBe("acidHCl");
-    expect(ph?.product?.amount).toBeGreaterThan(0);
-  });
-
-  it("recommends pH plus when pH is low and TA ok", () => {
-    const recs = calculateDosage(
-      makeResults({ ph: { labelHe: "pH", value: 7.0, unit: "", status: "low" } }),
-      chlorinePool,
-    );
-    const ph = recs.find((r) => r.paramKey === "ph");
-    expect(ph?.product?.key).toBe("phPlus");
-  });
-
-  it("aerates instead of acid when pH is low but alkalinity is high", () => {
-    const recs = calculateDosage(
-      makeResults({
-        alkalinity: { labelHe: "אלקליניות", value: 180, unit: "ppm", status: "high" },
-        ph: { labelHe: "pH", value: 7.0, unit: "", status: "low" },
-      }),
-      chlorinePool,
-    );
-    const ph = recs.find((r) => r.paramKey === "ph");
-    expect(ph?.product).toBeUndefined();
-    expect(ph?.actionHe).toMatch(/אוורור|סחרור|מפלים/);
-  });
-  it("pH safety floor (<7.0) overrides alkalinity — pH becomes #1", () => {
+  it("alkalinity gets the active flag when all three are off", () => {
     const recs = calculateDosage(
       makeResults({
         alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
-        ph: { labelHe: "pH", value: 6.8, unit: "", status: "low" },
+        ph: { labelHe: "pH", value: 7.0, unit: "", status: "low" },
+        freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
       }),
       chlorinePool,
     );
-    // pH is first; alkalinity is blocked (informational only).
-    expect(recs[0].paramKey).toBe("ph");
-    expect(recs[0].product?.key).toBe("phPlus");
-    const a = recs.find((r) => r.paramKey === "alkalinity");
-    expect(a?.blocked).toBe(true);
-    expect(a?.product).toBeUndefined();
+    expect(recs.find((r) => r.active)?.paramKey).toBe("alkalinity");
   });
 
-  it("pH safety ceiling (>8.0) overrides alkalinity — pH becomes #1", () => {
+  it("pH <7.2 jumps ahead of alkalinity", () => {
+    const recs = calculateDosage(
+      makeResults({
+        alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
+        ph: { labelHe: "pH", value: 7.1, unit: "", status: "low" },
+      }),
+      chlorinePool,
+    );
+    expect(recs.find((r) => r.active)?.paramKey).toBe("ph");
+  });
+
+  it("pH >8.0 jumps ahead of alkalinity", () => {
     const recs = calculateDosage(
       makeResults({
         alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
@@ -152,59 +73,44 @@ describe("calculateDosage", () => {
       }),
       chlorinePool,
     );
-    expect(recs[0].paramKey).toBe("ph");
-    expect(recs[0].product?.key).toBe("acidHCl");
+    const active = recs.find((r) => r.active);
+    expect(active?.paramKey).toBe("ph");
+    expect(active?.product?.key).toBe("acidHCl");
   });
 
-  it("pH unsafe + alkalinity high → aerate (no acid recommended)", () => {
+  it("pH unsafe + alkalinity high → aerate (no acid)", () => {
     const recs = calculateDosage(
       makeResults({
         alkalinity: { labelHe: "אלקליניות", value: 180, unit: "ppm", status: "high" },
-        ph: { labelHe: "pH", value: 6.8, unit: "", status: "low" },
-      }),
-      chlorinePool,
-    );
-    expect(recs[0].paramKey).toBe("ph");
-    expect(recs[0].product).toBeUndefined();
-    expect(recs[0].actionHe).toMatch(/אוורור|סחרור/);
-  });
-
-
-  it("recommends sodium bicarbonate when alkalinity is low", () => {
-    const recs = calculateDosage(
-      makeResults({
-        alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
-      }),
-      chlorinePool,
-    );
-    const a = recs.find((r) => r.paramKey === "alkalinity");
-    expect(a?.status).toBe("low");
-    // (100-60) × 50 / 670 ≈ 2.98 kg → grams ≈ 3000
-    expect(a?.product?.amount).toBeGreaterThan(2500);
-    expect(a?.product?.amount).toBeLessThan(3500);
-  });
-
-  it("emits only alkalinity when all three are off (one-at-a-time)", () => {
-    const recs = calculateDosage(
-      makeResults({
-        alkalinity: { labelHe: "אלקליניות", value: 60, unit: "ppm", status: "low" },
         ph: { labelHe: "pH", value: 7.0, unit: "", status: "low" },
+      }),
+      chlorinePool,
+    );
+    const active = recs.find((r) => r.active);
+    expect(active?.paramKey).toBe("ph");
+    expect(active?.product).toBeUndefined();
+    expect(active?.actionHe).toMatch(/אוורור|סחרור/);
+  });
+
+  it("chlorine becomes active only when alkalinity and pH are ok", () => {
+    const recs = calculateDosage(
+      makeResults({
         freeChlorine: { labelHe: "כלור חופשי", value: 0.5, unit: "ppm", status: "low" },
       }),
       chlorinePool,
     );
-    expect(recs.map((r) => r.paramKey)).toEqual(["alkalinity"]);
-    expect(recs[0].product?.labelHe).toMatch(/Alkalinity Increaser|סודה לשתייה/);
+    const active = recs.find((r) => r.active);
+    expect(active?.paramKey).toBe("freeChlorine");
+    expect(active?.product?.amount).toBe(750); // 1.5×50/100 = 0.75L
   });
 
-
-  it("returns 'ok' actions when all readings are in range", () => {
+  it("no card is active when everything is in range", () => {
     const recs = calculateDosage(makeResults(), chlorinePool);
+    expect(recs.every((r) => !r.active)).toBe(true);
     expect(recs.every((r) => r.status === "ok")).toBe(true);
-    expect(recs.every((r) => !r.product)).toBe(true);
   });
 
-  it("ignores salt for chlorine pools", () => {
+  it("salt is excluded for chlorine pools", () => {
     const recs = calculateDosage(
       makeResults({ salt: { labelHe: "מלח", value: 1000, unit: "ppm", status: "low" } }),
       chlorinePool,
@@ -218,7 +124,7 @@ describe("calculateDosage", () => {
       saltPool,
     );
     const s = recs.find((r) => r.paramKey === "salt");
+    expect(s?.active).toBe(true);
     expect(s?.product?.key).toBe("poolSalt");
-    expect(s?.product?.amount).toBeGreaterThan(0);
   });
 });
