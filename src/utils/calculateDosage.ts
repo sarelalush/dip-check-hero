@@ -93,27 +93,19 @@ export function calculateDosage(
   const alk = readings.alkalinity;
   const ph = readings.ph;
   const fc = readings.freeChlorine;
-  const phUnsafe = !!ph && (ph.value < PH_FLOOR || ph.value > PH_CEILING);
+  const phUnsafe = !!ph && ph.value < PH_FLOOR;
 
-  // ── pH safety override — wins over everything ──
+  // ── pH safety override — ONLY low pH wins over alkalinity ──
   if (ph && phUnsafe) {
-    if (ph.value < PH_FLOOR) {
-      if (alk?.status === "high") {
-        setActive("ph", {
-          actionHe: `pH נמוך מ־${PH_FLOOR}. העלה pH על ידי אוורור (סחרור/מפלים/ג׳טים). אל תוסיף חומצה.`,
-        });
-      } else {
-        const grams = Math.max(100, Math.round((targetRanges.ph.target - ph.value) * volumeM3 * 100));
-        setActive("ph", {
-          actionHe: `pH נמוך מ־${PH_FLOOR}. הוסף ${grams} גרם pH Plus וסחרר.`,
-          product: { key: "phPlus", amount: grams, unit: "גרם", labelHe: productConfig.phPlus.labelHe },
-        });
-      }
-    } else {
-      const ml = Math.max(50, Math.round(((ph.value - targetRanges.ph.target) * volumeM3) / 20 * 1000));
+    if (alk?.status === "high") {
       setActive("ph", {
-        actionHe: `pH גבוה מ־${PH_CEILING}. הוסף ${ml} מ״ל חומצת מלח 33% בהדרגה.`,
-        product: { key: "acidHCl", amount: ml, unit: "מ״ל", labelHe: productConfig.acidHCl.labelHe },
+        actionHe: `pH נמוך מ־${PH_FLOOR}. העלה pH על ידי אוורור (סחרור/מפלים/ג׳טים). אל תוסיף חומצה.`,
+      });
+    } else {
+      const grams = Math.max(100, Math.round((targetRanges.ph.target - ph.value) * volumeM3 * 100));
+      setActive("ph", {
+        actionHe: `pH נמוך מ־${PH_FLOOR}. הוסף ${grams} גרם pH Plus וסחרר.`,
+        product: { key: "phPlus", amount: grams, unit: "גרם", labelHe: productConfig.phPlus.labelHe },
       });
     }
     return [...cards.values()].sort(sortByPriority);
