@@ -61,6 +61,14 @@ export function calculateDosage(
   const phRange = targetRanges.ph;
   const fcRange = targetRanges.freeChlorine;
 
+  // Hard safety bounds — if pH crosses these, pH becomes the #1 priority
+  // and ALL other treatments are paused (even alkalinity).
+  // Acidic water below ~7.0 corrodes equipment and is unsafe; above ~8.0 the
+  // chlorine is practically inert and skin/eyes are irritated.
+  const PH_SAFETY_FLOOR = 7.0;
+  const PH_SAFETY_CEILING = 8.0;
+  const phUnsafe = !!ph && (ph.value < PH_SAFETY_FLOOR || ph.value > PH_SAFETY_CEILING);
+
   const okRec = (
     key: string, r: StripReading, range: { target: number }, msg: string,
   ): DosageRecommendation => ({
@@ -70,9 +78,68 @@ export function calculateDosage(
 
   let primaryBalanced = true;
 
+  // ──────────────────── 0. pH SAFETY OVERRIDE ────────────────────
+  // pH crossed a hard safety bound → handle pH first, regardless of alkalinity.
+  if (ph && phUnsafe) {
+    primaryBalanced = false;
+    if (ph.value < PH_SAFETY_FLOOR) {
+      // pH way too low: never recommend more acid. Always raise.
+      // If alkalinity is also high, prefer aeration (won't push TA further up).
+      if (alk && alk.status === "high") {
+        out.push({
+          paramKey: "ph", labelHe: ph.labelHe, measured: ph.value,
+          target: phRange.target, unit: ph.unit, status: "low",
+          actionHe: `ה־pH ירד מתחת לרף הבטיחות (${PH_SAFETY_FLOOR}). זו עדיפות עליונה — לפני כל טיפול אחר יש להעלות pH על ידי אוורור (סחרור, מפלים, ג׳טים). לא להוסיף חומצה. רק כשה־pH יחזור לטווח נטפל באלקליניות.`,
+        });
+      } else {
+        const delta = phRange.target - ph.value;
+        const grams = Math.max(100, Math.round(delta * volumeM3 * 100));
+        out.push({
+          paramKey: "ph", labelHe: ph.labelHe, measured: ph.value,
+          target: phRange.target, unit: ph.unit, status: "low",
+          actionHe: `ה־pH ירד מתחת לרף הבטיחות (${PH_SAFETY_FLOOR}). זו עדיפות עליונה — הוסף כ־${grams} גרם pH Plus (סודה אש) בהדרגה, הפעל סחרור, ובדוק שוב. רק כשה־pH יחזור לטווח נטפל בערכים האחרים.`,
+          product: { key: "phPlus", amount: grams, unit: "גרם", labelHe: productConfig.phPlus.labelHe },
+        });
+      }
+    } else {
+      // pH way too high: add acid. Even if alkalinity is low, the safety risk
+      // of high pH (chlorine ineffective, irritation) outranks the TA drop.
+      const delta = ph.value - phRange.target;
+      const liters = round1((delta * volumeM3) / 20);
+      const ml = Math.max(50, Math.round(liters * 1000));
+      out.push({
+        paramKey: "ph", labelHe: ph.labelHe, measured: ph.value,
+        target: phRange.target, unit: ph.unit, status: "high",
+        actionHe: `ה־pH עלה מעל לרף הבטיחות (${PH_SAFETY_CEILING}). זו עדיפות עליונה — הוסף כ־${ml} מ״ל חומצת מלח 33% בהדרגה, הפעל סחרור, ובדוק שוב לפני שממשיכים לערכים אחרים.`,
+        product: { key: "acidHCl", amount: ml, unit: "מ״ל", labelHe: productConfig.acidHCl.labelHe },
+      });
+    }
+
+    // Show alkalinity / chlorine as informational only (no action).
+    if (alk) {
+      out.push({
+        paramKey: "alkalinity", labelHe: alk.labelHe, measured: alk.value,
+        target: alkRange.target, unit: alk.unit, status: alk.status,
+        blocked: true,
+        actionHe: "ממתינים להתאזנות pH לפני שממשיכים.",
+      });
+    }
+    if (fc) {
+      out.push({
+        paramKey: "freeChlorine", labelHe: fc.labelHe, measured: fc.value,
+        target: fcRange.target, unit: fc.unit, status: fc.status,
+        blocked: true,
+        actionHe: "ממתינים להתאזנות pH לפני שממשיכים.",
+      });
+    }
+    return out.sort(sortByPriority);
+  }
+
   // ──────────────────── 1. ALKALINITY ────────────────────
   if (alk && alk.status !== "ok") {
     primaryBalanced = false;
+
+
 
     if (alk.status === "low") {
       const delta = alkRange.target - alk.value;
