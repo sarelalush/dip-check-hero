@@ -17,6 +17,11 @@
       "package": "com.sarelalush.aquasense",
       "permissions": ["CAMERA"]
     },
-    "plugins": ["expo-camera", "expo-secure-store"]
+    "plugins": ["expo-camera", "expo-secure-store"],
+    "extra": {
+      "eas": {
+        "projectId": "20113056-3bf8-4a05-ae7a-13e18f6b8dc5"
+      }
+    }
   }
 }
