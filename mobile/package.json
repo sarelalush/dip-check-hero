@@ -1,33 +1,19 @@
 {
-  "name": "aquasense-mobile",
+  "name": "aquasense-mobile-test",
   "version": "0.1.0",
   "private": true,
   "main": "index.js",
   "scripts": {
     "start": "expo start",
     "tunnel": "expo start --tunnel",
-    "ios": "expo start --ios",
-    "android": "expo start --android",
-    "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "web": "expo start --web"
   },
   "dependencies": {
-    "@react-navigation/native": "latest",
-    "@react-navigation/native-stack": "latest",
-    "@supabase/supabase-js": "2.106.2",
     "expo": "~54.0.0",
-    "expo-camera": "latest",
     "react": "latest",
-    "react-native": "latest",
-    "react-native-safe-area-context": "latest",
-    "react-native-screens": "latest",
-    "react-native-url-polyfill": "latest"
+    "react-native": "latest"
   },
   "devDependencies": {
-    "@types/react": "latest",
     "typescript": "latest"
-  },
-  "engines": {
-    "node": ">=20.19.0"
   }
 }
