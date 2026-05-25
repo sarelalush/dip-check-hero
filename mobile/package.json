@@ -5,13 +5,13 @@
   "main": "index.js",
   "scripts": {
     "start": "expo start",
-    "tunnel": "expo start --tunnel",
+    "tunnel": "expo start --tunnel --clear",
     "web": "expo start --web"
   },
   "dependencies": {
     "expo": "~54.0.0",
     "react": "19.1.0",
-    "react-native": "0.83.6"
+    "react-native": "0.81.4"
   },
   "devDependencies": {
     "typescript": "~5.9.2"
