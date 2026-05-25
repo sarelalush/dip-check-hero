@@ -10,7 +10,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.sarelalush.aquasense",
       "infoPlist": {
-        "NSCameraUsageDescription": "AquaSense uses the camera to scan pool water test strips."
+        "NSCameraUsageDescription": "AquaSense uses the camera to scan pool water test strips.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
