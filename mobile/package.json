@@ -1,0 +1,30 @@
+{
+  "name": "aquasense-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "App.tsx",
+  "scripts": {
+    "start": "expo start",
+    "ios": "expo start --ios",
+    "android": "expo start --android",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-navigation/native": "latest",
+    "@react-navigation/native-stack": "latest",
+    "@supabase/supabase-js": "latest",
+    "expo": "latest",
+    "expo-camera": "latest",
+    "expo-secure-store": "latest",
+    "react": "latest",
+    "react-native": "latest",
+    "react-native-safe-area-context": "latest",
+    "react-native-screens": "latest",
+    "react-native-url-polyfill": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "typescript": "latest"
+  }
+}
