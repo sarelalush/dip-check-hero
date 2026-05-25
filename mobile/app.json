@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "AquaSense",
+    "slug": "aquasense-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.sarelalush.aquasense",
+      "infoPlist": {
+        "NSCameraUsageDescription": "AquaSense uses the camera to scan pool water test strips."
+      }
+    },
+    "android": {
+      "package": "com.sarelalush.aquasense",
+      "permissions": ["CAMERA"]
+    },
+    "plugins": ["expo-camera", "expo-secure-store"]
+  }
+}
