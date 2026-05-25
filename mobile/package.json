@@ -11,18 +11,18 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@react-native-async-storage/async-storage": "2.2.0",
-    "@react-navigation/native": "7.1.21",
-    "@react-navigation/native-stack": "7.8.0",
+    "@react-native-async-storage/async-storage": "latest",
+    "@react-navigation/native": "latest",
+    "@react-navigation/native-stack": "latest",
     "@supabase/supabase-js": "2.106.2",
     "expo": "~56.0.0",
-    "expo-camera": "~17.0.10",
-    "expo-secure-store": "~16.0.8",
+    "expo-camera": "latest",
+    "expo-secure-store": "latest",
     "react": "19.2.0",
     "react-native": "0.84.4",
-    "react-native-safe-area-context": "5.6.2",
-    "react-native-screens": "~4.18.0",
-    "react-native-url-polyfill": "3.0.0"
+    "react-native-safe-area-context": "latest",
+    "react-native-screens": "latest",
+    "react-native-url-polyfill": "latest"
   },
   "devDependencies": {
     "@types/react": "~19.2.0",
