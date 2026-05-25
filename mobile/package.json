@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "latest",
     "@react-navigation/native": "latest",
     "@react-navigation/native-stack": "latest",
     "@supabase/supabase-js": "latest",
