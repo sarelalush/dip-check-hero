@@ -1,24 +1,20 @@
 {
   "expo": {
-    "name": "AquaSense",
+    "name": "AquaSense Test",
     "slug": "dip-check-hero",
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.sarelalush.aquasense",
       "infoPlist": {
-        "NSCameraUsageDescription": "AquaSense uses the camera to scan pool water test strips.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.sarelalush.aquasense",
-      "permissions": ["CAMERA"]
+      "package": "com.sarelalush.aquasense"
     },
-    "plugins": ["expo-camera"],
     "extra": {
       "eas": {
         "projectId": "20113056-3bf8-4a05-ae7a-13e18f6b8dc5"
