@@ -3,12 +3,13 @@ import { I18nManager, ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import type { Session } from '@supabase/supabase-js';
-import { supabase } from './src/lib/supabase';
+import { isSupabaseConfigured, supabase } from './src/lib/supabase';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { SelectStripScreen } from './src/screens/SelectStripScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
 import { PlaceholderScreen } from './src/screens/PlaceholderScreen';
+import { SetupScreen } from './src/screens/SetupScreen';
 import { colors } from './src/theme';
 
 I18nManager.allowRTL(true);
@@ -29,6 +30,11 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setLoading(false);
+      return;
+    }
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setLoading(false);
@@ -47,6 +53,10 @@ export default function App() {
         <ActivityIndicator color={colors.primary} />
       </View>
     );
+  }
+
+  if (!isSupabaseConfigured) {
+    return <SetupScreen />;
   }
 
   if (!session?.user) {
