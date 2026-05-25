@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "expo start",
+    "tunnel": "expo start --tunnel",
     "ios": "expo start --ios",
     "android": "expo start --android",
     "web": "expo start --web",
