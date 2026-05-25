@@ -18,15 +18,15 @@
     "expo": "~56.0.0",
     "expo-camera": "latest",
     "expo-secure-store": "latest",
-    "react": "19.2.0",
-    "react-native": "0.84.4",
+    "react": "latest",
+    "react-native": "latest",
     "react-native-safe-area-context": "latest",
     "react-native-screens": "latest",
     "react-native-url-polyfill": "latest"
   },
   "devDependencies": {
-    "@types/react": "~19.2.0",
-    "typescript": "~5.9.2"
+    "@types/react": "latest",
+    "typescript": "latest"
   },
   "engines": {
     "node": ">=22.13.0"
