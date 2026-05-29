@@ -12,7 +12,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   guestExpiresAt: null;
   signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
-  signUpWithEmail: (email: string, password: string, displayName: string) => Promise<{ error?: string }>;
+  signUpWithEmail: (email: string, password: string, displayName: string, phone: string) => Promise<{ error?: string }>;
   continueAsGuest: () => void;
   signOut: () => Promise<void>;
 }
