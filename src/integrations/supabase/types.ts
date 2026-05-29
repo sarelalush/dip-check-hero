@@ -20,7 +20,12 @@ export type Database = {
           id: string
           last_test_at: string | null
           name: string
+          pump_hours_per_day: number
+          retest_hours: number
           strip_brand_id: string | null
+          tablet_weight_g: number
+          tablets_active: boolean
+          tablets_count: number
           type: string
           updated_at: string
           user_id: string
@@ -31,7 +36,12 @@ export type Database = {
           id?: string
           last_test_at?: string | null
           name: string
+          pump_hours_per_day?: number
+          retest_hours?: number
           strip_brand_id?: string | null
+          tablet_weight_g?: number
+          tablets_active?: boolean
+          tablets_count?: number
           type: string
           updated_at?: string
           user_id: string
@@ -42,7 +52,12 @@ export type Database = {
           id?: string
           last_test_at?: string | null
           name?: string
+          pump_hours_per_day?: number
+          retest_hours?: number
           strip_brand_id?: string | null
+          tablet_weight_g?: number
+          tablets_active?: boolean
+          tablets_count?: number
           type?: string
           updated_at?: string
           user_id?: string

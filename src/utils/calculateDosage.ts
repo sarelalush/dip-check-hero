@@ -38,6 +38,30 @@ const PRIORITY_ORDER = [
 
 const PH_FLOOR = 7.2;
 
+/** Trichlor tablet defaults — see spec in calculateDosage docs. */
+const TABLET_AVAILABLE_CHLORINE_PCT = 0.9;
+const TABLET_DISSOLVE_DAYS = 5;
+const TABLET_SAFETY_FACTOR = 0.5;
+
+/**
+ * Safe ppm credit from active chlorine tablets between now and the next retest.
+ * Returns 0 when no tablets are configured.
+ */
+function calcTabletCreditPpm(pool: Pool): number {
+  if (!pool.tabletsActive) return 0;
+  const count = pool.tabletsCount ?? 1;
+  const weight = pool.tabletWeightGrams ?? 200;
+  const pumpHoursPerDay = pool.pumpHoursPerDay ?? 8;
+  const retestHours = pool.retestHours ?? 6;
+  const volumeM3 = pool.volumeLiters / 1000;
+  if (volumeM3 <= 0 || pumpHoursPerDay <= 0) return 0;
+
+  const availableChlorineG = weight * TABLET_AVAILABLE_CHLORINE_PCT * count;
+  const totalPpm = availableChlorineG / volumeM3;
+  const ppmPerPumpHour = totalPpm / (TABLET_DISSOLVE_DAYS * pumpHoursPerDay);
+  return ppmPerPumpHour * retestHours * TABLET_SAFETY_FACTOR;
+}
+
 function round1(n: number) { return Math.round(n * 10) / 10; }
 
 function getReading(results: StripResults, key: string): StripReading | undefined {
@@ -159,11 +183,31 @@ export function calculateDosage(
   // ── 3. Free chlorine ──
   if (fc && fc.status !== "ok") {
     if (fc.status === "low") {
-      const ml = Math.max(50, Math.round(((targetRanges.freeChlorine.target - fc.value) * volumeM3) / 100 * 1000));
-      setActive("freeChlorine", {
-        actionHe: steps(`הוסף ${ml} מ״ל כלור נוזלי 12% לאזורי הסחרור.`),
-        product: { key: "chlorineLiquid10", amount: ml, unit: "מ״ל", labelHe: "כלור נוזלי 12%" },
-      });
+      let gap = targetRanges.freeChlorine.target - fc.value;
+
+      // Subtract expected contribution from active slow-dissolve chlorine tablets.
+      // See spec: Trichlor ~90% available, ~5-day dissolution, safety factor 0.5.
+      const tabletCredit = calcTabletCreditPpm(pool);
+      if (tabletCredit > 0) {
+        gap -= tabletCredit;
+      }
+
+      if (gap <= 0) {
+        setActive("freeChlorine", {
+          actionHe: steps(
+            `קיימת טבליית כלור פעילה שתשלים את החסר במהלך הסחרור. הפעל סחרור — אין צורך להוסיף כלור נוזלי כעת.`,
+          ),
+        });
+      } else {
+        const ml = Math.max(50, Math.round((gap * volumeM3) / 100 * 1000));
+        const prefix = tabletCredit > 0
+          ? `קיימת טבליית כלור פעילה — ההמלצה הופחתה בהתאם. הוסף ${ml} מ״ל כלור נוזלי 12% לאזורי הסחרור.`
+          : `הוסף ${ml} מ״ל כלור נוזלי 12% לאזורי הסחרור.`;
+        setActive("freeChlorine", {
+          actionHe: steps(prefix),
+          product: { key: "chlorineLiquid10", amount: ml, unit: "מ״ל", labelHe: "כלור נוזלי 12%" },
+        });
+      }
     } else {
       const delta = fc.value - targetRanges.freeChlorine.target;
       if (delta <= 2) {

@@ -69,6 +69,11 @@ export async function syncFromCloud() {
     stripBrandId: p.strip_brand_id ?? undefined,
     createdAt: new Date(p.created_at).getTime(),
     lastTestAt: p.last_test_at ? new Date(p.last_test_at).getTime() : undefined,
+    tabletsActive: (p as { tablets_active?: boolean }).tablets_active ?? false,
+    tabletsCount: (p as { tablets_count?: number }).tablets_count ?? 1,
+    tabletWeightGrams: (p as { tablet_weight_g?: number }).tablet_weight_g ?? 200,
+    pumpHoursPerDay: Number((p as { pump_hours_per_day?: number }).pump_hours_per_day ?? 8),
+    retestHours: Number((p as { retest_hours?: number }).retest_hours ?? 6),
   }));
 
   const localTests: TestRecord[] = (tests ?? []).map((t) => ({
@@ -98,7 +103,12 @@ export async function pushPool(pool: Pool) {
     volume_liters: pool.volumeLiters,
     strip_brand_id: pool.stripBrandId ?? null,
     last_test_at: pool.lastTestAt ? new Date(pool.lastTestAt).toISOString() : null,
-  });
+    tablets_active: pool.tabletsActive ?? false,
+    tablets_count: pool.tabletsCount ?? 1,
+    tablet_weight_g: pool.tabletWeightGrams ?? 200,
+    pump_hours_per_day: pool.pumpHoursPerDay ?? 8,
+    retest_hours: pool.retestHours ?? 6,
+  } as never);
   if (error) console.error("pool cloud save failed", error);
 }
 
