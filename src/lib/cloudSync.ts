@@ -103,7 +103,12 @@ export async function pushPool(pool: Pool) {
     volume_liters: pool.volumeLiters,
     strip_brand_id: pool.stripBrandId ?? null,
     last_test_at: pool.lastTestAt ? new Date(pool.lastTestAt).toISOString() : null,
-  });
+    tablets_active: pool.tabletsActive ?? false,
+    tablets_count: pool.tabletsCount ?? 1,
+    tablet_weight_g: pool.tabletWeightGrams ?? 200,
+    pump_hours_per_day: pool.pumpHoursPerDay ?? 8,
+    retest_hours: pool.retestHours ?? 6,
+  } as never);
   if (error) console.error("pool cloud save failed", error);
 }
 
