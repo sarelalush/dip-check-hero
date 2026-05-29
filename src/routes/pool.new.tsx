@@ -86,6 +86,11 @@ function PoolFormScreen() {
       type,
       volumeLiters,
       createdAt: Date.now(),
+      tabletsActive: tabletsActive === "yes",
+      tabletsCount: tabletsActive === "yes" ? Math.max(1, parseInt(tabletsCount) || 1) : 1,
+      tabletWeightGrams: tabletsActive === "yes" ? Math.max(1, parseInt(tabletWeight) || 200) : 200,
+      pumpHoursPerDay: Math.max(0, parseFloat(pumpHoursPerDay) || 8),
+      retestHours: Math.max(1, parseFloat(retestHours) || 6),
     };
     poolStorage.save(pool);
 
