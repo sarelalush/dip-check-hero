@@ -14,7 +14,7 @@ import {
   getBrand,
   DEFAULT_BRAND_ID,
 } from "@/config/stripBrands";
-import { analyzeStripWithAI } from "@/server/strip-analysis.functions";
+import { analyzeStripWithAI } from "@/lib/strip-analysis.functions";
 import { analyzeStripPixels, analyzeStripPixelsYellow } from "./colorUtils";
 import { whiteBalanceDataUrl } from "./whiteBalance";
 
