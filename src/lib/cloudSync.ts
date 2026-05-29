@@ -69,6 +69,11 @@ export async function syncFromCloud() {
     stripBrandId: p.strip_brand_id ?? undefined,
     createdAt: new Date(p.created_at).getTime(),
     lastTestAt: p.last_test_at ? new Date(p.last_test_at).getTime() : undefined,
+    tabletsActive: (p as { tablets_active?: boolean }).tablets_active ?? false,
+    tabletsCount: (p as { tablets_count?: number }).tablets_count ?? 1,
+    tabletWeightGrams: (p as { tablet_weight_g?: number }).tablet_weight_g ?? 200,
+    pumpHoursPerDay: Number((p as { pump_hours_per_day?: number }).pump_hours_per_day ?? 8),
+    retestHours: Number((p as { retest_hours?: number }).retest_hours ?? 6),
   }));
 
   const localTests: TestRecord[] = (tests ?? []).map((t) => ({
