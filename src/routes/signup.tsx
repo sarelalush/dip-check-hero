@@ -70,6 +70,10 @@ function SignupScreen() {
             <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="ישראל ישראלי"
               className="w-full bg-transparent text-right outline-none placeholder:text-muted-foreground" />
           </Field>
+          <Field label="מספר טלפון נייד" icon={<Phone className="h-4 w-4" />}>
+            <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="050-1234567"
+              className="w-full bg-transparent text-right outline-none placeholder:text-muted-foreground" />
+          </Field>
           <Field label='כתובת דוא"ל' icon={<Mail className="h-4 w-4" />}>
             <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com"
               className="w-full bg-transparent text-right outline-none placeholder:text-muted-foreground" />
