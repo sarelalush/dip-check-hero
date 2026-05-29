@@ -49,7 +49,7 @@ const AI_NOISE: Array<{ fc: number; ph: number; alk: number; conf: number }> = [
   { fc: 4.2, ph: 7.7, alk: 242, conf: 0.85 },
 ];
 
-vi.mock("@/server/strip-analysis.functions", () => ({
+vi.mock("@/lib/strip-analysis.functions", () => ({
   analyzeStripWithAI: vi.fn(async ({ data }: any) => {
     const params: string[] = data.parameters;
     const sample = AI_NOISE[aiCallIdx % AI_NOISE.length];
