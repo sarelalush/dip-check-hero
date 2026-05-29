@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { ArrowRight, Mail, Lock, User } from "lucide-react";
+import { ArrowRight, Mail, Lock, User, Phone } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { lovable } from "@/integrations/lovable";
 
@@ -13,6 +13,7 @@ function SignupScreen() {
   const { signUpWithEmail } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
@@ -25,9 +26,14 @@ function SignupScreen() {
       setErr("הסיסמה חייבת להכיל לפחות 6 תווים");
       return;
     }
+    const phoneClean = phone.trim();
+    if (!/^0\d{1,2}-?\d{7}$|^\+?\d{9,15}$/.test(phoneClean.replace(/\s+/g, ""))) {
+      setErr("יש להזין מספר טלפון תקין");
+      return;
+    }
     setBusy(true);
     setErr("");
-    const { error } = await signUpWithEmail(email.trim(), password, name.trim());
+    const { error } = await signUpWithEmail(email.trim(), password, name.trim(), phoneClean);
     setBusy(false);
     if (error) setErr(error);
     else {
@@ -62,6 +68,10 @@ function SignupScreen() {
         <form onSubmit={submit} className="mt-8 space-y-4">
           <Field label="שם מלא" icon={<User className="h-4 w-4" />}>
             <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="ישראל ישראלי"
+              className="w-full bg-transparent text-right outline-none placeholder:text-muted-foreground" />
+          </Field>
+          <Field label="מספר טלפון נייד" icon={<Phone className="h-4 w-4" />}>
+            <input type="tel" required value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="050-1234567"
               className="w-full bg-transparent text-right outline-none placeholder:text-muted-foreground" />
           </Field>
           <Field label='כתובת דוא"ל' icon={<Mail className="h-4 w-4" />}>

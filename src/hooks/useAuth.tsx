@@ -12,7 +12,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   guestExpiresAt: null;
   signInWithEmail: (email: string, password: string) => Promise<{ error?: string }>;
-  signUpWithEmail: (email: string, password: string, displayName: string) => Promise<{ error?: string }>;
+  signUpWithEmail: (email: string, password: string, displayName: string, phone: string) => Promise<{ error?: string }>;
   continueAsGuest: () => void;
   signOut: () => Promise<void>;
 }
@@ -69,13 +69,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       return error ? { error: error.message } : {};
     },
-    async signUpWithEmail(email, password, displayName) {
+    async signUpWithEmail(email, password, displayName, phone) {
       const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/`,
-          data: { display_name: displayName },
+          data: { display_name: displayName, phone },
         },
       });
       return error ? { error: error.message } : {};

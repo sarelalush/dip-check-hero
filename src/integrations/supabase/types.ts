@@ -72,6 +72,7 @@ export type Database = {
           email: string | null
           free_scans_used: number
           id: string
+          phone: string | null
           updated_at: string
           user_id: string
         }
@@ -81,6 +82,7 @@ export type Database = {
           email?: string | null
           free_scans_used?: number
           id?: string
+          phone?: string | null
           updated_at?: string
           user_id: string
         }
@@ -90,6 +92,7 @@ export type Database = {
           email?: string | null
           free_scans_used?: number
           id?: string
+          phone?: string | null
           updated_at?: string
           user_id?: string
         }
