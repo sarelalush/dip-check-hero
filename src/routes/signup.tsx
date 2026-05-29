@@ -13,6 +13,7 @@ function SignupScreen() {
   const { signUpWithEmail } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
@@ -25,9 +26,14 @@ function SignupScreen() {
       setErr("הסיסמה חייבת להכיל לפחות 6 תווים");
       return;
     }
+    const phoneClean = phone.trim();
+    if (!/^0\d{1,2}-?\d{7}$|^\+?\d{9,15}$/.test(phoneClean.replace(/\s+/g, ""))) {
+      setErr("יש להזין מספר טלפון תקין");
+      return;
+    }
     setBusy(true);
     setErr("");
-    const { error } = await signUpWithEmail(email.trim(), password, name.trim());
+    const { error } = await signUpWithEmail(email.trim(), password, name.trim(), phoneClean);
     setBusy(false);
     if (error) setErr(error);
     else {
