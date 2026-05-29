@@ -13,6 +13,16 @@ export interface Pool {
   stripBrandId?: string;
   createdAt: number;
   lastTestAt?: number;
+  /** Whether slow-dissolving chlorine tablets are currently active in the pool. */
+  tabletsActive?: boolean;
+  /** Number of active tablets (default 1). */
+  tabletsCount?: number;
+  /** Single tablet weight in grams (default 200). */
+  tabletWeightGrams?: number;
+  /** Average daily pump (circulation) hours (default 8). */
+  pumpHoursPerDay?: number;
+  /** Expected hours until next retest (default 6). */
+  retestHours?: number;
 }
 
 export interface TestRecord {
