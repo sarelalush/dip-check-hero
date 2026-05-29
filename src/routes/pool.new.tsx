@@ -46,6 +46,12 @@ function PoolFormScreen() {
   const [width, setWidth] = useState("");
   const [diameter, setDiameter] = useState("");
   const [depth, setDepth] = useState("");
+  // Chlorine tablet settings
+  const [tabletsActive, setTabletsActive] = useState<"yes" | "no" | "unknown">("unknown");
+  const [tabletsCount, setTabletsCount] = useState("1");
+  const [tabletWeight, setTabletWeight] = useState("200");
+  const [pumpHoursPerDay, setPumpHoursPerDay] = useState("8");
+  const [retestHours, setRetestHours] = useState("6");
 
   if (blocked) {
     return (
