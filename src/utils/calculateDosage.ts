@@ -38,6 +38,30 @@ const PRIORITY_ORDER = [
 
 const PH_FLOOR = 7.2;
 
+/** Trichlor tablet defaults — see spec in calculateDosage docs. */
+const TABLET_AVAILABLE_CHLORINE_PCT = 0.9;
+const TABLET_DISSOLVE_DAYS = 5;
+const TABLET_SAFETY_FACTOR = 0.5;
+
+/**
+ * Safe ppm credit from active chlorine tablets between now and the next retest.
+ * Returns 0 when no tablets are configured.
+ */
+function calcTabletCreditPpm(pool: Pool): number {
+  if (!pool.tabletsActive) return 0;
+  const count = pool.tabletsCount ?? 1;
+  const weight = pool.tabletWeightGrams ?? 200;
+  const pumpHoursPerDay = pool.pumpHoursPerDay ?? 8;
+  const retestHours = pool.retestHours ?? 6;
+  const volumeM3 = pool.volumeLiters / 1000;
+  if (volumeM3 <= 0 || pumpHoursPerDay <= 0) return 0;
+
+  const availableChlorineG = weight * TABLET_AVAILABLE_CHLORINE_PCT * count;
+  const totalPpm = availableChlorineG / volumeM3;
+  const ppmPerPumpHour = totalPpm / (TABLET_DISSOLVE_DAYS * pumpHoursPerDay);
+  return ppmPerPumpHour * retestHours * TABLET_SAFETY_FACTOR;
+}
+
 function round1(n: number) { return Math.round(n * 10) / 10; }
 
 function getReading(results: StripResults, key: string): StripReading | undefined {
