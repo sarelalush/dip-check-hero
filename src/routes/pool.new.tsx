@@ -183,6 +183,33 @@ function PoolFormScreen() {
             </div>
           )}
 
+          <Field label="האם יש כעת טבליות כלור פעילות בבריכה?">
+            <ToggleGroup
+              value={tabletsActive}
+              onChange={(v) => setTabletsActive(v as "yes" | "no" | "unknown")}
+              options={[{ v: "yes", l: "כן" }, { v: "no", l: "לא" }, { v: "unknown", l: "לא יודע" }]}
+            />
+          </Field>
+
+          {tabletsActive === "yes" && (
+            <div className="grid grid-cols-2 gap-3">
+              <NumInput label="מס׳ טבליות פעילות" value={tabletsCount} onChange={setTabletsCount} />
+              <NumInput label="משקל טבליה (גרם)" value={tabletWeight} onChange={setTabletWeight} />
+            </div>
+          )}
+
+          <Field label="כמה שעות ביום משאבת הסחרור עובדת?">
+            <NumInput label="שעות ביום" value={pumpHoursPerDay} onChange={setPumpHoursPerDay} />
+          </Field>
+
+          <Field label="מתי תבצע בדיקה חוזרת?">
+            <ToggleGroup
+              value={retestHours}
+              onChange={setRetestHours}
+              options={[{ v: "3", l: "3 שעות" }, { v: "6", l: "6 שעות" }, { v: "12", l: "12 שעות" }, { v: "24", l: "24 שעות" }]}
+            />
+          </Field>
+
           <button
             onClick={save}
             disabled={!name.trim() || previewVolume <= 0}
