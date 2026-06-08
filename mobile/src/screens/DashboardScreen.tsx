@@ -1,0 +1,108 @@
+import { StyleSheet, Text, View } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { AppButton } from '../components/AppButton';
+import { Card } from '../components/Card';
+import { Header } from '../components/Header';
+import { Screen } from '../components/Screen';
+import { colors, rtl, spacing, typography } from '../theme';
+import type { RootStackParamList } from '../../App';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
+
+const plannedActions = ['בחירת סטיק בדיקה', 'הוספת בריכה', 'צפייה בהיסטוריה'];
+
+export function DashboardScreen({ navigation }: Props) {
+  return (
+    <Screen>
+      <Header />
+      <View style={styles.hero}>
+        <Text style={styles.eyebrow}>מחובר</Text>
+        <Text style={styles.title}>החשבון מוכן להמשך</Text>
+        <Text style={styles.subtitle}>
+          זהו מסך זמני שמראה את הכיוון הבא באפליקציה. עדיין אין חיבור ל-Supabase או לפיצ׳רים מתקדמים.
+        </Text>
+      </View>
+
+      <View style={styles.list}>
+        {plannedActions.map((action, index) => (
+          <Card key={action} style={styles.actionCard}>
+            <Text style={styles.actionIndex}>{index + 1}</Text>
+            <Text style={styles.actionText}>{action}</Text>
+          </Card>
+        ))}
+      </View>
+
+      <View style={styles.footerAction}>
+        <AppButton label="חזרה למסך הפתיחה" variant="secondary" onPress={() => navigation.popToTop()} />
+      </View>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  hero: {
+    backgroundColor: colors.primary,
+    borderRadius: 30,
+    marginTop: spacing.xxl,
+    padding: spacing.lg,
+  },
+  eyebrow: {
+    color: '#CFFAFE',
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.caption,
+    fontWeight: '900',
+    letterSpacing: typography.brandSpacing,
+    ...rtl.text,
+  },
+  title: {
+    color: colors.white,
+    fontFamily: typography.fontFamily,
+    fontSize: 30,
+    fontWeight: '900',
+    lineHeight: 38,
+    marginTop: spacing.sm,
+    ...rtl.text,
+  },
+  subtitle: {
+    color: colors.whiteSoft,
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.body,
+    fontWeight: '600',
+    lineHeight: typography.lineHeights.body,
+    marginTop: spacing.sm,
+    ...rtl.text,
+  },
+  list: {
+    gap: spacing.md,
+    marginTop: spacing.lg,
+  },
+  actionCard: {
+    alignItems: 'center',
+    flexDirection: 'row-reverse',
+    gap: spacing.md,
+  },
+  actionIndex: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: 18,
+    color: colors.primaryDark,
+    fontFamily: typography.fontFamily,
+    fontSize: 15,
+    fontWeight: '900',
+    height: 36,
+    lineHeight: 36,
+    overflow: 'hidden',
+    textAlign: 'center',
+    width: 36,
+  },
+  actionText: {
+    color: colors.text,
+    flex: 1,
+    fontFamily: typography.fontFamily,
+    fontSize: typography.sizes.body,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  footerAction: {
+    marginTop: spacing.xl,
+  },
+});

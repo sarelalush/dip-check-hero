@@ -1,69 +1,43 @@
-# AquaSense Mobile — Cloud Build Path
+# AquaSense Mobile
 
-This folder contains the native iOS/Android app for AquaSense, built with Expo and React Native.
+This folder contains the native Expo React Native app for AquaSense.
 
-## You can build this without a local computer
+## Current Scope
 
-You need:
+Implemented:
 
-- Expo account
-- iPhone
-- GitHub repo connected to Expo/EAS
-- Supabase environment variables
-- Apple Developer account when you want TestFlight/App Store builds
+- TypeScript Expo app entry
+- Native first Home/Landing screen
+- Shared mobile theme tokens
+- Hebrew RTL-oriented layout and copy
 
-## Required Expo environment variables
+Not implemented yet:
 
-Add these in the Expo dashboard for this project:
+- Auth
+- Camera
+- Backend sync
+- Payments
+- Navigation beyond the first screen
 
-```env
-EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
-EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
-```
-
-These are the mobile equivalents of the Lovable/Vite variables:
-
-```env
-VITE_SUPABASE_URL
-VITE_SUPABASE_PUBLISHABLE_KEY
-```
-
-## Build profiles
-
-This project includes `eas.json` with three profiles:
-
-- `development` — custom development client
-- `preview` — internal iPhone install build
-- `production` — App Store/TestFlight build
-
-## Recommended first build
-
-Use the `preview` profile first.
-
-It creates an installable iPhone build without needing to publish to the App Store yet.
-
-## App entry
-
-The mobile app starts from:
+## App Entry
 
 ```text
 mobile/App.tsx
 ```
 
-## Current app status
+## Local Test Commands
 
-Implemented:
+```powershell
+cd mobile
+npm install
+npm run typecheck
+npm run start
+```
 
-- Supabase email/password auth
-- Hebrew RTL UI
-- Home screen
-- Select-strip screen
-- Camera scan placeholder
-- Pools/history placeholder screens
+On Windows, if PowerShell blocks `npm`, use `npm.cmd` instead:
 
-Next work:
-
-- Connect real strip color scanning logic
-- Port pools/history database screens from the Lovable web app
-- Add subscription/payment flow if needed
-- Prepare App Store screenshots and metadata
+```powershell
+npm.cmd install
+npm.cmd run typecheck
+npm.cmd run start
+```
