@@ -4,8 +4,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@import url('https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;800&display=swap');
-
 @theme inline {
   --font-sans: 'Heebo', system-ui, sans-serif;
   --radius-sm: calc(var(--radius) - 4px);
