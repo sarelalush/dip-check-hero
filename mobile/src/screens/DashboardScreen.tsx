@@ -41,7 +41,6 @@ export function DashboardScreen({ navigation }: Props) {
           </View>
         </View>
 
-        <Pressable onPress={() => navigation.navigate('SelectStrip')} />
         <CTAButton onPress={() => navigation.navigate('SelectStrip')} />
 
         {pools.length > 0 && (
