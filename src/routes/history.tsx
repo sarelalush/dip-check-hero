@@ -1,12 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, History, Loader2 } from "lucide-react";
+import { SlidersHorizontal, ChevronLeft, CheckCircle2, ArrowDownCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { MySection, type PoolRow, type TestRow } from "@/components/ScanHistory";
+import { BottomTabBar } from "@/components/BottomTabBar";
+import type { TestRow, PoolRow } from "@/components/ScanHistory";
 
 export const Route = createFileRoute("/history")({
-  head: () => ({ meta: [{ title: "ההיסטוריה שלי — PoolCheck" }] }),
+  head: () => ({ meta: [{ title: "היסטוריית בדיקות — AquaSense" }] }),
   component: HistoryScreen,
 });
 
@@ -33,9 +34,7 @@ function HistoryScreen() {
       setPools((p.data ?? []) as PoolRow[]);
       setLoading(false);
     });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [user]);
 
   const poolName = useMemo(() => {
@@ -53,32 +52,89 @@ function HistoryScreen() {
   }
 
   return (
-    <div dir="rtl" className="min-h-screen bg-background">
-      <div className="mx-auto max-w-4xl px-5 pt-6 pb-10">
-        <Link to="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground mb-4 hover:text-foreground">
-          <ArrowRight className="h-4 w-4" /> חזרה לעמוד הראשי
-        </Link>
+    <div dir="rtl" className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#E6F6FB] via-background to-background">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-56 bg-gradient-to-b from-[#BEE6F1]/50 to-transparent" />
 
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-            <History className="h-6 w-6" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-extrabold text-foreground leading-tight">ההיסטוריה שלי</h1>
-            <p className="text-sm text-muted-foreground">סריקות, דוחות ומגמות לאורך זמן</p>
-          </div>
+      <div className="relative mx-auto max-w-md px-5 pt-8">
+        <div className="flex items-center justify-between">
+          <button className="flex items-center gap-1 rounded-full bg-card px-3 py-1.5 text-xs font-bold text-foreground shadow-sm">
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            סינון
+          </button>
+          <h1 className="text-2xl font-black text-foreground">היסטוריית בדיקות</h1>
         </div>
 
-        <div className="mt-6">
-          {loading ? (
-            <div className="flex justify-center py-10">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : tests.length === 0 ? (
+          <div className="mt-10 rounded-3xl bg-card p-8 text-center text-sm text-muted-foreground shadow-[var(--shadow-card)]">
+            עדיין אין בדיקות. בצע סריקה ראשונה כדי שתוצאות יופיעו כאן.
+          </div>
+        ) : (
+          <div className="relative mt-6 pr-6">
+            {/* Timeline rail */}
+            <div className="absolute right-2 top-3 bottom-3 w-0.5 bg-border" />
+            <div className="space-y-3">
+              {tests.map((t) => {
+                const ok = inferOk(t);
+                return (
+                  <Link
+                    key={t.id}
+                    to="/results/$testId"
+                    params={{ testId: t.id }}
+                    className="relative flex items-center justify-between gap-3 rounded-2xl bg-card px-4 py-3 shadow-[var(--shadow-card)] transition active:scale-[0.99]"
+                  >
+                    {/* Dot on timeline */}
+                    <span
+                      className={`absolute -right-[22px] top-1/2 -translate-y-1/2 flex h-4 w-4 items-center justify-center rounded-full ring-4 ring-background ${
+                        ok ? "bg-emerald-400" : "bg-amber-400"
+                      }`}
+                    />
+                    <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+                    <div className="flex-1 text-right">
+                      <div className="text-sm font-bold text-foreground">
+                        {formatHebrewDate(t.tested_at)}
+                      </div>
+                      <div className={`mt-0.5 flex items-center justify-end gap-1 text-xs font-extrabold ${ok ? "text-emerald-600" : "text-amber-600"}`}>
+                        {ok ? (
+                          <>
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            המים מאוזנים
+                          </>
+                        ) : (
+                          <>
+                            <ArrowDownCircle className="h-3.5 w-3.5" />
+                            נדרש תיקון קל
+                          </>
+                        )}
+                      </div>
+                      {poolName.get(t.pool_id) && (
+                        <div className="text-[11px] text-muted-foreground">{poolName.get(t.pool_id)}</div>
+                      )}
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
-          ) : (
-            <MySection userId={user.id} tests={tests} pools={pools} poolName={poolName} />
-          )}
-        </div>
+          </div>
+        )}
       </div>
+
+      <BottomTabBar />
     </div>
   );
+}
+
+function formatHebrewDate(iso: string) {
+  const d = new Date(iso);
+  const time = d.toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
+  const month = d.toLocaleDateString("he-IL", { month: "long" });
+  return `${d.getDate()} ב${month} ${time}`;
+}
+
+function inferOk(t: TestRow): boolean {
+  const r = (t.results ?? {}) as Record<string, { status?: string } | undefined>;
+  return Object.values(r).every((v) => !v?.status || v.status === "ok");
 }
