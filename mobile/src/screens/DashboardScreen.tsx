@@ -77,7 +77,7 @@ function CTAButton({ onPress }: { onPress: () => void }) {
   );
 }
 
-import { Pressable } from 'react-native';
+
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
