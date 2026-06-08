@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { poolStorage, type Pool, type TestRecord } from "@/utils/storage";
 import { BottomTabBar } from "@/components/BottomTabBar";
+import poolBg from "@/assets/pool-bg.jpg.asset.json";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
