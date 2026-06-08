@@ -50,46 +50,46 @@ function HomeScreen() {
   const allOk = stats.every((s) => s.status === "ok");
 
   return (
-    <div dir="rtl" className="relative min-h-screen overflow-hidden bg-background">
-      {/* Pool water photo backdrop */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-[420px] overflow-hidden">
+    <div dir="rtl" className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#E6F4FB] via-[#F4FAFD] to-background">
+      {/* Pool water strip behind the card */}
+      <div className="pointer-events-none absolute inset-x-0 top-[180px] h-[260px] overflow-hidden">
         <img
           src={poolBg.url}
           alt=""
           aria-hidden="true"
           className="h-full w-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-cyan-400/10 via-background/30 to-background" />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-background" />
       </div>
 
-
-      <div className="relative mx-auto max-w-md px-5 pt-6">
+      <div className="relative mx-auto max-w-md px-5 pt-5">
         {/* Top bar */}
         <div className="flex items-center justify-between">
           <Link
             to="/history"
             aria-label="היסטוריה"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/70 text-foreground shadow-sm backdrop-blur active:scale-95"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-foreground active:scale-95"
           >
             <Bell className="h-5 w-5" />
           </Link>
-          <div className="flex items-center gap-2">
-            <span className="text-base font-extrabold text-primary">AquaSense</span>
-            <span className="flex h-9 w-9 items-center justify-center rounded-2xl text-primary-foreground shadow-md" style={{ background: "var(--gradient-hero)" }}>
-              <Droplet className="h-5 w-5" fill="currentColor" />
+          <div className="flex items-center gap-1.5">
+            <Droplet className="h-5 w-5 text-primary" fill="currentColor" />
+            <span className="text-lg font-extrabold">
+              <span className="text-primary">Aqua</span>
+              <span className="text-foreground">Sense</span>
             </span>
           </div>
           <Link
             to="/settings"
             aria-label="הגדרות"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/70 text-foreground shadow-sm backdrop-blur active:scale-95"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-foreground active:scale-95"
           >
             <Menu className="h-5 w-5" />
           </Link>
         </div>
 
         {/* Greeting */}
-        <div className="mt-6 text-right">
+        <div className="mt-5 text-center">
           <h1 className="text-3xl font-black text-foreground">
             שלום{firstName ? ` ${firstName}` : ""}!
           </h1>
@@ -97,7 +97,7 @@ function HomeScreen() {
         </div>
 
         {/* Water status card */}
-        <div className="mt-5 rounded-[28px] bg-card p-5 shadow-[var(--shadow-card)]">
+        <div className="mt-6 rounded-[28px] bg-card p-5 shadow-[0_20px_50px_-20px_rgba(8,145,178,0.25)]">
           <div className="text-center text-sm font-bold text-muted-foreground">מצב המים</div>
           <div className="mt-4 flex justify-center">
             <div className={`flex h-20 w-20 items-center justify-center rounded-full ${allOk ? "bg-emerald-100" : "bg-amber-100"}`}>
@@ -131,13 +131,6 @@ function HomeScreen() {
           <ScanLine className="h-6 w-6" />
           התחל סריקה
         </Link>
-
-        {pools.length > 0 && (
-          <Link to="/pools" className="mt-3 flex items-center justify-center gap-1 text-xs font-bold text-primary">
-            צפה בכל הבריכות שלי ({pools.length})
-            <ChevronLeft className="h-3.5 w-3.5" />
-          </Link>
-        )}
       </div>
 
       <BottomTabBar />
@@ -146,20 +139,14 @@ function HomeScreen() {
 }
 
 function StatTile({ label, value, status }: StatRead) {
-  const tone =
-    status === "ok"
-      ? "border-emerald-200 bg-emerald-50/60"
-      : status === "low"
-      ? "border-amber-200 bg-amber-50/60"
-      : "border-rose-200 bg-rose-50/60";
   const text =
     status === "ok" ? "תקין" : status === "low" ? "נמוך" : "גבוה";
   const textTone =
     status === "ok" ? "text-emerald-600" : status === "low" ? "text-amber-600" : "text-rose-600";
   return (
-    <div className={`rounded-2xl border ${tone} px-2 py-3 text-center`}>
+    <div className="rounded-2xl bg-white px-2 py-3 text-center shadow-[0_2px_8px_-2px_rgba(8,145,178,0.12)]">
       <div className="text-[11px] font-bold text-muted-foreground">{label}</div>
-      <div className="mt-0.5 text-2xl font-black text-foreground">{value ?? "—"}</div>
+      <div className="mt-0.5 text-2xl font-black text-primary">{value ?? "—"}</div>
       <div className={`text-[11px] font-extrabold ${textTone}`}>{text}</div>
     </div>
   );
