@@ -1,12 +1,7 @@
 import { useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { AppButton } from '../components/AppButton';
-import { AppInput } from '../components/AppInput';
-import { Card } from '../components/Card';
-import { Header } from '../components/Header';
-import { Screen } from '../components/Screen';
-import { colors, radius, rtl, spacing, typography } from '../theme';
+import { colors, rtl, shadows, typography } from '../theme';
 import { calculateRectangularVolumeLiters, usePools } from '../state/PoolsContext';
 import type { RootStackParamList } from '../../App';
 
@@ -36,194 +31,114 @@ export function AddPoolScreen({ navigation }: Props) {
   );
 
   function save() {
-    if (!name.trim()) {
-      setError('יש להזין שם לבריכה.');
-      return;
-    }
+    if (!name.trim()) return setError('יש להזין שם לבריכה.');
     if (lengthMeters <= 0 || widthMeters <= 0 || averageDepthMeters <= 0) {
-      setError('יש להזין אורך, רוחב ועומק ממוצע גדולים מאפס.');
-      return;
+      return setError('יש להזין אורך, רוחב ועומק ממוצע גדולים מאפס.');
     }
-
-    addPool({
-      averageDepthMeters,
-      lengthMeters,
-      name: name.trim(),
-      notes: notes.trim() || undefined,
-      shape: 'rectangle',
-      volumeLiters,
-      widthMeters,
-    });
+    addPool({ averageDepthMeters, lengthMeters, name: name.trim(), notes: notes.trim() || undefined, shape: 'rectangle', volumeLiters, widthMeters });
     setError('');
     navigation.navigate('PoolsList');
   }
 
   return (
-    <Screen>
-      <Header />
-      <View style={styles.heading}>
-        <Text style={styles.eyebrow}>בריכה חדשה</Text>
-        <Text style={styles.title}>הוספת פרטי בריכה</Text>
-        <Text style={styles.subtitle}>
-          כרגע נתמכת בריכה מלבנית בלבד. הנפח מחושב לפי אורך × רוחב × עומק ממוצע × 1000.
-        </Text>
-      </View>
-
-      <View style={styles.form}>
-        <AppInput
-          label="שם הבריכה"
-          onChangeText={setName}
-          placeholder="למשל: הבריכה בבית"
-          value={name}
-        />
-
-        <Card style={styles.shapeCard}>
-          <Text style={styles.shapeLabel}>צורת בריכה</Text>
-          <Text style={styles.shapeValue}>מלבנית</Text>
-        </Card>
-
-        <View style={styles.measureGrid}>
-          <View style={styles.measureInput}>
-            <AppInput
-              keyboardType="decimal-pad"
-              label="אורך במטרים"
-              onChangeText={setLength}
-              placeholder="8"
-              value={length}
-            />
-          </View>
-          <View style={styles.measureInput}>
-            <AppInput
-              keyboardType="decimal-pad"
-              label="רוחב במטרים"
-              onChangeText={setWidth}
-              placeholder="4"
-              value={width}
-            />
-          </View>
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <View style={styles.topBar}>
+          <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('PoolsList')}>
+            <Text style={styles.iconGlyph}>‹</Text>
+          </Pressable>
+          <Text style={styles.heading}>בריכה חדשה</Text>
+          <View style={{ width: 40 }} />
         </View>
 
-        <AppInput
-          keyboardType="decimal-pad"
-          label="עומק ממוצע במטרים"
-          onChangeText={setAverageDepth}
-          placeholder="1.5"
-          value={averageDepth}
-        />
+        <View style={styles.card}>
+          <Field label="שם הבריכה" value={name} onChangeText={setName} placeholder="למשל: הבריכה בבית" />
 
-        <Card style={styles.volumeCard}>
-          <Text style={styles.volumeLabel}>נפח מחושב</Text>
-          <Text style={styles.volumeValue}>
-            {volumeLiters > 0 ? volumeLiters.toLocaleString('he-IL') : '0'} ליטר
-          </Text>
-        </Card>
+          <View style={styles.shapeRow}>
+            <Text style={styles.shapeLabel}>צורה</Text>
+            <View style={styles.pill}><Text style={styles.pillText}>מלבנית</Text></View>
+          </View>
 
-        <AppInput
-          label="הערות אופציונליות"
-          multiline
-          onChangeText={setNotes}
-          placeholder="למשל: כיסוי, שמש ישירה, משאבה פעילה..."
-          value={notes}
-        />
+          <View style={styles.grid}>
+            <View style={{ flex: 1 }}>
+              <Field label="אורך (מ')" value={length} onChangeText={setLength} placeholder="8" numeric />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Field label="רוחב (מ')" value={width} onChangeText={setWidth} placeholder="4" numeric />
+            </View>
+          </View>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Field label="עומק ממוצע (מ')" value={averageDepth} onChangeText={setAverageDepth} placeholder="1.5" numeric />
 
-        <AppButton label="שמירת בריכה" onPress={save} />
-        <AppButton label="ביטול" variant="secondary" onPress={() => navigation.navigate('PoolsList')} />
-      </View>
-    </Screen>
+          <View style={styles.volumeBox}>
+            <Text style={styles.volumeLabel}>נפח מחושב</Text>
+            <Text style={styles.volumeValue}>{volumeLiters > 0 ? volumeLiters.toLocaleString('he-IL') : '0'} ליטר</Text>
+          </View>
+
+          <Field label="הערות (אופציונלי)" value={notes} onChangeText={setNotes} placeholder="כיסוי, חשיפה לשמש, וכו'" multiline />
+
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+        </View>
+
+        <Pressable onPress={save} style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}>
+          <Text style={styles.primaryBtnLabel}>שמירת בריכה</Text>
+        </Pressable>
+        <Pressable onPress={() => navigation.navigate('PoolsList')} style={styles.secondaryBtn}>
+          <Text style={styles.secondaryBtnLabel}>ביטול</Text>
+        </Pressable>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+function Field({ label, value, onChangeText, placeholder, numeric, multiline }: {
+  label: string; value: string; onChangeText: (v: string) => void;
+  placeholder?: string; numeric?: boolean; multiline?: boolean;
+}) {
+  return (
+    <View style={{ gap: 6 }}>
+      <Text style={fieldStyles.label}>{label}</Text>
+      <TextInput
+        style={[fieldStyles.input, multiline && { height: 80, textAlignVertical: 'top' }]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.muted}
+        keyboardType={numeric ? 'decimal-pad' : 'default'}
+        multiline={multiline}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  heading: {
-    marginTop: spacing.xxl,
-  },
-  eyebrow: {
-    color: colors.primary,
-    fontFamily: typography.fontFamily,
-    fontSize: typography.sizes.caption,
-    fontWeight: '900',
-    letterSpacing: typography.brandSpacing,
-    ...rtl.text,
-  },
-  title: {
-    color: colors.text,
-    fontFamily: typography.fontFamily,
-    fontSize: 32,
-    fontWeight: '900',
-    lineHeight: 40,
-    marginTop: spacing.sm,
-    ...rtl.text,
-  },
-  subtitle: {
-    color: colors.muted,
-    fontFamily: typography.fontFamily,
-    fontSize: typography.sizes.body,
-    fontWeight: '600',
-    lineHeight: typography.lineHeights.body,
-    marginTop: spacing.sm,
-    ...rtl.text,
-  },
-  form: {
-    gap: spacing.md,
-    marginTop: spacing.lg,
-  },
-  shapeCard: {
-    alignItems: 'center',
-    flexDirection: 'row-reverse',
-    justifyContent: 'space-between',
-  },
-  shapeLabel: {
-    color: colors.muted,
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '800',
-    ...rtl.text,
-  },
-  shapeValue: {
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.round,
-    color: colors.primaryDark,
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '900',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    ...rtl.textCenter,
-  },
-  measureGrid: {
-    flexDirection: 'row-reverse',
-    gap: spacing.md,
-  },
-  measureInput: {
-    flex: 1,
-  },
-  volumeCard: {
-    backgroundColor: colors.primarySoft,
-    borderColor: '#BDECF6',
-  },
-  volumeLabel: {
-    color: colors.primaryDark,
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '800',
-    ...rtl.text,
-  },
-  volumeValue: {
-    color: colors.primaryDark,
-    fontFamily: typography.fontFamily,
-    fontSize: 26,
-    fontWeight: '900',
-    marginTop: spacing.xs,
-    ...rtl.text,
-  },
-  error: {
-    color: colors.danger,
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '800',
-    lineHeight: 20,
-    ...rtl.text,
+  root: { flex: 1, backgroundColor: colors.background },
+  content: { paddingHorizontal: 20, paddingTop: 50, paddingBottom: 40 },
+  topBar: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', ...shadows.card },
+  iconGlyph: { fontSize: 24, color: colors.text, fontWeight: '900' },
+  heading: { fontSize: 18, fontWeight: '900', color: colors.text, ...rtl.textCenter, flex: 1, fontFamily: typography.fontFamily },
+  card: { backgroundColor: colors.card, borderRadius: 28, padding: 20, gap: 14, ...shadows.card },
+  shapeRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  shapeLabel: { color: colors.muted, fontSize: 13, fontWeight: '800', fontFamily: typography.fontFamily },
+  pill: { backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6 },
+  pillText: { color: colors.primaryDark, fontSize: 13, fontWeight: '900', fontFamily: typography.fontFamily },
+  grid: { flexDirection: 'row-reverse', gap: 12 },
+  volumeBox: { backgroundColor: '#ECFEFF', borderRadius: 18, padding: 14, borderWidth: 1, borderColor: '#BDECF6' },
+  volumeLabel: { color: colors.primaryDark, fontSize: 12, fontWeight: '800', ...rtl.text, fontFamily: typography.fontFamily },
+  volumeValue: { marginTop: 4, color: colors.primaryDark, fontSize: 22, fontWeight: '900', ...rtl.text, fontFamily: typography.fontFamily },
+  error: { color: colors.danger, fontSize: 13, fontWeight: '800', ...rtl.text, fontFamily: typography.fontFamily },
+  primaryBtn: { marginTop: 18, backgroundColor: colors.primary, borderRadius: 999, paddingVertical: 16, alignItems: 'center', ...shadows.button },
+  primaryBtnLabel: { color: colors.white, fontSize: 16, fontWeight: '900', fontFamily: typography.fontFamily },
+  secondaryBtn: { marginTop: 8, paddingVertical: 12, alignItems: 'center' },
+  secondaryBtnLabel: { color: colors.muted, fontSize: 14, fontWeight: '800', fontFamily: typography.fontFamily },
+});
+
+const fieldStyles = StyleSheet.create({
+  label: { color: colors.muted, fontSize: 12, fontWeight: '800', ...rtl.text, fontFamily: typography.fontFamily },
+  input: {
+    backgroundColor: '#F5FAFD', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
+    fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border,
+    textAlign: 'right', writingDirection: 'rtl', fontFamily: typography.fontFamily,
   },
 });
