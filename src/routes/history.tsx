@@ -110,16 +110,18 @@ function HistoryScreen() {
           <div className="flex justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
-        ) : tests.length === 0 ? (
+        ) : filteredTests.length === 0 ? (
           <div className="mt-10 rounded-3xl bg-card p-8 text-center text-sm text-muted-foreground shadow-[var(--shadow-card)]">
-            עדיין אין בדיקות. בצע סריקה ראשונה כדי שתוצאות יופיעו כאן.
+            {tests.length === 0
+              ? "עדיין אין בדיקות. בצע סריקה ראשונה כדי שתוצאות יופיעו כאן."
+              : "אין בדיקות התואמות לסינון."}
           </div>
         ) : (
           <div className="relative mt-6 pr-6">
             {/* Timeline rail */}
             <div className="absolute right-2 top-3 bottom-3 w-0.5 bg-border" />
             <div className="space-y-3">
-              {tests.map((t) => {
+              {filteredTests.map((t) => {
                 const ok = inferOk(t);
                 return (
                   <Link
