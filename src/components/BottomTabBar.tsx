@@ -42,10 +42,10 @@ export function BottomTabBar() {
               active={isActive("/history", "/results")}
             />
             <TabItem
-              to="/pricing"
+              to="/settings"
               label="הגדרות"
               icon={<Settings className="h-5 w-5" />}
-              active={isActive("/pricing", "/admin")}
+              active={isActive("/settings", "/pricing", "/admin")}
             />
           </div>
         </div>

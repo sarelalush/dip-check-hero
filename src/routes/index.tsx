@@ -55,18 +55,26 @@ function HomeScreen() {
       <div className="relative mx-auto max-w-md px-5 pt-6">
         {/* Top bar */}
         <div className="flex items-center justify-between">
-          <button className="flex h-10 w-10 items-center justify-center rounded-full bg-white/70 text-foreground shadow-sm backdrop-blur">
+          <Link
+            to="/history"
+            aria-label="היסטוריה"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/70 text-foreground shadow-sm backdrop-blur active:scale-95"
+          >
             <Bell className="h-5 w-5" />
-          </button>
+          </Link>
           <div className="flex items-center gap-2">
             <span className="text-base font-extrabold text-primary">AquaSense</span>
             <span className="flex h-9 w-9 items-center justify-center rounded-2xl text-primary-foreground shadow-md" style={{ background: "var(--gradient-hero)" }}>
               <Droplet className="h-5 w-5" fill="currentColor" />
             </span>
           </div>
-          <button className="flex h-10 w-10 items-center justify-center rounded-full bg-white/70 text-foreground shadow-sm backdrop-blur">
+          <Link
+            to="/settings"
+            aria-label="הגדרות"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/70 text-foreground shadow-sm backdrop-blur active:scale-95"
+          >
             <Menu className="h-5 w-5" />
-          </button>
+          </Link>
         </div>
 
         {/* Greeting */}
