@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WelcomeRouteImport } from './routes/welcome'
 import { Route as SignupRouteImport } from './routes/signup'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SelectStripRouteImport } from './routes/select-strip'
 import { Route as SelectPoolRouteImport } from './routes/select-pool'
 import { Route as ScanLiveRouteImport } from './routes/scan-live'
@@ -35,6 +36,11 @@ const WelcomeRoute = WelcomeRouteImport.update({
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
   path: '/signup',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SelectStripRoute = SelectStripRouteImport.update({
@@ -126,6 +132,7 @@ export interface FileRoutesByFullPath {
   '/scan-live': typeof ScanLiveRoute
   '/select-pool': typeof SelectPoolRoute
   '/select-strip': typeof SelectStripRoute
+  '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/welcome': typeof WelcomeRoute
   '/pool/$poolId': typeof PoolPoolIdRoute
@@ -145,6 +152,7 @@ export interface FileRoutesByTo {
   '/scan-live': typeof ScanLiveRoute
   '/select-pool': typeof SelectPoolRoute
   '/select-strip': typeof SelectStripRoute
+  '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/welcome': typeof WelcomeRoute
   '/pool/$poolId': typeof PoolPoolIdRoute
@@ -165,6 +173,7 @@ export interface FileRoutesById {
   '/scan-live': typeof ScanLiveRoute
   '/select-pool': typeof SelectPoolRoute
   '/select-strip': typeof SelectStripRoute
+  '/settings': typeof SettingsRoute
   '/signup': typeof SignupRoute
   '/welcome': typeof WelcomeRoute
   '/pool/$poolId': typeof PoolPoolIdRoute
@@ -186,6 +195,7 @@ export interface FileRouteTypes {
     | '/scan-live'
     | '/select-pool'
     | '/select-strip'
+    | '/settings'
     | '/signup'
     | '/welcome'
     | '/pool/$poolId'
@@ -205,6 +215,7 @@ export interface FileRouteTypes {
     | '/scan-live'
     | '/select-pool'
     | '/select-strip'
+    | '/settings'
     | '/signup'
     | '/welcome'
     | '/pool/$poolId'
@@ -224,6 +235,7 @@ export interface FileRouteTypes {
     | '/scan-live'
     | '/select-pool'
     | '/select-strip'
+    | '/settings'
     | '/signup'
     | '/welcome'
     | '/pool/$poolId'
@@ -244,6 +256,7 @@ export interface RootRouteChildren {
   ScanLiveRoute: typeof ScanLiveRoute
   SelectPoolRoute: typeof SelectPoolRoute
   SelectStripRoute: typeof SelectStripRoute
+  SettingsRoute: typeof SettingsRoute
   SignupRoute: typeof SignupRoute
   WelcomeRoute: typeof WelcomeRoute
   PoolPoolIdRoute: typeof PoolPoolIdRoute
@@ -266,6 +279,13 @@ declare module '@tanstack/react-router' {
       path: '/signup'
       fullPath: '/signup'
       preLoaderRoute: typeof SignupRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/select-strip': {
@@ -388,6 +408,7 @@ const rootRouteChildren: RootRouteChildren = {
   ScanLiveRoute: ScanLiveRoute,
   SelectPoolRoute: SelectPoolRoute,
   SelectStripRoute: SelectStripRoute,
+  SettingsRoute: SettingsRoute,
   SignupRoute: SignupRoute,
   WelcomeRoute: WelcomeRoute,
   PoolPoolIdRoute: PoolPoolIdRoute,
@@ -398,3 +419,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
