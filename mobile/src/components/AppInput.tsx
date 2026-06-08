@@ -8,6 +8,7 @@ interface AppInputProps {
   placeholder?: string;
   keyboardType?: KeyboardTypeOptions;
   secureTextEntry?: boolean;
+  multiline?: boolean;
 }
 
 export function AppInput({
@@ -17,6 +18,7 @@ export function AppInput({
   placeholder,
   keyboardType = 'default',
   secureTextEntry = false,
+  multiline = false,
 }: AppInputProps) {
   return (
     <View>
@@ -24,11 +26,12 @@ export function AppInput({
       <TextInput
         autoCapitalize="none"
         keyboardType={keyboardType}
+        multiline={multiline}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor={colors.muted}
         secureTextEntry={secureTextEntry}
-        style={styles.input}
+        style={[styles.input, multiline && styles.multiline]}
         textAlign="right"
         value={value}
       />
@@ -57,5 +60,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     writingDirection: 'rtl',
+  },
+  multiline: {
+    minHeight: 96,
+    textAlignVertical: 'top',
   },
 });

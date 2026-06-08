@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppButton } from '../components/AppButton';
 import { Card } from '../components/Card';
@@ -9,7 +9,11 @@ import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
-const plannedActions = ['בחירת סטיק בדיקה', 'הוספת בריכה', 'צפייה בהיסטוריה'];
+const plannedActions = [
+  { label: 'בחירת סטיק בדיקה', enabled: false },
+  { label: 'הוספת בריכה', enabled: true },
+  { label: 'צפייה בהיסטוריה', enabled: false },
+];
 
 export function DashboardScreen({ navigation }: Props) {
   return (
@@ -25,10 +29,20 @@ export function DashboardScreen({ navigation }: Props) {
 
       <View style={styles.list}>
         {plannedActions.map((action, index) => (
-          <Card key={action} style={styles.actionCard}>
-            <Text style={styles.actionIndex}>{index + 1}</Text>
-            <Text style={styles.actionText}>{action}</Text>
-          </Card>
+          <Pressable
+            key={action.label}
+            disabled={!action.enabled}
+            onPress={() => navigation.navigate('PoolsList')}
+            style={({ pressed }: { pressed: boolean }) => pressed && styles.pressed}
+          >
+            <Card style={[styles.actionCard, !action.enabled && styles.disabledCard]}>
+              <Text style={styles.actionIndex}>{index + 1}</Text>
+              <View style={styles.actionCopy}>
+                <Text style={styles.actionText}>{action.label}</Text>
+                <Text style={styles.actionHint}>{action.enabled ? 'פתיחה עכשיו' : 'יתווסף בהמשך'}</Text>
+              </View>
+            </Card>
+          </Pressable>
         ))}
       </View>
 
@@ -96,13 +110,30 @@ const styles = StyleSheet.create({
   },
   actionText: {
     color: colors.text,
-    flex: 1,
     fontFamily: typography.fontFamily,
     fontSize: typography.sizes.body,
     fontWeight: '900',
     ...rtl.text,
   },
+  actionCopy: {
+    flex: 1,
+  },
+  actionHint: {
+    color: colors.muted,
+    fontFamily: typography.fontFamily,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: spacing.xs,
+    ...rtl.text,
+  },
+  disabledCard: {
+    opacity: 0.72,
+  },
   footerAction: {
     marginTop: spacing.xl,
+  },
+  pressed: {
+    opacity: 0.86,
+    transform: [{ scale: 0.99 }],
   },
 });
