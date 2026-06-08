@@ -63,19 +63,8 @@ function HomeScreen() {
       </div>
 
       <div className="relative mx-auto max-w-md px-5 pt-5">
-        {/* Top bar — in RTL flex first item appears on the right */}
-        <div className="flex items-center justify-between">
-          <Link
-            to="/settings"
-            aria-label="הגדרות"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-foreground active:scale-95"
-          >
-            <Menu className="h-5 w-5" />
-          </Link>
-          <div className="flex items-center gap-1.5">
-            <span className="text-lg font-extrabold text-primary">AquaSense</span>
-            <Droplet className="h-5 w-5 text-primary" fill="currentColor" />
-          </div>
+        {/* Top bar */}
+        <div dir="ltr" className="flex items-center justify-between">
           <Link
             to="/history"
             aria-label="היסטוריה"
@@ -83,7 +72,19 @@ function HomeScreen() {
           >
             <Bell className="h-5 w-5" />
           </Link>
+          <div className="flex items-center gap-1.5">
+            <Droplet className="h-5 w-5 text-primary" fill="currentColor" />
+            <span className="text-lg font-extrabold text-primary">AquaSense</span>
+          </div>
+          <Link
+            to="/settings"
+            aria-label="הגדרות"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-foreground active:scale-95"
+          >
+            <Menu className="h-5 w-5" />
+          </Link>
         </div>
+
 
         {/* Greeting */}
         <div className="mt-5 text-center">
