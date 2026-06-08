@@ -1,166 +1,78 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { AppButton } from '../components/AppButton';
-import { Card } from '../components/Card';
-import { Header } from '../components/Header';
-import { Screen } from '../components/Screen';
-import { colors, radius, rtl, spacing, typography } from '../theme';
+import { BottomTabBar } from '../components/BottomTabBar';
+import { colors, radius, rtl, shadows, typography } from '../theme';
 import { usePools } from '../state/PoolsContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PoolsList'>;
 
+const STOCK_COVER = 'https://images.unsplash.com/photo-1572331165267-854da2b10ccc?auto=format&fit=crop&w=800&q=70';
+
 export function PoolsListScreen({ navigation }: Props) {
   const { pools } = usePools();
 
   return (
-    <Screen>
-      <Header />
-      <View style={styles.heading}>
-        <Text style={styles.eyebrow}>הבריכות שלי</Text>
-        <Text style={styles.title}>ניהול בריכות</Text>
-        <Text style={styles.subtitle}>
-          שמרו את נתוני הבריכה כדי שבהמשך נוכל לחשב מינונים מדויקים לפי נפח המים.
-        </Text>
-      </View>
+    <View style={styles.root}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <Text style={styles.title}>הבריכות שלי</Text>
 
-      <View style={styles.actions}>
-        <AppButton label="הוספת בריכה חדשה" onPress={() => navigation.navigate('AddPool')} />
-      </View>
+        <Pressable
+          onPress={() => navigation.navigate('AddPool')}
+          style={({ pressed }) => [styles.addBtn, pressed && { opacity: 0.9 }]}
+        >
+          <Text style={styles.addPlus}>+</Text>
+          <Text style={styles.addLabel}>הוספת בריכה</Text>
+        </Pressable>
 
-      <View style={styles.list}>
-        {pools.length === 0 ? (
-          <Card>
-            <Text style={styles.emptyTitle}>עדיין אין בריכות שמורות</Text>
-            <Text style={styles.emptyText}>
-              הוסיפו בריכה ראשונה כדי להתחיל לבנות את בסיס הנתונים המקומי של האפליקציה.
-            </Text>
-          </Card>
-        ) : (
-          pools.map((pool) => (
-            <Pressable
-              key={pool.id}
-              onPress={() => navigation.navigate('PoolDetails', { poolId: pool.id })}
-              style={({ pressed }: { pressed: boolean }) => pressed && styles.pressed}
-            >
-              <Card style={styles.poolCard}>
-                <View style={styles.iconBadge}>
-                  <Text style={styles.iconText}>מים</Text>
+        <View style={styles.list}>
+          {pools.length === 0 ? (
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>עדיין אין בריכות. הוסיפו את הבריכה הראשונה כדי להתחיל.</Text>
+            </View>
+          ) : (
+            pools.map((pool) => (
+              <Pressable
+                key={pool.id}
+                onPress={() => navigation.navigate('PoolDetails', { poolId: pool.id })}
+                style={({ pressed }) => [styles.card, pressed && { opacity: 0.95 }]}
+              >
+                <Image source={{ uri: STOCK_COVER }} style={styles.cover} />
+                <View style={styles.cardBody}>
+                  <View style={styles.cardHead}>
+                    <Text style={styles.menuDots}>⋯</Text>
+                    <Text style={styles.poolName}>{pool.name}</Text>
+                  </View>
+                  <Text style={styles.poolMeta}>💧 נפח: {pool.volumeLiters.toLocaleString('he-IL')} ליטר</Text>
+                  <Text style={styles.poolStatus}>✓ המים מאוזנים</Text>
                 </View>
-                <View style={styles.poolText}>
-                  <Text style={styles.poolName}>{pool.name}</Text>
-                  <Text style={styles.poolMeta}>
-                    {pool.volumeLiters.toLocaleString('he-IL')} ליטר · מלבנית
-                  </Text>
-                </View>
-              </Card>
-            </Pressable>
-          ))
-        )}
-      </View>
+              </Pressable>
+            ))
+          )}
+        </View>
+      </ScrollView>
 
-      <View style={styles.footerAction}>
-        <AppButton label="חזרה לדשבורד" variant="secondary" onPress={() => navigation.navigate('Dashboard')} />
-      </View>
-    </Screen>
+      <BottomTabBar active="pools" navigation={navigation} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  heading: {
-    marginTop: spacing.xxl,
-  },
-  eyebrow: {
-    color: colors.primary,
-    fontFamily: typography.fontFamily,
-    fontSize: typography.sizes.caption,
-    fontWeight: '900',
-    letterSpacing: typography.brandSpacing,
-    ...rtl.text,
-  },
-  title: {
-    color: colors.text,
-    fontFamily: typography.fontFamily,
-    fontSize: 32,
-    fontWeight: '900',
-    lineHeight: 40,
-    marginTop: spacing.sm,
-    ...rtl.text,
-  },
-  subtitle: {
-    color: colors.muted,
-    fontFamily: typography.fontFamily,
-    fontSize: typography.sizes.body,
-    fontWeight: '600',
-    lineHeight: typography.lineHeights.body,
-    marginTop: spacing.sm,
-    ...rtl.text,
-  },
-  actions: {
-    marginTop: spacing.lg,
-  },
-  list: {
-    gap: spacing.md,
-    marginTop: spacing.lg,
-  },
-  emptyTitle: {
-    color: colors.text,
-    fontFamily: typography.fontFamily,
-    fontSize: 18,
-    fontWeight: '900',
-    ...rtl.text,
-  },
-  emptyText: {
-    color: colors.muted,
-    fontFamily: typography.fontFamily,
-    fontSize: 14,
-    fontWeight: '600',
-    lineHeight: 22,
-    marginTop: spacing.sm,
-    ...rtl.text,
-  },
-  poolCard: {
-    alignItems: 'center',
-    flexDirection: 'row-reverse',
-    gap: spacing.md,
-  },
-  iconBadge: {
-    alignItems: 'center',
-    backgroundColor: colors.primarySoft,
-    borderRadius: radius.md,
-    height: 50,
-    justifyContent: 'center',
-    width: 50,
-  },
-  iconText: {
-    color: colors.primaryDark,
-    fontFamily: typography.fontFamily,
-    fontSize: 12,
-    fontWeight: '900',
-  },
-  poolText: {
-    flex: 1,
-  },
-  poolName: {
-    color: colors.text,
-    fontFamily: typography.fontFamily,
-    fontSize: 17,
-    fontWeight: '900',
-    ...rtl.text,
-  },
-  poolMeta: {
-    color: colors.muted,
-    fontFamily: typography.fontFamily,
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: spacing.xs,
-    ...rtl.text,
-  },
-  footerAction: {
-    marginTop: spacing.xl,
-  },
-  pressed: {
-    opacity: 0.86,
-    transform: [{ scale: 0.99 }],
-  },
+  root: { flex: 1, backgroundColor: colors.background },
+  content: { paddingHorizontal: 20, paddingTop: 36, paddingBottom: 140 },
+  title: { textAlign: 'center', fontSize: 28, fontWeight: '900', color: colors.text, fontFamily: typography.fontFamily },
+  addBtn: { marginTop: 22, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.primary, borderRadius: radius.round, paddingVertical: 16, ...shadows.button },
+  addPlus: { color: colors.white, fontSize: 22, fontWeight: '900' },
+  addLabel: { color: colors.white, fontSize: 16, fontWeight: '900', fontFamily: typography.fontFamily },
+  list: { marginTop: 22, gap: 16 },
+  empty: { backgroundColor: colors.card, borderRadius: 24, padding: 28, ...shadows.card },
+  emptyText: { color: colors.muted, textAlign: 'center', fontWeight: '700', fontSize: 14, fontFamily: typography.fontFamily },
+  card: { backgroundColor: colors.card, borderRadius: 24, overflow: 'hidden', ...shadows.card },
+  cover: { width: '100%', height: 150, backgroundColor: colors.subtle },
+  cardBody: { padding: 14 },
+  cardHead: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  menuDots: { color: colors.muted, fontSize: 20, fontWeight: '900' },
+  poolName: { color: colors.text, fontSize: 18, fontWeight: '900', ...rtl.text, fontFamily: typography.fontFamily, flex: 1 },
+  poolMeta: { marginTop: 6, color: colors.muted, fontSize: 12, fontWeight: '700', ...rtl.text, fontFamily: typography.fontFamily },
+  poolStatus: { marginTop: 4, color: '#059669', fontSize: 12, fontWeight: '900', ...rtl.text, fontFamily: typography.fontFamily },
 });
