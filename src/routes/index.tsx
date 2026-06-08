@@ -64,7 +64,7 @@ function HomeScreen() {
 
       <div className="relative mx-auto max-w-md px-5 pt-5">
         {/* Top bar */}
-        <div className="flex items-center justify-between">
+        <div dir="ltr" className="flex items-center justify-between">
           <Link
             to="/history"
             aria-label="היסטוריה"
@@ -74,10 +74,7 @@ function HomeScreen() {
           </Link>
           <div className="flex items-center gap-1.5">
             <Droplet className="h-5 w-5 text-primary" fill="currentColor" />
-            <span className="text-lg font-extrabold">
-              <span className="text-primary">Aqua</span>
-              <span className="text-foreground">Sense</span>
-            </span>
+            <span className="text-lg font-extrabold text-primary">AquaSense</span>
           </div>
           <Link
             to="/settings"
@@ -88,13 +85,15 @@ function HomeScreen() {
           </Link>
         </div>
 
+
         {/* Greeting */}
         <div className="mt-5 text-center">
-          <h1 className="text-3xl font-black text-foreground">
+          <h1 className="text-2xl font-black text-foreground truncate">
             שלום{firstName ? ` ${firstName}` : ""}!
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">כיף לראות אותך שוב</p>
         </div>
+
 
         {/* Water status card */}
         <div className="mt-6 rounded-[28px] bg-card p-5 shadow-[0_20px_50px_-20px_rgba(8,145,178,0.25)]">
