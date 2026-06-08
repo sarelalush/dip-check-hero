@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NavigationProp } from '@react-navigation/native';
-import { colors, shadows, typography } from '../theme';
+import { colors, radius, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
 type TabKey = 'home' | 'pools' | 'scan' | 'history' | 'settings';
@@ -11,10 +11,10 @@ interface Props {
 }
 
 const TABS: { key: TabKey; label: string; glyph: string }[] = [
-  { key: 'settings', label: 'הגדרות', glyph: '⚙' },
-  { key: 'history', label: 'היסטוריה', glyph: '⏱' },
-  { key: 'scan', label: 'סריקה', glyph: '⌗' },
-  { key: 'pools', label: 'בריכות', glyph: '~' },
+  { key: 'settings', label: 'הגדרות', glyph: '⚙︎' },
+  { key: 'history', label: 'היסטוריה', glyph: '◷' },
+  { key: 'scan', label: 'סריקה', glyph: '⌖' },
+  { key: 'pools', label: 'בריכות', glyph: '≈' },
   { key: 'home', label: 'בית', glyph: '⌂' },
 ];
 
@@ -23,29 +23,35 @@ export function BottomTabBar({ active, navigation }: Props) {
     if (tab === 'home') navigation.navigate('Dashboard');
     else if (tab === 'pools') navigation.navigate('PoolsList');
     else if (tab === 'scan') navigation.navigate('SelectStrip');
+    else if (tab === 'history') navigation.navigate('History');
+    else if (tab === 'settings') navigation.navigate('Settings');
   }
 
   return (
     <View pointerEvents="box-none" style={styles.wrap}>
+      <View style={styles.barGlow} />
       <View style={styles.bar}>
-        {TABS.map((t) => {
-          if (t.key === 'scan') {
+        {TABS.map((tab) => {
+          if (tab.key === 'scan') {
             return (
-              <Pressable key={t.key} onPress={() => go(t.key)} style={styles.scanTab}>
-                <View style={[styles.scanCircle, active === 'scan' && styles.scanCircleActive]}>
-                  <Text style={styles.scanGlyph}>{t.glyph}</Text>
+              <Pressable key={tab.key} onPress={() => go(tab.key)} style={({ pressed }) => [styles.scanTab, pressed && styles.pressed]}>
+                <View style={[styles.scanHalo, active === 'scan' && styles.scanHaloActive]}>
+                  <View style={styles.scanCircle}>
+                    <Text style={styles.scanGlyph}>{tab.glyph}</Text>
+                  </View>
                 </View>
-                <Text style={[styles.label, styles.scanLabel]}>{t.label}</Text>
+                <Text style={styles.scanLabel}>{tab.label}</Text>
               </Pressable>
             );
           }
-          const isActive = active === t.key;
+
+          const isActive = active === tab.key;
           return (
-            <Pressable key={t.key} onPress={() => go(t.key)} style={styles.tab}>
+            <Pressable key={tab.key} onPress={() => go(tab.key)} style={({ pressed }) => [styles.tab, pressed && styles.pressed]}>
               <View style={[styles.iconWrap, isActive && styles.iconWrapActive]}>
-                <Text style={[styles.glyph, isActive && styles.glyphActive]}>{t.glyph}</Text>
+                <Text style={[styles.glyph, isActive && styles.glyphActive]}>{tab.glyph}</Text>
               </View>
-              <Text style={[styles.label, isActive && styles.labelActive]}>{t.label}</Text>
+              <Text style={[styles.label, isActive && styles.labelActive]}>{tab.label}</Text>
             </Pressable>
           );
         })}
@@ -55,35 +61,103 @@ export function BottomTabBar({ active, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14, paddingBottom: 18 },
+  wrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  barGlow: {
+    position: 'absolute',
+    left: 32,
+    right: 32,
+    bottom: 24,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: 'rgba(6,168,199,0.18)',
+  },
   bar: {
+    minHeight: 78,
     backgroundColor: 'rgba(255,255,255,0.96)',
-    borderRadius: 28,
+    borderRadius: radius.xxl,
     flexDirection: 'row-reverse',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     paddingHorizontal: 10,
-    paddingTop: 10,
-    paddingBottom: 8,
+    paddingTop: 11,
+    paddingBottom: 9,
     borderWidth: 1,
-    borderColor: colors.border,
-    ...shadows.card,
+    borderColor: 'rgba(215,234,241,0.85)',
+    ...shadows.tab,
   },
-  tab: { alignItems: 'center', width: 56, paddingVertical: 4, gap: 2 },
-  iconWrap: { width: 38, height: 38, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  iconWrapActive: { backgroundColor: colors.primarySoft },
-  glyph: { fontSize: 20, color: colors.muted, fontFamily: typography.fontFamily },
-  glyphActive: { color: colors.primary },
-  label: { fontSize: 10, fontWeight: '800', color: colors.muted, fontFamily: typography.fontFamily },
-  labelActive: { color: colors.primary },
-  scanTab: { alignItems: 'center', width: 64, marginTop: -28, gap: 4 },
-  scanCircle: {
-    width: 60, height: 60, borderRadius: 30,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.primary,
+  tab: {
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    width: 58,
+    paddingVertical: 4,
+    gap: 3,
+  },
+  pressed: { opacity: 0.82, transform: [{ scale: 0.98 }] },
+  iconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  iconWrapActive: {
+    backgroundColor: colors.primarySoft,
+  },
+  glyph: {
+    fontSize: 22,
+    color: colors.tabInactive,
+    fontFamily: typography.fontFamily,
+    fontWeight: '900',
+  },
+  glyphActive: { color: colors.primaryDark },
+  label: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: colors.tabInactive,
+    fontFamily: typography.fontFamily,
+  },
+  labelActive: { color: colors.primaryDark },
+  scanTab: {
+    alignItems: 'center',
+    width: 68,
+    marginTop: -34,
+    gap: 5,
+  },
+  scanHalo: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primarySoft,
+    borderWidth: 6,
+    borderColor: 'rgba(255,255,255,0.98)',
     ...shadows.button,
   },
-  scanCircleActive: { borderWidth: 4, borderColor: colors.primarySoft },
-  scanGlyph: { color: colors.white, fontSize: 28, fontWeight: '900' },
-  scanLabel: { color: colors.primary },
+  scanHaloActive: {
+    backgroundColor: '#C7F5FC',
+  },
+  scanCircle: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  scanGlyph: { color: colors.white, fontSize: 30, fontWeight: '900' },
+  scanLabel: {
+    color: colors.primaryDark,
+    fontSize: 11,
+    fontWeight: '900',
+    fontFamily: typography.fontFamily,
+  },
 });
