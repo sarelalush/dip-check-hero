@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Bell, Menu, Droplet, CheckCircle2, ScanLine, ChevronLeft } from "lucide-react";
+import { Bell, Menu, Droplet, CheckCircle2, ScanLine } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { poolStorage, type Pool, type TestRecord } from "@/utils/storage";
