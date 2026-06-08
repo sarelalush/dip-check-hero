@@ -1,5 +1,4 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Path, Circle } from 'react-native-svg';
 import type { NavigationProp } from '@react-navigation/native';
 import { colors, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
@@ -11,101 +10,52 @@ interface Props {
   navigation: NavigationProp<RootStackParamList>;
 }
 
+const TABS: { key: TabKey; label: string; glyph: string }[] = [
+  { key: 'settings', label: 'הגדרות', glyph: '⚙' },
+  { key: 'history', label: 'היסטוריה', glyph: '⏱' },
+  { key: 'scan', label: 'סריקה', glyph: '⌗' },
+  { key: 'pools', label: 'בריכות', glyph: '~' },
+  { key: 'home', label: 'בית', glyph: '⌂' },
+];
+
 export function BottomTabBar({ active, navigation }: Props) {
   function go(tab: TabKey) {
     if (tab === 'home') navigation.navigate('Dashboard');
     else if (tab === 'pools') navigation.navigate('PoolsList');
     else if (tab === 'scan') navigation.navigate('SelectStrip');
-    // history / settings — not yet wired
   }
 
   return (
     <View pointerEvents="box-none" style={styles.wrap}>
       <View style={styles.bar}>
-        <Tab label="הגדרות" icon={<IconSettings active={active === 'settings'} />} active={active === 'settings'} onPress={() => go('settings')} />
-        <Tab label="היסטוריה" icon={<IconHistory active={active === 'history'} />} active={active === 'history'} onPress={() => go('history')} />
-        <ScanTab active={active === 'scan'} onPress={() => go('scan')} />
-        <Tab label="בריכות" icon={<IconPools active={active === 'pools'} />} active={active === 'pools'} onPress={() => go('pools')} />
-        <Tab label="בית" icon={<IconHome active={active === 'home'} />} active={active === 'home'} onPress={() => go('home')} />
+        {TABS.map((t) => {
+          if (t.key === 'scan') {
+            return (
+              <Pressable key={t.key} onPress={() => go(t.key)} style={styles.scanTab}>
+                <View style={[styles.scanCircle, active === 'scan' && styles.scanCircleActive]}>
+                  <Text style={styles.scanGlyph}>{t.glyph}</Text>
+                </View>
+                <Text style={[styles.label, styles.scanLabel]}>{t.label}</Text>
+              </Pressable>
+            );
+          }
+          const isActive = active === t.key;
+          return (
+            <Pressable key={t.key} onPress={() => go(t.key)} style={styles.tab}>
+              <View style={[styles.iconWrap, isActive && styles.iconWrapActive]}>
+                <Text style={[styles.glyph, isActive && styles.glyphActive]}>{t.glyph}</Text>
+              </View>
+              <Text style={[styles.label, isActive && styles.labelActive]}>{t.label}</Text>
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );
 }
 
-function Tab({ label, icon, active, onPress }: { label: string; icon: React.ReactNode; active: boolean; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={styles.tab}>
-      <View style={[styles.iconWrap, active && styles.iconWrapActive]}>{icon}</View>
-      <Text style={[styles.label, active && styles.labelActive]}>{label}</Text>
-    </Pressable>
-  );
-}
-
-function ScanTab({ active, onPress }: { active: boolean; onPress: () => void }) {
-  return (
-    <Pressable onPress={onPress} style={styles.scanTab}>
-      <View style={[styles.scanCircle, active && styles.scanCircleActive]}>
-        <IconScan />
-      </View>
-      <Text style={[styles.label, styles.scanLabel]}>סריקה</Text>
-    </Pressable>
-  );
-}
-
-const ICON = colors.muted;
-const ICON_ACTIVE = colors.primary;
-
-function IconHome({ active }: { active: boolean }) {
-  const c = active ? ICON_ACTIVE : ICON;
-  return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Path d="M3 11l9-8 9 8v9a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2v-9z" stroke={c} strokeWidth={2} strokeLinejoin="round" />
-    </Svg>
-  );
-}
-function IconPools({ active }: { active: boolean }) {
-  const c = active ? ICON_ACTIVE : ICON;
-  return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Path d="M3 14c2 0 2-1 4-1s2 1 4 1 2-1 4-1 2 1 4 1 2-1 4-1M3 18c2 0 2-1 4-1s2 1 4 1 2-1 4-1 2 1 4 1 2-1 4-1" stroke={c} strokeWidth={2} strokeLinecap="round" />
-    </Svg>
-  );
-}
-function IconHistory({ active }: { active: boolean }) {
-  const c = active ? ICON_ACTIVE : ICON;
-  return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Circle cx={12} cy={12} r={9} stroke={c} strokeWidth={2} />
-      <Path d="M12 7v5l3 2" stroke={c} strokeWidth={2} strokeLinecap="round" />
-    </Svg>
-  );
-}
-function IconSettings({ active }: { active: boolean }) {
-  const c = active ? ICON_ACTIVE : ICON;
-  return (
-    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
-      <Circle cx={12} cy={12} r={3} stroke={c} strokeWidth={2} />
-      <Path d="M19 12a7 7 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2l-.4-2.6h-4l-.4 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z" stroke={c} strokeWidth={2} strokeLinejoin="round" />
-    </Svg>
-  );
-}
-function IconScan() {
-  return (
-    <Svg width={26} height={26} viewBox="0 0 24 24" fill="none">
-      <Path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M3 12h18" stroke={colors.white} strokeWidth={2.2} strokeLinecap="round" />
-    </Svg>
-  );
-}
-
 const styles = StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 14,
-    paddingBottom: 18,
-  },
+  wrap: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 14, paddingBottom: 18 },
   bar: {
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: 28,
@@ -122,6 +72,8 @@ const styles = StyleSheet.create({
   tab: { alignItems: 'center', width: 56, paddingVertical: 4, gap: 2 },
   iconWrap: { width: 38, height: 38, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   iconWrapActive: { backgroundColor: colors.primarySoft },
+  glyph: { fontSize: 20, color: colors.muted, fontFamily: typography.fontFamily },
+  glyphActive: { color: colors.primary },
   label: { fontSize: 10, fontWeight: '800', color: colors.muted, fontFamily: typography.fontFamily },
   labelActive: { color: colors.primary },
   scanTab: { alignItems: 'center', width: 64, marginTop: -28, gap: 4 },
@@ -132,5 +84,6 @@ const styles = StyleSheet.create({
     ...shadows.button,
   },
   scanCircleActive: { borderWidth: 4, borderColor: colors.primarySoft },
+  scanGlyph: { color: colors.white, fontSize: 28, fontWeight: '900' },
   scanLabel: { color: colors.primary },
 });
