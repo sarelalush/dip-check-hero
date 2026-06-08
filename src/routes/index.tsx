@@ -1,10 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Camera, Droplets, ListChecks, LogOut, Sparkles, Shield, Crown, Gift, History } from "lucide-react";
-import { useEffect } from "react";
+import { Bell, Menu, Droplet, CheckCircle2, ScanLine, ChevronLeft } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { useSubscription } from "@/hooks/useSubscription";
-import { WaterWaves } from "@/components/WaterWaves";
+import { poolStorage, type Pool, type TestRecord } from "@/utils/storage";
+import { BottomTabBar } from "@/components/BottomTabBar";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -17,127 +16,153 @@ export const Route = createFileRoute("/")({
 });
 
 function HomeScreen() {
-  const { isAuthenticated, loading, user, signOut } = useAuth();
-  const { isAdmin } = useIsAdmin();
-  const { isEarlyBird, isPaying } = useSubscription();
+  const { isAuthenticated, loading, user } = useAuth();
   const navigate = useNavigate();
+  const [pools, setPools] = useState<Pool[]>([]);
+  const [latest, setLatest] = useState<TestRecord | null>(null);
 
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      navigate({ to: "/welcome" });
-    }
+    if (!loading && !isAuthenticated) navigate({ to: "/welcome" });
   }, [loading, isAuthenticated, navigate]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setPools(poolStorage.list());
+    const tests = JSON.parse(localStorage.getItem("poolcheck.tests") || "[]") as TestRecord[];
+    if (tests.length) {
+      tests.sort((a, b) => b.date - a.date);
+      setLatest(tests[0]);
+    }
+  }, []);
+
+  const firstName = useMemo(() => {
+    const n = user?.user_metadata?.display_name || user?.email || "";
+    return String(n).split(/[\s@]/)[0];
+  }, [user]);
 
   if (loading || !isAuthenticated) {
     return <div className="min-h-screen bg-background" />;
   }
 
-  const badge = isAdmin
-    ? { icon: Shield, label: "מנהל", className: "bg-amber-100 text-amber-900 border-amber-300" }
-    : isPaying
-      ? { icon: Crown, label: "פרימיום", className: "bg-primary/10 text-primary border-primary/30" }
-      : isEarlyBird
-        ? { icon: Gift, label: "חודש חינם", className: "bg-emerald-100 text-emerald-900 border-emerald-300" }
-        : null;
+  const stats = readStats(latest);
+  const allOk = stats.every((s) => s.status === "ok");
 
   return (
-    <div dir="rtl" className="min-h-screen bg-background">
-      <div className="mx-auto max-w-md px-5 pt-6 pb-10">
+    <div dir="rtl" className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#E6F6FB] via-background to-background">
+      {/* Soft water shimmer at top */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-gradient-to-b from-[#BEE6F1]/60 to-transparent" />
+
+      <div className="relative mx-auto max-w-md px-5 pt-6">
         {/* Top bar */}
-        <div className="mb-4 flex items-center justify-between">
-          <button
-            onClick={async () => { await signOut(); navigate({ to: "/welcome" }); }}
-            className="flex items-center gap-1.5 rounded-full bg-muted/70 px-3 py-1.5 text-xs text-muted-foreground transition hover:bg-muted"
-          >
-            <LogOut className="h-3.5 w-3.5" />
-            יציאה
+        <div className="flex items-center justify-between">
+          <button className="flex h-10 w-10 items-center justify-center rounded-full bg-white/70 text-foreground shadow-sm backdrop-blur">
+            <Bell className="h-5 w-5" />
           </button>
-          <div className="flex items-center gap-2.5">
-            <div className="text-right">
-              <div className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground">שלום</div>
-              <div className="text-sm font-bold text-foreground">
-                {user?.user_metadata?.display_name || user?.email}
-              </div>
-              {badge && (
-                <div className={`mt-1 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${badge.className}`}>
-                  <badge.icon className="h-3 w-3" />
-                  {badge.label}
-                </div>
-              )}
+          <div className="flex items-center gap-2">
+            <span className="text-base font-extrabold text-primary">AquaSense</span>
+            <span className="flex h-9 w-9 items-center justify-center rounded-2xl text-primary-foreground shadow-md" style={{ background: "var(--gradient-hero)" }}>
+              <Droplet className="h-5 w-5" fill="currentColor" />
+            </span>
+          </div>
+          <button className="flex h-10 w-10 items-center justify-center rounded-full bg-white/70 text-foreground shadow-sm backdrop-blur">
+            <Menu className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Greeting */}
+        <div className="mt-6 text-right">
+          <h1 className="text-3xl font-black text-foreground">
+            שלום{firstName ? ` ${firstName}` : ""}!
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">כיף לראות אותך שוב</p>
+        </div>
+
+        {/* Water status card */}
+        <div className="mt-5 rounded-[28px] bg-card p-5 shadow-[var(--shadow-card)]">
+          <div className="text-center text-sm font-bold text-muted-foreground">מצב המים</div>
+          <div className="mt-4 flex justify-center">
+            <div className={`flex h-20 w-20 items-center justify-center rounded-full ${allOk ? "bg-emerald-100" : "bg-amber-100"}`}>
+              <CheckCircle2 className={`h-12 w-12 ${allOk ? "text-emerald-500" : "text-amber-500"}`} strokeWidth={2.5} />
             </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <Droplets className="h-5 w-5" fill="currentColor" />
+          </div>
+          <div className="mt-3 text-center">
+            <div className="text-xl font-black text-foreground">
+              {latest ? (allOk ? "רוב הערכים תקינים" : "נדרש תיקון קל") : "אין בדיקה אחרונה"}
             </div>
+            <div className="mt-1 flex items-center justify-center gap-1 text-xs font-semibold text-muted-foreground">
+              <Droplet className="h-3.5 w-3.5 text-primary" />
+              {latest ? "המים שלך נקיים ובריאים" : "בצע סריקה כדי לראות את מצב המים"}
+            </div>
+          </div>
+
+          {/* Stat row */}
+          <div className="mt-5 grid grid-cols-3 gap-2.5">
+            {stats.map((s) => (
+              <StatTile key={s.label} {...s} />
+            ))}
           </div>
         </div>
 
-        {/* Hero with animated waves */}
-        <div
-          className="relative overflow-hidden rounded-[28px] p-7 pb-24 text-primary-foreground shadow-[var(--shadow-soft)]"
+        {/* CTA */}
+        <Link
+          to="/select-strip"
+          className="mt-6 flex items-center justify-center gap-3 rounded-full px-6 py-5 text-lg font-black text-primary-foreground shadow-[0_12px_30px_-10px_rgba(8,145,178,0.55)] transition active:scale-[0.98]"
           style={{ background: "var(--gradient-hero)" }}
         >
-          <div className="pointer-events-none absolute -left-12 -bottom-12 h-44 w-44 rounded-full bg-white/10 blur-3xl" />
-          <div className="pointer-events-none absolute -right-8 -top-10 h-36 w-36 rounded-full bg-white/20 blur-2xl" />
+          <ScanLine className="h-6 w-6" />
+          התחל סריקה
+        </Link>
 
-          <div className="relative z-10 flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-cyan-100" />
-            <span className="text-[11px] font-semibold tracking-[0.22em] text-white/80">AQUASENSE</span>
-          </div>
-          <h1 className="relative z-10 mt-3 text-3xl font-extrabold leading-tight">
-            בדיקת מים
-            <br />
-            לבריכה שלך
-          </h1>
-          <p className="relative z-10 mt-2 max-w-[18rem] text-sm leading-relaxed text-white/85">
-            צלם את סטיק הבדיקה וקבל המלצה מדויקת כמה חומר להוסיף.
-          </p>
-
-          <WaterWaves tone="light" height="h-24" />
-        </div>
-
-        {/* Actions */}
-        <div className="mt-6 space-y-3">
-          <Link
-            to="/select-strip"
-            className="group relative flex items-center justify-center gap-3 overflow-hidden rounded-2xl bg-primary px-6 py-5 text-lg font-bold text-primary-foreground shadow-[var(--shadow-soft)] transition active:scale-[0.98]"
-          >
-            <span
-              className="pointer-events-none absolute inset-0 opacity-0 transition group-hover:opacity-100"
-              style={{ background: "var(--gradient-hero)" }}
-            />
-            <Camera className="relative h-6 w-6" />
-            <span className="relative">סרוק סטיק עכשיו</span>
+        {pools.length > 0 && (
+          <Link to="/pools" className="mt-3 flex items-center justify-center gap-1 text-xs font-bold text-primary">
+            צפה בכל הבריכות שלי ({pools.length})
+            <ChevronLeft className="h-3.5 w-3.5" />
           </Link>
-          <Link
-            to="/pools"
-            className="flex items-center justify-center gap-3 rounded-2xl border border-primary/15 bg-card px-6 py-4 text-base font-semibold text-foreground shadow-sm transition hover:border-primary/30 active:scale-[0.98]"
-          >
-            <ListChecks className="h-5 w-5 text-primary" />
-            הבריכות שלי
-          </Link>
-          <Link
-            to="/history"
-            className="flex items-center justify-center gap-3 rounded-2xl border border-primary/15 bg-card px-6 py-4 text-base font-semibold text-foreground shadow-sm transition hover:border-primary/30 active:scale-[0.98]"
-          >
-            <History className="h-5 w-5 text-primary" />
-            ההיסטוריה שלי
-          </Link>
-
-          {isAdmin && (
-            <Link
-              to="/admin"
-              className="flex items-center justify-center gap-3 rounded-2xl border border-amber-400/40 bg-amber-50 px-6 py-4 text-base font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100 active:scale-[0.98]"
-            >
-              <Shield className="h-5 w-5" />
-              לוח ניהול
-            </Link>
-          )}
-        </div>
-
-        <p className="mt-10 text-center text-xs text-muted-foreground leading-relaxed">
-          תומך ב-AquaChek Pool Test Strips
-        </p>
+        )}
       </div>
+
+      <BottomTabBar />
     </div>
   );
+}
+
+function StatTile({ label, value, status }: StatRead) {
+  const tone =
+    status === "ok"
+      ? "border-emerald-200 bg-emerald-50/60"
+      : status === "low"
+      ? "border-amber-200 bg-amber-50/60"
+      : "border-rose-200 bg-rose-50/60";
+  const text =
+    status === "ok" ? "תקין" : status === "low" ? "נמוך" : "גבוה";
+  const textTone =
+    status === "ok" ? "text-emerald-600" : status === "low" ? "text-amber-600" : "text-rose-600";
+  return (
+    <div className={`rounded-2xl border ${tone} px-2 py-3 text-center`}>
+      <div className="text-[11px] font-bold text-muted-foreground">{label}</div>
+      <div className="mt-0.5 text-2xl font-black text-foreground">{value ?? "—"}</div>
+      <div className={`text-[11px] font-extrabold ${textTone}`}>{text}</div>
+    </div>
+  );
+}
+
+interface StatRead {
+  label: string;
+  value: string | null;
+  status: "ok" | "low" | "high";
+}
+
+function readStats(test: TestRecord | null): StatRead[] {
+  const get = (k: string) => {
+    const r = (test?.results as Record<string, { value: number; status: "ok" | "low" | "high" } | undefined> | undefined)?.[k];
+    return r ? { value: r.value, status: r.status } : null;
+  };
+  const ph = get("ph");
+  const cl = get("freeChlorine");
+  const alk = get("alkalinity");
+  return [
+    { label: "אלקליניות", value: alk ? String(Math.round(alk.value)) : null, status: alk?.status ?? "ok" },
+    { label: "כלור", value: cl ? cl.value.toFixed(1) : null, status: cl?.status ?? "ok" },
+    { label: "pH", value: ph ? ph.value.toFixed(1) : null, status: ph?.status ?? "ok" },
+  ];
 }
