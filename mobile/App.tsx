@@ -6,6 +6,8 @@ import { LandingScreen } from './src/screens/LandingScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { PoolDetailsScreen } from './src/screens/PoolDetailsScreen';
 import { PoolsListScreen } from './src/screens/PoolsListScreen';
+import { ScanPlaceholderScreen } from './src/screens/ScanPlaceholderScreen';
+import { SelectStripScreen } from './src/screens/SelectStripScreen';
 import { SignupScreen } from './src/screens/SignupScreen';
 import { PoolsProvider } from './src/state/PoolsContext';
 
@@ -17,6 +19,8 @@ export type RootStackParamList = {
   PoolsList: undefined;
   AddPool: undefined;
   PoolDetails: { poolId: string };
+  SelectStrip: { poolId?: string } | undefined;
+  ScanPlaceholder: { brandId: string; poolId?: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -33,6 +37,8 @@ export default function App() {
           <Stack.Screen name="PoolsList" component={PoolsListScreen} />
           <Stack.Screen name="AddPool" component={AddPoolScreen} />
           <Stack.Screen name="PoolDetails" component={PoolDetailsScreen} />
+          <Stack.Screen name="SelectStrip" component={SelectStripScreen} />
+          <Stack.Screen name="ScanPlaceholder" component={ScanPlaceholderScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </PoolsProvider>

@@ -60,7 +60,10 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
       </View>
 
       <View style={styles.actions}>
-        <AppButton label="התחלת סריקה בהמשך" onPress={() => undefined} />
+        <AppButton
+          label="בחירת סטיק לסריקה"
+          onPress={() => navigation.navigate('SelectStrip', { poolId: pool.id })}
+        />
         <AppButton label="צפייה בהיסטוריה בהמשך" variant="secondary" onPress={() => undefined} />
         <AppButton label="חזרה לרשימה" variant="secondary" onPress={() => navigation.navigate('PoolsList')} />
       </View>

@@ -10,9 +10,9 @@ import type { RootStackParamList } from '../../App';
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
 const plannedActions = [
-  { label: 'בחירת סטיק בדיקה', enabled: false },
-  { label: 'הוספת בריכה', enabled: true },
-  { label: 'צפייה בהיסטוריה', enabled: false },
+  { label: 'בחירת סטיק בדיקה', enabled: true, route: 'SelectStrip' as const },
+  { label: 'הוספת בריכה', enabled: true, route: 'PoolsList' as const },
+  { label: 'צפייה בהיסטוריה', enabled: false, route: undefined },
 ];
 
 export function DashboardScreen({ navigation }: Props) {
@@ -32,7 +32,14 @@ export function DashboardScreen({ navigation }: Props) {
           <Pressable
             key={action.label}
             disabled={!action.enabled}
-            onPress={() => navigation.navigate('PoolsList')}
+            onPress={() => {
+              if (action.route === 'SelectStrip') {
+                navigation.navigate('SelectStrip');
+                return;
+              }
+
+              navigation.navigate('PoolsList');
+            }}
             style={({ pressed }: { pressed: boolean }) => pressed && styles.pressed}
           >
             <Card style={[styles.actionCard, !action.enabled && styles.disabledCard]}>
