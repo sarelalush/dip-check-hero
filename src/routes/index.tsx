@@ -50,9 +50,18 @@ function HomeScreen() {
   const allOk = stats.every((s) => s.status === "ok");
 
   return (
-    <div dir="rtl" className="relative min-h-screen overflow-hidden bg-gradient-to-b from-[#E6F6FB] via-background to-background">
-      {/* Soft water shimmer at top */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-72 bg-gradient-to-b from-[#BEE6F1]/60 to-transparent" />
+    <div dir="rtl" className="relative min-h-screen overflow-hidden bg-background">
+      {/* Pool water photo backdrop */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[420px] overflow-hidden">
+        <img
+          src={poolBg.url}
+          alt=""
+          aria-hidden="true"
+          className="h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-cyan-400/10 via-background/30 to-background" />
+      </div>
+
 
       <div className="relative mx-auto max-w-md px-5 pt-6">
         {/* Top bar */}
