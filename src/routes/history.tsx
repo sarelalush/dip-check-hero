@@ -11,12 +11,16 @@ export const Route = createFileRoute("/history")({
   component: HistoryScreen,
 });
 
+type Filter = "all" | "ok" | "issues";
+
 function HistoryScreen() {
   const navigate = useNavigate();
   const { user, isAuthenticated, loading: authLoading } = useAuth();
   const [tests, setTests] = useState<TestRow[]>([]);
   const [pools, setPools] = useState<PoolRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<Filter>("all");
+  const [filterOpen, setFilterOpen] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) navigate({ to: "/login" });
@@ -43,6 +47,13 @@ function HistoryScreen() {
     return m;
   }, [pools]);
 
+  const filteredTests = useMemo(() => {
+    if (filter === "all") return tests;
+    return tests.filter((t) => (filter === "ok" ? inferOk(t) : !inferOk(t)));
+  }, [tests, filter]);
+
+  const filterLabel = filter === "all" ? "סינון" : filter === "ok" ? "מאוזנים" : "דורש תיקון";
+
   if (authLoading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -57,10 +68,41 @@ function HistoryScreen() {
 
       <div className="relative mx-auto max-w-md px-5 pt-8">
         <div className="flex items-center justify-between">
-          <button className="flex items-center gap-1 rounded-full bg-card px-3 py-1.5 text-xs font-bold text-foreground shadow-sm">
-            <SlidersHorizontal className="h-3.5 w-3.5" />
-            סינון
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setFilterOpen((v) => !v)}
+              className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-bold shadow-sm transition ${
+                filter === "all" ? "bg-card text-foreground" : "bg-primary text-primary-foreground"
+              }`}
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              {filterLabel}
+            </button>
+            {filterOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setFilterOpen(false)} />
+                <div className="absolute right-0 z-20 mt-2 w-44 overflow-hidden rounded-2xl bg-card shadow-[var(--shadow-card)] ring-1 ring-border">
+                  {([
+                    { id: "all", label: "הכל" },
+                    { id: "ok", label: "מאוזנים" },
+                    { id: "issues", label: "דורש תיקון" },
+                  ] as { id: Filter; label: string }[]).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => { setFilter(opt.id); setFilterOpen(false); }}
+                      className={`block w-full px-4 py-2.5 text-right text-sm font-bold transition ${
+                        filter === opt.id ? "bg-primary/10 text-primary" : "text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <h1 className="text-2xl font-black text-foreground">היסטוריית בדיקות</h1>
         </div>
 
@@ -68,16 +110,18 @@ function HistoryScreen() {
           <div className="flex justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
-        ) : tests.length === 0 ? (
+        ) : filteredTests.length === 0 ? (
           <div className="mt-10 rounded-3xl bg-card p-8 text-center text-sm text-muted-foreground shadow-[var(--shadow-card)]">
-            עדיין אין בדיקות. בצע סריקה ראשונה כדי שתוצאות יופיעו כאן.
+            {tests.length === 0
+              ? "עדיין אין בדיקות. בצע סריקה ראשונה כדי שתוצאות יופיעו כאן."
+              : "אין בדיקות התואמות לסינון."}
           </div>
         ) : (
           <div className="relative mt-6 pr-6">
             {/* Timeline rail */}
             <div className="absolute right-2 top-3 bottom-3 w-0.5 bg-border" />
             <div className="space-y-3">
-              {tests.map((t) => {
+              {filteredTests.map((t) => {
                 const ok = inferOk(t);
                 return (
                   <Link
