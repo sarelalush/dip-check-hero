@@ -1,7 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { StatusTone } from '../components/StatusBadge';
-import { mockPools, resultRows } from '../data/mockAppData';
+import { mockPools } from '../data/mockAppData';
+import type { StripAnalysisResult } from '../domain/scanResults';
 
 export interface SavedHistoryRecord {
   id: string;
@@ -11,15 +12,12 @@ export interface SavedHistoryRecord {
   status: string;
   tone: StatusTone;
   createdAt: number;
-}
-
-interface SaveMockResultInput {
-  poolId?: string;
+  analysisResult?: StripAnalysisResult;
 }
 
 interface ResultsHistoryContextValue {
   historyRecords: SavedHistoryRecord[];
-  saveMockResult: (input?: SaveMockResultInput) => SavedHistoryRecord;
+  saveAnalysisResult: (analysisResult: StripAnalysisResult) => SavedHistoryRecord;
 }
 
 const ResultsHistoryContext = createContext<ResultsHistoryContextValue | null>(null);
@@ -34,10 +32,14 @@ function formatDateTime(timestamp: number) {
   }).format(new Date(timestamp));
 }
 
-function buildResultSummary() {
-  const importantValues = resultRows
-    .filter((row) => row.label === 'pH' || row.label === 'כלור' || row.label === 'אלקליניות')
-    .map((row) => `${row.label} ${row.value}`);
+function formatParameterValue(value: number, unit: string) {
+  return unit ? `${value} ${unit}` : `${value}`;
+}
+
+function buildResultSummary(analysisResult: StripAnalysisResult) {
+  const importantValues = analysisResult.parameters
+    .filter((parameter) => parameter.key === 'ph' || parameter.key === 'chlorine' || parameter.key === 'alkalinity')
+    .map((parameter) => `${parameter.name} ${formatParameterValue(parameter.value, parameter.unit)}`);
 
   return importantValues.join(' · ');
 }
@@ -92,18 +94,18 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ResultsHistoryContextValue>(
     () => ({
       historyRecords,
-      saveMockResult(input) {
-        const pool = input?.poolId ? mockPools.find((item) => item.id === input.poolId) : undefined;
-        const hasWarning = resultRows.some((row) => row.tone === 'warning');
+      saveAnalysisResult(analysisResult) {
+        const pool = analysisResult.poolId ? mockPools.find((item) => item.id === analysisResult.poolId) : undefined;
         const createdAt = Date.now();
         const record: SavedHistoryRecord = {
           id: `history-${createdAt}`,
           date: formatDateTime(createdAt),
           poolName: pool?.name ?? mockPools[0].name,
-          resultSummary: buildResultSummary(),
-          status: hasWarning ? 'נדרש תיקון קל' : 'המים מאוזנים',
-          tone: hasWarning ? 'warning' : 'success',
+          resultSummary: buildResultSummary(analysisResult),
+          status: analysisResult.overallStatus.label,
+          tone: analysisResult.overallStatus.tone,
           createdAt,
+          analysisResult,
         };
 
         setHistoryRecords((current) => [record, ...current]);

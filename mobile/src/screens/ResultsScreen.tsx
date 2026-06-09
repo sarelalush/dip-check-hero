@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
 import { Card } from '../components/Card';
@@ -6,20 +7,92 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { ResultRow } from '../components/ResultRow';
 import { LineIcon } from '../components/LineIcon';
 import { colors, rtl, typography } from '../theme';
-import { mockPools, resultRows } from '../data/mockAppData';
+import { mockPools } from '../data/mockAppData';
+import type { StripAnalysisResult } from '../domain/scanResults';
+import { analyzeStripImageMock } from '../services/mockAnalysisService';
 import { useResultsHistory } from '../state/ResultsHistoryContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Results'>;
 
+function formatAnalysisDate(timestamp: number) {
+  return new Intl.DateTimeFormat('he-IL', {
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    month: 'long',
+  }).format(new Date(timestamp));
+}
+
+function formatDisplayValue(value: number) {
+  return Number.isInteger(value) ? `${value}` : `${value.toFixed(1)}`;
+}
+
+function formatRangeLabel(analysisResult: StripAnalysisResult, parameterIndex: number) {
+  const parameter = analysisResult.parameters[parameterIndex];
+  return parameter.unit ? `${parameter.idealRange.label} ${parameter.unit}` : parameter.idealRange.label;
+}
+
 export function ResultsScreen({ navigation, route }: Props) {
-  const { saveMockResult } = useResultsHistory();
+  const { saveAnalysisResult } = useResultsHistory();
+  const [analysisResult, setAnalysisResult] = useState<StripAnalysisResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(true);
   const pool = route.params?.poolId ? mockPools.find((item) => item.id === route.params?.poolId) : undefined;
   const hasImage = Boolean(route.params?.imageUri);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    async function analyzeImage() {
+      setIsAnalyzing(true);
+      const result = await analyzeStripImageMock({
+        brandId: route.params?.brandId,
+        imageUri: route.params?.imageUri,
+        poolId: route.params?.poolId,
+      });
+
+      if (isMounted) {
+        setAnalysisResult(result);
+        setIsAnalyzing(false);
+      }
+    }
+
+    analyzeImage();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [route.params?.brandId, route.params?.imageUri, route.params?.poolId]);
+
   function handleSave() {
-    saveMockResult({ poolId: route.params?.poolId });
+    if (!analysisResult) {
+      return;
+    }
+
+    saveAnalysisResult(analysisResult);
     navigation.navigate('History');
+  }
+
+  if (isAnalyzing || !analysisResult) {
+    return (
+      <AppShell activeTab="scan" navigation={navigation}>
+        <View style={styles.header}>
+          <Text style={styles.title}>תוצאות הבדיקה</Text>
+          <Text style={styles.poolName}>{pool?.name ?? mockPools[0].name}</Text>
+          <Text style={styles.subtitle}>מנתח את תמונת הסטיק...</Text>
+        </View>
+
+        <Card compact style={styles.analyzingCard}>
+          <View style={styles.analyzingIcon}>
+            <ActivityIndicator color={colors.primaryDark} size="small" />
+          </View>
+          <View style={styles.analyzingCopy}>
+            <Text style={styles.analyzingTitle}>ניתוח mock בפעולה</Text>
+            <Text style={styles.analyzingText}>אנחנו מכינים מבנה תוצאה מלא, הערכים עדיין דוגמתיים.</Text>
+          </View>
+        </Card>
+      </AppShell>
+    );
   }
 
   return (
@@ -27,7 +100,7 @@ export function ResultsScreen({ navigation, route }: Props) {
       <View style={styles.header}>
         <Text style={styles.title}>תוצאות הבדיקה</Text>
         <Text style={styles.poolName}>{pool?.name ?? mockPools[0].name}</Text>
-        <Text style={styles.subtitle}>היום, 18 במאי 2024 09:41</Text>
+        <Text style={styles.subtitle}>{formatAnalysisDate(analysisResult.analyzedAt)}</Text>
       </View>
 
       <View style={styles.resultsList}>
@@ -40,15 +113,15 @@ export function ResultsScreen({ navigation, route }: Props) {
           </View>
         ) : null}
 
-        {resultRows.map((row) => (
+        {analysisResult.parameters.map((parameter, index) => (
           <ResultRow
-            key={row.label}
-            label={row.label}
-            progress={row.progress}
-            range={row.range}
-            status={row.status}
-            tone={row.tone}
-            value={row.value}
+            key={parameter.key}
+            label={parameter.name}
+            progress={parameter.progress}
+            range={formatRangeLabel(analysisResult, index)}
+            status={parameter.status.label}
+            tone={parameter.status.tone}
+            value={formatDisplayValue(parameter.value)}
           />
         ))}
       </View>
@@ -59,9 +132,7 @@ export function ResultsScreen({ navigation, route }: Props) {
         </View>
         <View style={styles.recommendationCopy}>
           <Text style={styles.recommendationTitle}>המלצה</Text>
-          <Text style={styles.recommendationText}>
-            הוסף 120 מ״ל כלור והוסף 80 גרם אלקליניות+
-          </Text>
+          <Text style={styles.recommendationText}>{analysisResult.recommendation}</Text>
         </View>
       </Card>
 
@@ -99,6 +170,39 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     ...rtl.textCenter,
+  },
+  analyzingCard: {
+    marginTop: 22,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+  },
+  analyzingIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  analyzingCopy: {
+    flex: 1,
+  },
+  analyzingTitle: {
+    color: colors.primaryDeep,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 15,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  analyzingText: {
+    marginTop: 4,
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 18,
+    ...rtl.text,
   },
   resultsList: {
     marginTop: 18,
