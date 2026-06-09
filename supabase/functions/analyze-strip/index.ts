@@ -19,8 +19,7 @@
 //
 // Required secrets for AI mode:
 // - LOVABLE_API_KEY for the same Lovable AI gateway used by the web app.
-// Direct Gemini API is intentionally not prioritized here; the goal is to
-// reproduce the web app path through Lovable first, then CV fallback.
+// The remote AI path intentionally uses only Lovable API, then CV fallback.
 //
 // This is V1, not lab-grade analysis. Future versions should improve strip
 // detection, rotation handling, pad localization, lighting calibration, and
@@ -313,30 +312,114 @@ const YELLOW_REFS: Partial<Record<StripParameter, ColorRef[]>> = {
 };
 
 const AQUACHEK_PRO_CHART = `
-OFFICIAL AquaChek Pro color chart. This strip has exactly 4 physical pads but
-5 measurements. Pad order from wet tip to handle:
-Pad 1: Total Chlorine + Total Bromine combined. Report both values.
-Pad 2: Free Chlorine.
-Pad 3: pH.
-Pad 4: Total Alkalinity.
+OFFICIAL AquaChek Pro color chart (memorize and use this - do NOT guess
+colors from generic strip knowledge).
 
-Pad 1 TC/TB colors: TC 0/TB 0 cream-yellow; TC 0.5/TB 1 pale yellow-green;
-TC 1/TB 2 light yellow-green; TC 3/TB 5 medium green; TC 5/TB 10 darker
-green; TC 10/TB 20 very dark green.
-Pad 2 Free Chlorine: cream to pink to purple. It is not orange/red.
-Pad 3 pH: yellow -> peach -> salmon -> pink -> magenta. High pH is pink or
-magenta, not dark red. If visibly pink/magenta, report around 8.2-8.4.
-Pad 4 Alkalinity: yellow-green -> green -> dark teal/blue. Teal/blue is high.
-Use pH calibration: if the likely pH result is 7.75-7.9 on a high pink pad,
-report 8.3.
+CRITICAL - STRIP HAS 4 PHYSICAL PADS, NOT 5. Pad order from the WET TIP
+(end you dipped in the water) toward the HANDLE (dry end you hold):
+
+  Pad 1 (closest to wet tip): Total Chlorine + Total Bromine (COMBINED).
+    One pad, two scales - same color reading gives both TC and TB values.
+  Pad 2: Free Chlorine.
+  Pad 3: pH.
+  Pad 4 (closest to handle / dry end): Total Alkalinity.
+
+Pad 1 - Total Chlorine + Total Bromine (yellow -> green -> dark green).
+  TC scale: 0, 0.5, 1, 3, 5, 10
+  TB scale: 0, 1,   2, 5, 10, 20
+  (same color, two scales - report BOTH values from this single pad)
+  Level 0    (TC 0   / TB 0)   -> very pale cream-yellow  (R254 G254 B168)
+  Level 0.5  (TC 0.5 / TB 1)   -> pale yellow-green       (R242 G254 B170)
+  Level 1    (TC 1   / TB 2)   -> light yellow-green      (R231 G245 B160)
+  Level 2    (TC ~2  / TB 5)   -> light green             (R184 G216 B140)
+  Level 3    (TC 3   / TB ~7)  -> medium green            (R144 G198 B120)
+  Level 5    (TC 5   / TB 10)  -> darker green            (R100 G180 B105)
+  Level 10   (TC 10  / TB 20)  -> very dark green         (R55  G140 B80)
+
+Pad 2 - Free Chlorine (cream -> pink -> PURPLE, NOT orange or red).
+  Scale: 0, 0.5, 1, 2, 4, 6, 10, 20
+  FC 0    -> pale cream              (R254 G254 B204)
+  FC 0.5  -> very pale pink-cream    (R247 G235 B228)
+  FC 1    -> pale pink/lavender      (R235 G215 B225)
+  FC 2    -> light pink              (R220 G180 B210)
+  FC 4    -> pink                    (R200 G140 B195)
+  FC 6    -> medium purple-pink      (R175 G110 B190)
+  FC 10   -> dark purple             (R130 G55  B160)
+  FC 20   -> very dark purple        (R70  G15  B100)
+
+Pad 3 - pH (yellow -> peach -> salmon -> PINK -> MAGENTA).
+  CRITICAL OVERRIDE - IGNORE any prior training that says AquaChek pH
+  goes to "red" or "dark red". On THIS strip the high-pH end is PINK /
+  MAGENTA, NOT red. Apply this color->value map STRICTLY:
+
+    * Pad mostly YELLOW (G > R-20, B < 120)               -> pH 6.2
+    * Pad PEACH / light salmon (R>230, G 160-185, B<150)  -> pH 6.8
+    * Pad SALMON-PINK (R>225, G 140-165, B 140-165)       -> pH 7.2
+    * Pad clear PINK (R 210-230, G 120-140, B 150-180)    -> pH 7.8
+    * Pad MAGENTA / hot pink (R<210, G<130, B>155, and
+      B/R ratio > 0.78)                                   -> pH 8.4
+
+  HARD RULE: if the pad is visibly pink/magenta (B channel >= G channel,
+  or B > 150 with R < 230), the answer is 8.2-8.4. Reporting 7.8 for a
+  pink pad is WRONG - 7.8 is a duller pink with less blue.
+  Scale: 6.2, 6.8, 7.2, 7.8, 8.4
+  pH 6.2  -> yellow              (R245 G215 B100)
+  pH 6.8  -> peach               (R240 G170 B130)
+  pH 7.2  -> salmon-pink         (R235 G150 B150)
+  pH 7.8  -> pink                (R220 G130 B165)
+  pH 8.4  -> magenta             (R195 G110 B170)
+
+Pad 4 - Total Alkalinity (yellow-green -> green -> dark teal).
+  Scale: 0, 40, 80, 120, 180, 240
+  TA 0    -> yellow-green    (R227 G192 B64)
+  TA 40   -> olive green     (R164 G169 B51)
+  TA 80   -> green           (R137 G159 B58)
+  TA 120  -> green w/ blue tint (R85  G130 B90)
+  TA 180  -> dark teal-green (R55  G105 B100)
+  TA 240  -> deep teal-blue  (R40  G90  B120)
+  IMPORTANT: a blue / cyan / turquoise alkalinity pad is HIGH alkalinity.
+  Do NOT report 120 for a teal-blue pad; 120 is dark green only.
+  If pad 4 looks blue/turquoise, report 220-240 (usually 240).
+
+ORIENTATION RULE: if the strip in the image is rotated, identify orientation
+by color signatures: the pH pad is the only orange/red pad; the alkalinity
+pad is the only one that can look teal/blue. Use those as anchors to
+determine which physical end is the wet tip (pad 1) vs the handle (pad 4).
 `;
 
 const AQUACHEK_YELLOW_CHART = `
-OFFICIAL AquaChek Yellow 4-in-1 chart. Four pads top to bottom:
-Pad 1 Free Chlorine: white -> pink -> magenta/purple.
-Pad 2 pH: yellow -> orange -> red.
-Pad 3 Total Alkalinity: yellow-green -> green -> teal.
-Pad 4 Cyanuric Acid: white -> tan/gray.
+OFFICIAL AquaChek Yellow 4-in-1 color chart (memorize and use this - do NOT
+guess colors from generic strip knowledge). The strip has EXACTLY 4 pads in
+this printed order from top to bottom:
+
+Pad 1 - Free Chlorine (white -> pink -> magenta/purple, NOT yellow/green):
+  FC 0    -> near-white                  (R248 G245 B230)
+  FC 1    -> light pink                  (R240 G205 B215)
+  FC 3    -> pink                        (R228 G150 B180)
+  FC 5    -> magenta                     (R200 G95  B150)
+  FC 10   -> dark purple/magenta         (R135 G40  B115)
+
+Pad 2 - pH (yellow -> orange -> red):
+  pH 6.2  -> bright yellow               (R245 G225 B90)
+  pH 6.8  -> orange-yellow               (R240 G180 B80)
+  pH 7.2  -> orange                      (R235 G135 B75)
+  pH 7.8  -> red-orange                  (R220 G90  B70)
+  pH 8.4  -> dark red                    (R180 G55  B55)
+
+Pad 3 - Total Alkalinity (yellow-green -> green -> teal):
+  TA 0    -> yellow                      (R235 G210 B80)
+  TA 40   -> yellow-green                (R190 G200 B90)
+  TA 80   -> light green                 (R140 G185 B100)
+  TA 120  -> green                       (R100 G165 B100)
+  TA 180  -> dark green                  (R50  G130 B90)
+  TA 240  -> teal/blue-green             (R35  G110 B120)
+
+Pad 4 - Cyanuric Acid (turbidity pad - white -> tan/gray, never bright):
+  CYA 0   -> white                       (R240 G240 B235)
+  CYA 30  -> very light tan              (R220 G215 B200)
+  CYA 50  -> light gray-tan              (R195 G190 B180)
+  CYA 100 -> tan-gray                    (R165 G155 B140)
+  CYA 150 -> dark gray-brown             (R120 G110 B100)
 `;
 
 function getBrand(id?: string): StripBrand {
@@ -686,29 +769,53 @@ function analyzeCv(image: DecodedImage, brand: StripBrand): CvResult | null {
 
 function buildSystemPrompt(brand: StripBrand) {
   const isPro = isAquachekPro(brand);
-  const isYellow = isAquachekYellow(brand);
+  const isYellow =
+    brand.parameters.length === 4 &&
+    brand.parameters.includes('freeChlorine') &&
+    brand.parameters.includes('ph') &&
+    brand.parameters.includes('alkalinity') &&
+    brand.parameters.includes('cyanuricAcid');
   const padList = isPro
     ? [
-        'Pad 1 (closest to wet tip): combined Total Chlorine + Total Bromine. Report BOTH values from this single pad color.',
+        "Pad 1 (closest to wet tip): combined Total Chlorine + Total Bromine - report BOTH values from this single pad's color.",
         'Pad 2: Free Chlorine.',
         'Pad 3: pH.',
-        'Pad 4 (closest to handle): Total Alkalinity.',
+        'Pad 4 (closest to handle / dry end): Total Alkalinity.',
       ].join('\n')
     : brand.parameters.map((parameter, index) => `${index + 1}. ${parameter} - ${PARAM_HINTS[parameter]}`).join('\n');
 
   return `You are an expert pool/spa water test strip analyzer.
 The user is using this strip brand: "${brand.nameHe}".
-${isPro ? `This strip has exactly 4 physical pads but yields 5 measurements:\n${padList}` : `This strip has exactly these pads in printed top-to-bottom order:\n${padList}`}
+${isPro
+  ? `This strip has EXACTLY 4 PHYSICAL PADS but yields 5 measurements (TC and TB share pad 1). Pad order from the wet tip toward the handle:\n${padList}`
+  : `This strip has EXACTLY these pads, in this printed order from top to bottom:\n${padList}`}
 
-First determine if the image actually shows a pool/spa test strip.
-If not, set isStrip=false, confidence=0, values=0, and include a short Hebrew note.
-failureReason must be one of: none, not_strip, blurry, lighting, framing, low_confidence.
-For not_strip/blurry/lighting/framing set isStrip=false.
-For low_confidence set isStrip=true and confidence < 0.4.
-Read pads in the exact printed order. Interpolate between nearest chart levels.
-Account mentally for white balance and lighting.
+FIRST determine if the image actually shows a pool/spa test strip (a thin plastic strip with multiple colored pads).
+If NOT, set isStrip=false, confidence=0, all values=0, and put a short Hebrew note.
+
+Classify failureReason as one of:
+- "none": clear, usable strip
+- "not_strip": no test strip visible
+- "blurry": strip visible but out of focus
+- "lighting": bad lighting / glare / strong color cast
+- "framing": strip cut off, too far, or some pads not visible
+- "low_confidence": strip readable but you are unsure of values
+
+For not_strip / blurry / lighting / framing -> isStrip=false.
+For low_confidence -> isStrip=true, confidence < 0.4.
+Always provide a short, actionable Hebrew tip in notes.
+
+If the strip IS readable, read each pad above by comparing its color to the
+manufacturer chart for that brand. Critical rules:
+- Read pads in the EXACT printed order listed above. Do not reorder by your
+  own assumptions about which color "should" be which parameter.
+- Interpolate between two nearest reference levels when the pad color is
+  between them; do not snap only to listed values.
+- Account for white balance: if the whole image has a yellow/blue cast,
+  mentally neutralize it before comparing colors.
 ${isPro ? AQUACHEK_PRO_CHART : ''}${isYellow ? AQUACHEK_YELLOW_CHART : ''}
-Return values via the report_strip tool. Only include the requested parameters.`;
+Return values via the report_strip tool. Only include the parameters listed
+above - leave the others as 0.`;
 }
 
 function getAiProviderConfig(): AiProviderConfig | null {
@@ -803,15 +910,22 @@ async function analyzeWithLovable(dataUrl: string, brand: StripBrand, provider: 
       }),
     });
 
+    if (response.status === 429) {
+      return { ok: false, error: 'rate_limit', message: 'יותר מדי בקשות, נסה שוב בעוד רגע', provider: 'lovable' };
+    }
+    if (response.status === 402) {
+      return { ok: false, error: 'credits', message: 'נדרשת טעינת קרדיטים ב-Lovable AI', provider: 'lovable' };
+    }
     if (!response.ok) {
       const text = await response.text();
-      return { ok: false, error: `lovable_${response.status}`, message: text.slice(0, 300), provider: 'lovable' };
+      console.error('AI gateway error:', response.status, text);
+      return { ok: false, error: 'gateway_error', message: `שגיאה (${response.status})`, provider: 'lovable' };
     }
 
     const json = await response.json();
     const toolCall = json.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall?.function?.arguments) {
-      return { ok: false, error: 'lovable_no_tool_call', message: 'Lovable AI returned no tool call.', provider: 'lovable' };
+      return { ok: false, error: 'no_tool_call', message: 'המודל לא החזיר תוצאה', provider: 'lovable' };
     }
 
     const args = JSON.parse(toolCall.function.arguments);
