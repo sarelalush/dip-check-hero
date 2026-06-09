@@ -49,6 +49,7 @@ export interface PoolDimensions {
 
 export interface Pool {
   id: string;
+  cloudId?: string;
   name: string;
   type: PoolType;
   sanitizerType: SanitizerType;

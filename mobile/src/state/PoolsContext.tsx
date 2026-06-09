@@ -9,9 +9,14 @@ import {
   type PoolType,
   type UpdatePoolInput,
 } from '../domain/pool';
+import { useAuth } from './AuthContext';
+import { deletePoolFromCloud, syncPoolsWithCloud, upsertPoolToCloud } from '../services/poolCloudSync';
 
 interface PoolsContextValue {
   pools: Pool[];
+  hydrated: boolean;
+  syncing: boolean;
+  syncError?: string;
   addPool: (pool: NewPoolInput) => Pool;
   updatePool: (poolId: string, updates: UpdatePoolInput) => Pool | undefined;
   deletePool: (poolId: string) => void;
@@ -22,8 +27,11 @@ const PoolsContext = createContext<PoolsContextValue | null>(null);
 const POOLS_STORAGE_KEY = '@aquasense/pools';
 
 export function PoolsProvider({ children }: { children: ReactNode }) {
+  const { user, loading: authLoading } = useAuth();
   const [pools, setPools] = useState<Pool[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | undefined>();
 
   useEffect(() => {
     let isMounted = true;
@@ -68,9 +76,61 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
     persistPools();
   }, [hydrated, pools]);
 
+  useEffect(() => {
+    if (!hydrated || authLoading || !user) return;
+
+    let isMounted = true;
+    const currentUser = user;
+
+    async function syncAuthenticatedPools() {
+      setSyncing(true);
+      setSyncError(undefined);
+
+      try {
+        const result = await syncPoolsWithCloud(pools, currentUser);
+        if (!isMounted) return;
+        setPools(result.pools);
+      } catch (error) {
+        if (!isMounted) return;
+        console.warn('Failed to sync pools with cloud', error);
+        setSyncError('סנכרון הבריכות לענן נכשל. הנתונים המקומיים נשמרו.');
+      } finally {
+        if (isMounted) {
+          setSyncing(false);
+        }
+      }
+    }
+
+    syncAuthenticatedPools();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authLoading, hydrated, user?.id]);
+
+  async function syncPoolToCloud(pool: Pool) {
+    if (!user) return;
+
+    try {
+      const syncedPool = await upsertPoolToCloud(pool, user.id);
+      setPools((current) =>
+        current.map((item) =>
+          item.id === syncedPool.id ? normalizePool({ ...item, cloudId: syncedPool.cloudId }) : item,
+        ),
+      );
+      setSyncError(undefined);
+    } catch (error) {
+      console.warn('Failed to sync pool with cloud', error);
+      setSyncError('שמירת הבריכה לענן נכשלה. היא נשמרה מקומית.');
+    }
+  }
+
   const value = useMemo<PoolsContextValue>(
     () => ({
       pools,
+      hydrated,
+      syncing,
+      syncError,
       addPool(input) {
         const now = Date.now();
         const pool = normalizePool({
@@ -80,6 +140,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
           updatedAt: now,
         });
         setPools((current) => [pool, ...current]);
+        syncPoolToCloud(pool);
         return pool;
       },
       updatePool(poolId, updates) {
@@ -91,16 +152,26 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
             return updatedPool;
           }),
         );
+        if (updatedPool) {
+          syncPoolToCloud(updatedPool);
+        }
         return updatedPool;
       },
       deletePool(poolId) {
+        const poolToDelete = pools.find((pool) => pool.id === poolId);
         setPools((current) => current.filter((pool) => pool.id !== poolId));
+        if (poolToDelete && user) {
+          deletePoolFromCloud(poolToDelete, user.id).catch((error) => {
+            console.warn('Failed to delete pool from cloud', error);
+            setSyncError('מחיקת הבריכה מהענן נכשלה. היא נמחקה מקומית.');
+          });
+        }
       },
       getPool(poolId) {
         return pools.find((pool) => pool.id === poolId);
       },
     }),
-    [pools],
+    [hydrated, pools, syncError, syncing, user],
   );
 
   return <PoolsContext.Provider value={value}>{children}</PoolsContext.Provider>;
