@@ -9,7 +9,9 @@ import { LineIcon } from '../components/LineIcon';
 import { colors, rtl, typography } from '../theme';
 import type { StripAnalysisResult } from '../domain/scanResults';
 import { calculateDosage } from '../domain/dosage';
-import { analyzeStripImage } from '../services/stripAnalysisService';
+import { analyzeStripImage, getStripAnalysisConfig } from '../services/stripAnalysisService';
+import { prepareScanImageForRemoteAnalysis } from '../services/scanImageStorage';
+import { useAuth } from '../state/AuthContext';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory } from '../state/ResultsHistoryContext';
 import { useScanSession } from '../state/ScanSessionContext';
@@ -37,13 +39,16 @@ function formatRangeLabel(analysisResult: StripAnalysisResult, parameterIndex: n
 }
 
 export function ResultsScreen({ navigation, route }: Props) {
+  const { user } = useAuth();
   const { getHistoryRecord, isHydrated, saveAnalysisResult } = useResultsHistory();
   const { getPool } = usePools();
   const {
+    ensureTestId,
     resetScanSession,
     session,
     setAnalysisResult: setSessionAnalysisResult,
     setCurrentStep,
+    setScanImageUpload,
     setScanError,
   } = useScanSession();
   const [analysisResult, setAnalysisResult] = useState<StripAnalysisResult | null>(null);
@@ -52,8 +57,8 @@ export function ResultsScreen({ navigation, route }: Props) {
   const savedRecord = savedTestId ? getHistoryRecord(savedTestId) : undefined;
   const inputBrandId = savedTestId ? route.params?.brandId : session.selectedBrandId ?? route.params?.brandId;
   const inputImageUri = savedTestId ? route.params?.imageUri : session.confirmedImageUri ?? session.imageUri ?? route.params?.imageUri;
-  const inputImagePath = savedTestId ? undefined : route.params?.imagePath;
-  const inputImageUrl = savedTestId ? undefined : route.params?.imageUrl;
+  const inputImagePath = savedTestId ? undefined : session.imagePath ?? route.params?.imagePath;
+  const inputImageUrl = savedTestId ? undefined : session.imageUrl ?? route.params?.imageUrl;
   const poolId = savedRecord?.poolId ?? (savedTestId ? route.params?.poolId : session.selectedPoolId ?? route.params?.poolId);
   const pool = poolId ? getPool(poolId) : undefined;
   const poolName = savedRecord?.poolName ?? pool?.name ?? FALLBACK_POOL_NAME;
@@ -104,20 +109,44 @@ export function ResultsScreen({ navigation, route }: Props) {
 
       setCurrentStep('analyzing');
       setIsAnalyzing(true);
+      const testId = session.testId ?? ensureTestId();
+      let imagePath = inputImagePath;
+      let imageUrl = inputImageUrl;
+      let imageUploadError: string | undefined;
+      const analysisMode = getStripAnalysisConfig().mode;
+
+      if (analysisMode === 'remote' && user?.id && !imagePath && !imageUrl) {
+        const preparedImage = await prepareScanImageForRemoteAnalysis({
+          imageUri: inputImageUri,
+          testId,
+          userId: user.id,
+        });
+
+        imagePath = preparedImage.imagePath;
+        imageUrl = preparedImage.imageUrl;
+        imageUploadError = preparedImage.uploadError;
+      }
+
       const result = await analyzeStripImage({
         brandId: inputBrandId,
-        imagePath: inputImagePath,
-        imageUrl: inputImageUrl,
+        imagePath,
+        imageUrl,
         imageUri: inputImageUri,
         poolId,
         qualityNotes: session.qualityNotes,
         scanSession: session,
         selectedBrand: session.selectedBrand,
+        skipImageUpload: analysisMode === 'remote',
+        testId,
+        userId: user?.id,
       });
       const dosage = calculateDosage(result, pool);
       const enrichedResult: StripAnalysisResult = {
         ...result,
+        id: testId,
         dosage,
+        imagePath: result.imagePath ?? imagePath,
+        imageUrl: result.imageUrl ?? imageUrl,
         overallStatus: {
           label: dosage.primaryRecommendation ? 'נדרש תיקון קל' : 'המים מאוזנים',
           tone: dosage.primaryRecommendation ? 'warning' : 'success',
@@ -128,6 +157,12 @@ export function ResultsScreen({ navigation, route }: Props) {
       if (isMounted) {
         setAnalysisResult(enrichedResult);
         setSessionAnalysisResult(enrichedResult);
+        setScanImageUpload({
+          imagePath: enrichedResult.imagePath,
+          imageUrl: enrichedResult.imageUrl,
+          imageUploadError,
+          testId,
+        });
         setIsAnalyzing(false);
       }
     }
@@ -150,11 +185,17 @@ export function ResultsScreen({ navigation, route }: Props) {
     route.params?.poolId,
     session.analysisResult,
     session.dosageResult,
+    session.imagePath,
+    session.imageUrl,
+    session.testId,
     savedRecord,
     savedTestId,
+    ensureTestId,
     setCurrentStep,
+    setScanImageUpload,
     setScanError,
     setSessionAnalysisResult,
+    user?.id,
   ]);
 
   function handleSave() {

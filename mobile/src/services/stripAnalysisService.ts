@@ -32,15 +32,20 @@ export interface StripAnalysisInput {
   poolId?: string;
   imagePath?: string;
   imageUrl?: string;
+  skipImageUpload?: boolean;
   qualityNotes?: string[];
   scanSession?: Pick<
     ScanSessionState,
     | 'confirmedImageUri'
     | 'createdAt'
     | 'currentStep'
+    | 'imagePath'
+    | 'imageUploadError'
+    | 'imageUrl'
     | 'qualityStatus'
     | 'selectedBrandId'
     | 'selectedPoolId'
+    | 'testId'
     | 'updatedAt'
   >;
   selectedBrand?: StripBrand;
@@ -107,7 +112,7 @@ async function analyzeStripImageRemote(
   let imagePath = input.imagePath;
   let imageUrl = input.imageUrl ?? (/^https?:\/\//i.test(input.imageUri) ? input.imageUri : undefined);
 
-  if (!imagePath && !imageUrl && userId) {
+  if (!imagePath && !imageUrl && userId && !input.skipImageUpload) {
     try {
       const uploadedImage = await uploadScanImage({
         imageUri: input.imageUri,

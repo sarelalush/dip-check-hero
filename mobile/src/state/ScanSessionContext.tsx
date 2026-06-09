@@ -23,11 +23,15 @@ export interface ScanSessionError {
 }
 
 export interface ScanSessionState {
+  testId?: string;
   selectedPoolId?: string;
   selectedBrandId?: string;
   selectedBrand?: StripBrand;
   imageUri?: string;
   confirmedImageUri?: string;
+  imagePath?: string;
+  imageUrl?: string;
+  imageUploadError?: string;
   analysisResult?: StripAnalysisResult;
   dosageResult?: DosageCalculationResult;
   currentStep: ScanSessionStep;
@@ -46,12 +50,14 @@ interface StartScanSessionInput {
 interface ScanSessionContextValue {
   session: ScanSessionState;
   confirmImage: () => void;
+  ensureTestId: () => string;
   resetScanSession: () => void;
   markQualityFailed: (notes: string[]) => void;
   setAnalysisResult: (result: StripAnalysisResult) => void;
   setScanError: (error?: ScanSessionError) => void;
   setCurrentStep: (step: ScanSessionStep) => void;
   setImageUri: (imageUri?: string) => void;
+  setScanImageUpload: (input: { imagePath?: string; imageUrl?: string; imageUploadError?: string; testId?: string }) => void;
   setQualityNotes: (notes: string[], status?: ScanQualityStatus) => void;
   setSelectedBrand: (brandId: string) => void;
   setSelectedPool: (poolId: string) => void;
@@ -65,6 +71,10 @@ const initialSession: ScanSessionState = {
 };
 
 const ScanSessionContext = createContext<ScanSessionContextValue | null>(null);
+
+function createScanTestId(timestamp = Date.now()) {
+  return `test-${timestamp}-${Math.floor(Math.random() * 10000)}`;
+}
 
 function withTimestamp(session: ScanSessionState, timestamp = Date.now()): ScanSessionState {
   return {
@@ -84,6 +94,7 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
       selectedBrandId: input.brandId,
       selectedBrand,
       selectedPoolId: input.poolId,
+      testId: createScanTestId(timestamp),
       currentStep: 'selectStrip',
       error: undefined,
       qualityNotes: [],
@@ -102,6 +113,9 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         dosageResult: undefined,
         error: undefined,
         imageUri: undefined,
+        imagePath: undefined,
+        imageUrl: undefined,
+        imageUploadError: undefined,
         selectedBrandId: brandId,
         selectedBrand: getBrand(brandId),
         currentStep: 'selectStrip',
@@ -130,6 +144,9 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         dosageResult: undefined,
         error: undefined,
         imageUri,
+        imagePath: undefined,
+        imageUrl: undefined,
+        imageUploadError: undefined,
         currentStep: 'scan',
         qualityNotes: [],
         qualityStatus: 'unchecked',
@@ -192,13 +209,46 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  const ensureTestId = useCallback(() => {
+    const generatedTestId = createScanTestId();
+    let resolvedTestId = generatedTestId;
+
+    setSession((current) => {
+      resolvedTestId = current.testId ?? generatedTestId;
+      return withTimestamp({
+        ...current,
+        testId: resolvedTestId,
+      });
+    });
+
+    return resolvedTestId;
+  }, []);
+
+  const setScanImageUpload = useCallback(
+    ({ imagePath, imageUrl, imageUploadError, testId }: { imagePath?: string; imageUrl?: string; imageUploadError?: string; testId?: string }) => {
+      setSession((current) =>
+        withTimestamp({
+          ...current,
+          testId: testId ?? current.testId,
+          imagePath: imagePath ?? current.imagePath,
+          imageUrl: imageUrl ?? current.imageUrl,
+          imageUploadError,
+        }),
+      );
+    },
+    [],
+  );
+
   const setAnalysisResult = useCallback((result: StripAnalysisResult) => {
     setSession((current) =>
       withTimestamp({
         ...current,
+        testId: current.testId ?? result.id,
         analysisResult: result,
         dosageResult: result.dosage,
         error: undefined,
+        imagePath: result.imagePath ?? current.imagePath,
+        imageUrl: result.imageUrl ?? current.imageUrl,
         currentStep: 'results',
       }),
     );
@@ -212,12 +262,14 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       confirmImage,
+      ensureTestId,
       markQualityFailed,
       resetScanSession,
       setAnalysisResult,
       setScanError,
       setCurrentStep,
       setImageUri,
+      setScanImageUpload,
       setQualityNotes,
       setSelectedBrand,
       setSelectedPool,
@@ -225,6 +277,7 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
     }),
     [
       confirmImage,
+      ensureTestId,
       markQualityFailed,
       resetScanSession,
       session,
@@ -232,6 +285,7 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
       setScanError,
       setCurrentStep,
       setImageUri,
+      setScanImageUpload,
       setQualityNotes,
       setSelectedBrand,
       setSelectedPool,

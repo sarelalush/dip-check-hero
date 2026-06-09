@@ -13,6 +13,12 @@ interface UploadScanImageInput {
   userId: string;
 }
 
+export interface PreparedScanImageForAnalysis {
+  imagePath?: string;
+  imageUrl?: string;
+  uploadError?: string;
+}
+
 export interface UploadedScanImage {
   bucket: typeof SCAN_IMAGES_BUCKET;
   contentType: string;
@@ -91,4 +97,28 @@ export async function uploadScanImage({ imageUri, testId, userId }: UploadScanIm
     path,
     publicUrl: getPublicScanImageUrl(path),
   };
+}
+
+export async function prepareScanImageForRemoteAnalysis({
+  imageUri,
+  testId,
+  userId,
+}: UploadScanImageInput): Promise<PreparedScanImageForAnalysis> {
+  if (!isSupabaseConfigured || !isLocalUploadCandidate(imageUri)) {
+    return {};
+  }
+
+  try {
+    const uploadedImage = await uploadScanImage({ imageUri, testId, userId });
+
+    return {
+      imagePath: uploadedImage?.path,
+      imageUrl: uploadedImage?.publicUrl,
+    };
+  } catch (error) {
+    console.warn('Failed to prepare scan image for remote analysis', error);
+    return {
+      uploadError: 'העלאת תמונת הסטיק לפני הניתוח נכשלה. נמשיך עם fallback מקומי.',
+    };
+  }
 }
