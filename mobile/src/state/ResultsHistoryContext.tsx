@@ -1,18 +1,24 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { StatusTone } from '../components/StatusBadge';
+import { getBrand } from '../config/stripBrands';
 import type { DosageCalculationResult } from '../domain/dosage';
 import type { StripAnalysisResult } from '../domain/scanResults';
 import { usePools } from './PoolsContext';
 
 export interface SavedHistoryRecord {
   id: string;
+  testId: string;
   date: string;
   poolId?: string;
   poolName: string;
+  brandId?: string;
+  brandName?: string;
+  imageUri?: string;
   resultSummary: string;
   status: string;
   tone: StatusTone;
+  testedAt: number;
   createdAt: number;
   analysisResult?: StripAnalysisResult;
   dosageResult?: DosageCalculationResult;
@@ -20,6 +26,9 @@ export interface SavedHistoryRecord {
 
 interface ResultsHistoryContextValue {
   historyRecords: SavedHistoryRecord[];
+  isHydrated: boolean;
+  getHistoryRecord: (testId: string) => SavedHistoryRecord | undefined;
+  getPoolHistoryRecords: (poolId: string, limit?: number) => SavedHistoryRecord[];
   saveAnalysisResult: (analysisResult: StripAnalysisResult) => SavedHistoryRecord;
 }
 
@@ -52,6 +61,33 @@ function buildResultSummary(analysisResult: StripAnalysisResult) {
   return importantValues.join(' · ');
 }
 
+function createTestId(analysisResult: StripAnalysisResult, timestamp: number) {
+  if (analysisResult.id && !analysisResult.id.startsWith('analysis-')) {
+    return analysisResult.id;
+  }
+
+  return `test-${timestamp}-${Math.floor(Math.random() * 10000)}`;
+}
+
+function normalizeHistoryRecord(record: SavedHistoryRecord): SavedHistoryRecord {
+  const testedAt = record.testedAt ?? record.analysisResult?.analyzedAt ?? record.createdAt ?? Date.now();
+  const testId = record.testId ?? record.id ?? `test-${testedAt}`;
+  const brandId = record.brandId ?? record.analysisResult?.brandId;
+  const brand = record.brandName || !brandId ? undefined : getBrand(brandId);
+
+  return {
+    ...record,
+    id: record.id ?? testId,
+    testId,
+    testedAt,
+    createdAt: record.createdAt ?? testedAt,
+    brandId,
+    brandName: record.brandName ?? brand?.nameHe,
+    imageUri: record.imageUri ?? record.analysisResult?.imageUri,
+    dosageResult: record.dosageResult ?? record.analysisResult?.dosage,
+  };
+}
+
 export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
   const { getPool } = usePools();
   const [historyRecords, setHistoryRecords] = useState<SavedHistoryRecord[]>([]);
@@ -67,7 +103,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         if (storedRecords) {
           const parsedRecords = JSON.parse(storedRecords) as SavedHistoryRecord[];
           if (Array.isArray(parsedRecords)) {
-            setHistoryRecords(parsedRecords);
+            setHistoryRecords(parsedRecords.map(normalizeHistoryRecord));
           }
         }
       } catch (error) {
@@ -103,17 +139,35 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ResultsHistoryContextValue>(
     () => ({
       historyRecords,
+      isHydrated: hydrated,
+      getHistoryRecord(testId) {
+        return historyRecords.find((record) => record.testId === testId || record.id === testId);
+      },
+      getPoolHistoryRecords(poolId, limit = 3) {
+        return historyRecords
+          .filter((record) => record.poolId === poolId)
+          .sort((a, b) => b.testedAt - a.testedAt)
+          .slice(0, limit);
+      },
       saveAnalysisResult(analysisResult) {
         const pool = analysisResult.poolId ? getPool(analysisResult.poolId) : undefined;
         const createdAt = Date.now();
+        const testedAt = analysisResult.analyzedAt ?? createdAt;
+        const testId = createTestId(analysisResult, createdAt);
+        const brand = analysisResult.brandId ? getBrand(analysisResult.brandId) : undefined;
         const record: SavedHistoryRecord = {
-          id: `history-${createdAt}`,
-          date: formatDateTime(createdAt),
+          id: testId,
+          testId,
+          date: formatDateTime(testedAt),
           poolId: analysisResult.poolId,
           poolName: pool?.name ?? FALLBACK_POOL_NAME,
+          brandId: analysisResult.brandId,
+          brandName: brand?.nameHe,
+          imageUri: analysisResult.imageUri,
           resultSummary: buildResultSummary(analysisResult),
           status: analysisResult.overallStatus.label,
           tone: analysisResult.overallStatus.tone,
+          testedAt,
           createdAt,
           analysisResult,
           dosageResult: analysisResult.dosage,
@@ -123,7 +177,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         return record;
       },
     }),
-    [getPool, historyRecords],
+    [getPool, historyRecords, hydrated],
   );
 
   return <ResultsHistoryContext.Provider value={value}>{children}</ResultsHistoryContext.Provider>;

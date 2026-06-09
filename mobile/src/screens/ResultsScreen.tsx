@@ -36,18 +36,40 @@ function formatRangeLabel(analysisResult: StripAnalysisResult, parameterIndex: n
 }
 
 export function ResultsScreen({ navigation, route }: Props) {
-  const { saveAnalysisResult } = useResultsHistory();
+  const { getHistoryRecord, isHydrated, saveAnalysisResult } = useResultsHistory();
   const { getPool } = usePools();
   const [analysisResult, setAnalysisResult] = useState<StripAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
-  const pool = route.params?.poolId ? getPool(route.params.poolId) : undefined;
-  const poolName = pool?.name ?? FALLBACK_POOL_NAME;
-  const hasImage = Boolean(route.params?.imageUri);
+  const savedTestId = route.params?.testId;
+  const savedRecord = savedTestId ? getHistoryRecord(savedTestId) : undefined;
+  const poolId = savedRecord?.poolId ?? route.params?.poolId;
+  const pool = poolId ? getPool(poolId) : undefined;
+  const poolName = savedRecord?.poolName ?? pool?.name ?? FALLBACK_POOL_NAME;
+  const hasImage = Boolean(savedRecord?.imageUri ?? route.params?.imageUri);
+  const isSavedResult = Boolean(savedTestId);
 
   useEffect(() => {
     let isMounted = true;
 
     async function analyzeImage() {
+      if (savedTestId) {
+        if (!isHydrated) {
+          setIsAnalyzing(true);
+          return;
+        }
+
+        if (savedRecord?.analysisResult) {
+          setAnalysisResult({
+            ...savedRecord.analysisResult,
+            dosage: savedRecord.dosageResult ?? savedRecord.analysisResult.dosage,
+          });
+        } else {
+          setAnalysisResult(null);
+        }
+        setIsAnalyzing(false);
+        return;
+      }
+
       setIsAnalyzing(true);
       const result = await analyzeStripImageMock({
         brandId: route.params?.brandId,
@@ -76,7 +98,15 @@ export function ResultsScreen({ navigation, route }: Props) {
     return () => {
       isMounted = false;
     };
-  }, [pool, route.params?.brandId, route.params?.imageUri, route.params?.poolId]);
+  }, [
+    isHydrated,
+    pool,
+    route.params?.brandId,
+    route.params?.imageUri,
+    route.params?.poolId,
+    savedRecord,
+    savedTestId,
+  ]);
 
   function handleSave() {
     if (!analysisResult) {
@@ -87,9 +117,31 @@ export function ResultsScreen({ navigation, route }: Props) {
     navigation.navigate('History');
   }
 
+  if (savedTestId && isHydrated && !analysisResult) {
+    return (
+      <AppShell activeTab="history" navigation={navigation}>
+        <View style={styles.header}>
+          <Text style={styles.title}>תוצאות הבדיקה</Text>
+          <Text style={styles.poolName}>בדיקה לא נמצאה</Text>
+          <Text style={styles.subtitle}>ייתכן שהרשומה נמחקה או שעדיין לא נשמרה מקומית.</Text>
+        </View>
+
+        <Card compact style={styles.analyzingCard}>
+          <View style={styles.analyzingIcon}>
+            <LineIcon name="history" color={colors.primaryDark} size={16} />
+          </View>
+          <View style={styles.analyzingCopy}>
+            <Text style={styles.analyzingTitle}>אין תוצאה שמורה</Text>
+            <Text style={styles.analyzingText}>חזרו להיסטוריה או התחילו סריקה חדשה עבור הבריכה.</Text>
+          </View>
+        </Card>
+      </AppShell>
+    );
+  }
+
   if (isAnalyzing || !analysisResult) {
     return (
-      <AppShell activeTab="scan" navigation={navigation}>
+      <AppShell activeTab={isSavedResult ? 'history' : 'scan'} navigation={navigation}>
         <View style={styles.header}>
           <Text style={styles.title}>תוצאות הבדיקה</Text>
           <Text style={styles.poolName}>{poolName}</Text>
@@ -110,7 +162,7 @@ export function ResultsScreen({ navigation, route }: Props) {
   }
 
   return (
-    <AppShell activeTab="scan" navigation={navigation}>
+    <AppShell activeTab={isSavedResult ? 'history' : 'scan'} navigation={navigation}>
       <View style={styles.header}>
         <Text style={styles.title}>תוצאות הבדיקה</Text>
         <Text style={styles.poolName}>{poolName}</Text>
@@ -152,9 +204,11 @@ export function ResultsScreen({ navigation, route }: Props) {
         </View>
       </Card>
 
-      <View style={styles.saveButton}>
+      {isSavedResult ? null : (
+        <View style={styles.saveButton}>
         <PrimaryButton label="סיום ושמירה" icon="history" onPress={handleSave} />
-      </View>
+        </View>
+      )}
     </AppShell>
   );
 }

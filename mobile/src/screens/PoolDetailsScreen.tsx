@@ -10,13 +10,16 @@ import { getBrand } from '../config/stripBrands';
 import { getPoolShapeLabel, getPoolTypeLabel } from '../domain/pool';
 import { colors, rtl, typography } from '../theme';
 import { usePools } from '../state/PoolsContext';
+import { useResultsHistory, type SavedHistoryRecord } from '../state/ResultsHistoryContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PoolDetails'>;
 
 export function PoolDetailsScreen({ navigation, route }: Props) {
   const { deletePool, getPool } = usePools();
+  const { getPoolHistoryRecords } = useResultsHistory();
   const pool = getPool(route.params.poolId);
+  const recentTests = pool ? getPoolHistoryRecords(pool.id, 3) : [];
   const poolName = pool?.name ?? 'בריכה ללא שם';
   const poolVolume = pool ? `${pool.volumeLiters.toLocaleString('he-IL')} ליטר` : 'לא הוגדר נפח';
   const brand = getBrand(pool?.stripBrandId);
@@ -79,6 +82,26 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
         />
       </View>
 
+      <Card compact style={styles.recentCard}>
+        <View style={styles.recentHeader}>
+          <Text style={styles.recentTitle}>בדיקות אחרונות</Text>
+          <LineIcon name="history" color={colors.primaryDark} size={16} />
+        </View>
+        {recentTests.length === 0 ? (
+          <Text style={styles.emptyHistory}>עדיין אין בדיקות שמורות לבריכה הזו.</Text>
+        ) : (
+          <View style={styles.recentList}>
+            {recentTests.map((record) => (
+              <RecentTestItem
+                key={record.testId}
+                record={record}
+                onPress={() => navigation.navigate('Results', { testId: record.testId })}
+              />
+            ))}
+          </View>
+        )}
+      </Card>
+
       {pool ? (
         <View style={styles.actions}>
           <Pressable onPress={() => navigation.navigate('EditPool', { poolId: pool.id })} style={styles.editButton}>
@@ -99,6 +122,24 @@ function DetailPill({ label, value }: { label: string; value: string }) {
       <Text style={styles.detailLabel}>{label}</Text>
       <Text style={styles.detailValue}>{value}</Text>
     </View>
+  );
+}
+
+function RecentTestItem({ onPress, record }: { onPress: () => void; record: SavedHistoryRecord }) {
+  const statusColor = record.tone === 'success' ? colors.success : colors.warning;
+
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.recentItem, pressed && styles.recentItemPressed]}>
+      <View style={[styles.recentDot, { backgroundColor: statusColor }]} />
+      <View style={styles.recentCopy}>
+        <Text style={styles.recentDate}>{record.date}</Text>
+        <Text style={styles.recentStatus}>{record.status}</Text>
+        <Text style={styles.recentSummary} numberOfLines={1}>
+          {record.resultSummary}
+        </Text>
+      </View>
+      <LineIcon name="chevronLeft" color={colors.muted} size={17} />
+    </Pressable>
   );
 }
 
@@ -205,6 +246,80 @@ const styles = StyleSheet.create({
   },
   cta: {
     marginTop: 16,
+  },
+  recentCard: {
+    marginTop: 16,
+    gap: 10,
+  },
+  recentHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  recentTitle: {
+    color: colors.text,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 15,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  emptyHistory: {
+    color: colors.muted,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 18,
+    ...rtl.text,
+  },
+  recentList: {
+    gap: 8,
+  },
+  recentItem: {
+    minHeight: 58,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceSoft,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+  },
+  recentItemPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.99 }],
+  },
+  recentDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+  },
+  recentCopy: {
+    flex: 1,
+  },
+  recentDate: {
+    color: colors.text,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  recentStatus: {
+    marginTop: 2,
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 11,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  recentSummary: {
+    marginTop: 2,
+    color: colors.muted,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 10,
+    fontWeight: '800',
+    ...rtl.text,
   },
   actions: {
     marginTop: 10,

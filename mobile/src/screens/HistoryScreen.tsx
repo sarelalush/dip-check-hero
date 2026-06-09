@@ -16,9 +16,10 @@ export function HistoryScreen({ navigation }: Props) {
     historyRecords.length > 0
       ? historyRecords.map((record) => ({
           date: record.date,
+          testId: record.testId,
           poolName: record.poolName,
           status: record.status,
-          time: `${record.poolName} · ${record.resultSummary}`,
+          time: record.resultSummary,
           tone: record.tone,
         }))
       : historyItems;
@@ -38,16 +39,21 @@ export function HistoryScreen({ navigation }: Props) {
 
       <View style={styles.timeline}>
         <View style={styles.timelineLine} />
-        {visibleHistoryItems.map((item) => (
-          <HistoryItem
-            key={`${item.date}-${item.time}`}
-            date={item.date}
-            poolName={item.poolName}
-            status={item.status}
-            time={item.time}
-            tone={item.tone}
-          />
-        ))}
+        {visibleHistoryItems.map((item) => {
+          const testId = 'testId' in item ? item.testId : undefined;
+
+          return (
+            <HistoryItem
+              key={`${item.date}-${item.time}`}
+              date={item.date}
+              onPress={testId ? () => navigation.navigate('Results', { testId }) : undefined}
+              poolName={item.poolName}
+              status={item.status}
+              time={item.time}
+              tone={item.tone}
+            />
+          );
+        })}
       </View>
     </AppShell>
   );

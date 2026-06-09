@@ -1,31 +1,33 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, rtl, shadows, typography } from '../theme';
 import { LineIcon } from './LineIcon';
 import type { StatusTone } from './StatusBadge';
 
 interface HistoryItemProps {
   date: string;
+  onPress?: () => void;
   poolName: string;
   status: string;
   time: string;
   tone?: StatusTone;
 }
 
-export function HistoryItem({ date, poolName, status, time, tone = 'success' }: HistoryItemProps) {
+export function HistoryItem({ date, onPress, poolName, status, time, tone = 'success' }: HistoryItemProps) {
   const iconColor = tone === 'success' ? colors.success : colors.warning;
 
   return (
-    <View style={styles.item}>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.item, pressed && onPress && styles.pressed]}>
       <View style={[styles.icon, { backgroundColor: tone === 'success' ? colors.successSoft : colors.warningSoft }]}>
         <LineIcon name={tone === 'success' ? 'check' : 'help'} color={iconColor} size={17} />
       </View>
       <View style={styles.copy}>
         <Text style={styles.date}>{date}</Text>
-        <Text style={styles.poolName}>{status}</Text>
+        <Text style={styles.poolName}>{poolName}</Text>
+        <Text style={styles.status}>{status}</Text>
         <Text style={styles.time}>{time}</Text>
       </View>
       <LineIcon name="chevronLeft" color={colors.muted} size={18} />
-    </View>
+    </Pressable>
   );
 }
 
@@ -68,6 +70,14 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     ...rtl.text,
   },
+  status: {
+    marginTop: 2,
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 12,
+    fontWeight: '800',
+    ...rtl.text,
+  },
   time: {
     marginTop: 3,
     color: colors.muted,
@@ -75,5 +85,9 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
     ...rtl.text,
+  },
+  pressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.99 }],
   },
 });
