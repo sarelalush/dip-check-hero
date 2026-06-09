@@ -8,6 +8,7 @@ import {
   Heebo_800ExtraBold,
   useFonts,
 } from '@expo-google-fonts/heebo';
+import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { PoolsScreen } from './src/screens/PoolsScreen';
@@ -52,6 +53,9 @@ export default function App() {
     Heebo_600SemiBold,
     Heebo_700Bold,
     Heebo_800ExtraBold,
+    ...Feather.font,
+    ...Ionicons.font,
+    ...MaterialCommunityIcons.font,
   });
 
   if (!fontsLoaded) {

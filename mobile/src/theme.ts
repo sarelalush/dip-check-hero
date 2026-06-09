@@ -1,3 +1,11 @@
+import { Platform } from 'react-native';
+
+const appFont = (family: string) =>
+  Platform.select({
+    web: `${family}, Arial, sans-serif`,
+    default: family,
+  }) as string;
+
 export const colors = {
   background: '#F1FBFD',
   backgroundAlt: '#F8FEFF',
@@ -60,12 +68,12 @@ export const radius = {
 };
 
 export const typography = {
-  fontFamily: 'Heebo_500Medium',
-  fontFamilyRegular: 'Heebo_400Regular',
-  fontFamilyMedium: 'Heebo_500Medium',
-  fontFamilySemiBold: 'Heebo_600SemiBold',
-  fontFamilyBold: 'Heebo_700Bold',
-  fontFamilyExtraBold: 'Heebo_800ExtraBold',
+  fontFamily: appFont('Heebo_500Medium'),
+  fontFamilyRegular: appFont('Heebo_400Regular'),
+  fontFamilyMedium: appFont('Heebo_500Medium'),
+  fontFamilySemiBold: appFont('Heebo_600SemiBold'),
+  fontFamilyBold: appFont('Heebo_700Bold'),
+  fontFamilyExtraBold: appFont('Heebo_800ExtraBold'),
   brandSpacing: 2.4,
   sizes: {
     caption: 11,

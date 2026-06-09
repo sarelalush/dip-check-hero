@@ -14,7 +14,11 @@ export function DeviceStatusBar({ light = false }: { light?: boolean }) {
           <View style={[styles.signalBar, { height: 7, backgroundColor: color }]} />
           <View style={[styles.signalBar, { height: 9, backgroundColor: color }]} />
         </View>
-        <Text style={[styles.wifi, { color }]}>⌁</Text>
+        <View style={styles.wifiMark}>
+          <View style={[styles.wifiArcLarge, { borderColor: color }]} />
+          <View style={[styles.wifiArcSmall, { borderColor: color }]} />
+          <View style={[styles.wifiDot, { backgroundColor: color }]} />
+        </View>
         <View style={[styles.battery, { borderColor: color }]}>
           <View style={[styles.batteryFill, { backgroundColor: color }]} />
         </View>
@@ -60,11 +64,40 @@ const styles = StyleSheet.create({
     width: 3,
     borderRadius: 2,
   },
-  wifi: {
-    fontFamily: typography.fontFamilySemiBold,
-    fontSize: 14,
-    fontWeight: '900',
-    marginTop: -2,
+  wifiMark: {
+    width: 14,
+    height: 12,
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  wifiArcLarge: {
+    position: 'absolute',
+    top: 1,
+    width: 14,
+    height: 8,
+    borderTopWidth: 1.4,
+    borderLeftWidth: 1.4,
+    borderRightWidth: 1.4,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: 9,
+    borderTopRightRadius: 9,
+  },
+  wifiArcSmall: {
+    position: 'absolute',
+    top: 5,
+    width: 8,
+    height: 5,
+    borderTopWidth: 1.4,
+    borderLeftWidth: 1.4,
+    borderRightWidth: 1.4,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
+  },
+  wifiDot: {
+    width: 2.6,
+    height: 2.6,
+    borderRadius: 2,
   },
   battery: {
     width: 20,
