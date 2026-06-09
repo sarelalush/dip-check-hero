@@ -3,6 +3,7 @@ import type { StripBrand } from '../domain/strip';
 import type { ScanSessionState } from '../state/ScanSessionContext';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
 import { analyzeStripImageMock } from './mockAnalysisService';
+import { uploadScanImage } from './scanImageStorage';
 
 // Parity sources:
 // - src/utils/analyzeStripImage.ts
@@ -103,6 +104,23 @@ async function analyzeStripImageRemote(
   const { data: userData } = await getSupabaseClient().auth.getUser();
   const userId = input.userId ?? userData.user?.id;
   const testId = input.testId ?? `remote-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  let imagePath = input.imagePath;
+  let imageUrl = input.imageUrl ?? (/^https?:\/\//i.test(input.imageUri) ? input.imageUri : undefined);
+
+  if (!imagePath && !imageUrl && userId) {
+    try {
+      const uploadedImage = await uploadScanImage({
+        imageUri: input.imageUri,
+        testId,
+        userId,
+      });
+
+      imagePath = uploadedImage?.path;
+      imageUrl = uploadedImage?.publicUrl;
+    } catch (error) {
+      console.warn('Remote strip analysis image upload failed, continuing with local image fallback', error);
+    }
+  }
 
   const { data, error } = await getSupabaseClient().functions.invoke(config.remoteFunctionName, {
     body: {
@@ -110,8 +128,8 @@ async function analyzeStripImageRemote(
       userId,
       poolId: input.poolId,
       brandId: input.brandId ?? input.selectedBrand?.id,
-      imagePath: input.imagePath,
-      imageUrl: input.imageUrl,
+      imagePath,
+      imageUrl,
       imageUri: input.imageUri,
       qualityNotes: input.qualityNotes,
       metadata: {
@@ -135,7 +153,12 @@ async function analyzeStripImageRemote(
     throw new Error('Remote analysis returned an unexpected response shape.');
   }
 
-  return data.result;
+  return {
+    ...data.result,
+    imageUri: input.imageUri,
+    imagePath: data.result.imagePath ?? imagePath,
+    imageUrl: data.result.imageUrl ?? imageUrl,
+  };
 }
 
 function isRemoteAnalysisResponse(value: unknown): value is { ok: true; result: StripAnalysisResult } {

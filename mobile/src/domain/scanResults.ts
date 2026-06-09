@@ -34,6 +34,8 @@ export interface StripAnalysisResult {
   analyzedAt: number;
   brandId?: string;
   imageUri?: string;
+  imagePath?: string;
+  imageUrl?: string;
   poolId?: string;
   source?: 'mock' | 'remote-mock' | 'remote' | 'native';
   confidence?: number;
