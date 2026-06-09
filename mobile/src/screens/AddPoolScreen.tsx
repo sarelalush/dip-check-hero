@@ -35,16 +35,16 @@ export function AddPoolScreen({ navigation }: Props) {
     if (lengthMeters <= 0 || widthMeters <= 0 || averageDepthMeters <= 0) {
       return setError('יש להזין אורך, רוחב ועומק ממוצע גדולים מאפס.');
     }
-    addPool({ averageDepthMeters, lengthMeters, name: name.trim(), notes: notes.trim() || undefined, shape: 'rectangle', volumeLiters, widthMeters });
+    const pool = addPool({ averageDepthMeters, lengthMeters, name: name.trim(), notes: notes.trim() || undefined, shape: 'rectangle', volumeLiters, widthMeters });
     setError('');
-    navigation.navigate('PoolsList');
+    navigation.navigate('PoolDetails', { poolId: pool.id });
   }
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.topBar}>
-          <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('PoolsList')}>
+          <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('Pools')}>
             <Text style={styles.iconGlyph}>‹</Text>
           </Pressable>
           <Text style={styles.heading}>בריכה חדשה</Text>
@@ -83,7 +83,7 @@ export function AddPoolScreen({ navigation }: Props) {
         <Pressable onPress={save} style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}>
           <Text style={styles.primaryBtnLabel}>שמירת בריכה</Text>
         </Pressable>
-        <Pressable onPress={() => navigation.navigate('PoolsList')} style={styles.secondaryBtn}>
+        <Pressable onPress={() => navigation.navigate('Pools')} style={styles.secondaryBtn}>
           <Text style={styles.secondaryBtnLabel}>ביטול</Text>
         </Pressable>
       </ScrollView>

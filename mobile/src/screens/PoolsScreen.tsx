@@ -1,15 +1,18 @@
 import { StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
+import { Card } from '../components/Card';
 import { PoolCard } from '../components/PoolCard';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { colors, rtl, typography } from '../theme';
-import { mockPools } from '../data/mockAppData';
+import { usePools } from '../state/PoolsContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Pools'>;
 
 export function PoolsScreen({ navigation }: Props) {
+  const { pools } = usePools();
+
   return (
     <AppShell activeTab="pools" navigation={navigation}>
       <View style={styles.header}>
@@ -17,21 +20,28 @@ export function PoolsScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.addWrap}>
-        <PrimaryButton label="הוספת בריכה" icon="plus" />
+        <PrimaryButton label="הוספת בריכה" icon="plus" onPress={() => navigation.navigate('AddPool')} />
       </View>
 
       <View style={styles.list}>
-        {mockPools.map((pool, index) => (
-          <PoolCard
-            key={pool.id}
-            name={pool.name}
-            volume={pool.volume}
-            status={pool.status}
-            tone={pool.tone}
-            variant={index === 0 ? 'villa' : 'city'}
-            onPress={() => navigation.navigate('PoolDetails', { poolId: pool.id })}
-          />
-        ))}
+        {pools.length > 0 ? (
+          pools.map((pool, index) => (
+            <PoolCard
+              key={pool.id}
+              name={pool.name}
+              volume={`${pool.volumeLiters.toLocaleString('he-IL')} ליטר`}
+              status="המים מאוזנים"
+              tone="success"
+              variant={index % 2 === 0 ? 'villa' : 'city'}
+              onPress={() => navigation.navigate('PoolDetails', { poolId: pool.id })}
+            />
+          ))
+        ) : (
+          <Card compact style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>עדיין אין בריכות</Text>
+            <Text style={styles.emptyText}>הוסיפו בריכה כדי להתחיל סריקה ולשמור היסטוריית בדיקות אמיתית.</Text>
+          </Card>
+        )}
       </View>
     </AppShell>
   );
@@ -57,5 +67,24 @@ const styles = StyleSheet.create({
   list: {
     marginTop: 16,
     gap: 16,
+  },
+  emptyCard: {
+    alignItems: 'center',
+  },
+  emptyTitle: {
+    color: colors.text,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 15,
+    fontWeight: '900',
+    ...rtl.textCenter,
+  },
+  emptyText: {
+    marginTop: 5,
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 18,
+    ...rtl.textCenter,
   },
 });

@@ -12,6 +12,7 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { PoolsScreen } from './src/screens/PoolsScreen';
 import { PoolDetailsScreen } from './src/screens/PoolDetailsScreen';
+import { AddPoolScreen } from './src/screens/AddPoolScreen';
 import { ConfirmScanScreen } from './src/screens/ConfirmScanScreen';
 import { ResultsScreen } from './src/screens/ResultsScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
@@ -62,6 +63,7 @@ export default function App() {
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="Pools" component={PoolsScreen} />
             <Stack.Screen name="PoolDetails" component={PoolDetailsScreen} />
+            <Stack.Screen name="AddPool" component={AddPoolScreen} />
             <Stack.Screen name="SelectStrip" component={SelectStripScreen} />
             <Stack.Screen name="Scan" component={ScanScreen} />
             <Stack.Screen name="ConfirmScan" component={ConfirmScanScreen} />

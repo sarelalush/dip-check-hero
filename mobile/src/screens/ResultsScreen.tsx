@@ -7,13 +7,14 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { ResultRow } from '../components/ResultRow';
 import { LineIcon } from '../components/LineIcon';
 import { colors, rtl, typography } from '../theme';
-import { mockPools } from '../data/mockAppData';
 import type { StripAnalysisResult } from '../domain/scanResults';
 import { analyzeStripImageMock } from '../services/mockAnalysisService';
+import { usePools } from '../state/PoolsContext';
 import { useResultsHistory } from '../state/ResultsHistoryContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Results'>;
+const FALLBACK_POOL_NAME = 'הבריכה שלי';
 
 function formatAnalysisDate(timestamp: number) {
   return new Intl.DateTimeFormat('he-IL', {
@@ -35,9 +36,11 @@ function formatRangeLabel(analysisResult: StripAnalysisResult, parameterIndex: n
 
 export function ResultsScreen({ navigation, route }: Props) {
   const { saveAnalysisResult } = useResultsHistory();
+  const { getPool } = usePools();
   const [analysisResult, setAnalysisResult] = useState<StripAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
-  const pool = route.params?.poolId ? mockPools.find((item) => item.id === route.params?.poolId) : undefined;
+  const pool = route.params?.poolId ? getPool(route.params.poolId) : undefined;
+  const poolName = pool?.name ?? FALLBACK_POOL_NAME;
   const hasImage = Boolean(route.params?.imageUri);
 
   useEffect(() => {
@@ -78,7 +81,7 @@ export function ResultsScreen({ navigation, route }: Props) {
       <AppShell activeTab="scan" navigation={navigation}>
         <View style={styles.header}>
           <Text style={styles.title}>תוצאות הבדיקה</Text>
-          <Text style={styles.poolName}>{pool?.name ?? mockPools[0].name}</Text>
+          <Text style={styles.poolName}>{poolName}</Text>
           <Text style={styles.subtitle}>מנתח את תמונת הסטיק...</Text>
         </View>
 
@@ -99,7 +102,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     <AppShell activeTab="scan" navigation={navigation}>
       <View style={styles.header}>
         <Text style={styles.title}>תוצאות הבדיקה</Text>
-        <Text style={styles.poolName}>{pool?.name ?? mockPools[0].name}</Text>
+        <Text style={styles.poolName}>{poolName}</Text>
         <Text style={styles.subtitle}>{formatAnalysisDate(analysisResult.analyzedAt)}</Text>
       </View>
 

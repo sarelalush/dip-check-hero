@@ -7,20 +7,21 @@ import { LineIcon } from '../components/LineIcon';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { StatusBadge } from '../components/StatusBadge';
 import { stripBrands, type MobileStripBrand } from '../data/stripBrands';
-import { mockPools } from '../data/mockAppData';
+import { usePools } from '../state/PoolsContext';
 import { colors, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SelectStrip'>;
 
 export function SelectStripScreen({ navigation, route }: Props) {
+  const { getPool } = usePools();
   const initialBrand = useMemo(
     () => stripBrands.find((brand) => brand.supported && brand.recommended) ?? stripBrands.find((brand) => brand.supported) ?? stripBrands[0],
     [],
   );
   const [selectedBrandId, setSelectedBrandId] = useState(initialBrand.id);
   const selectedBrand = stripBrands.find((brand) => brand.id === selectedBrandId) ?? initialBrand;
-  const pool = route.params?.poolId ? mockPools.find((item) => item.id === route.params?.poolId) : undefined;
+  const pool = route.params?.poolId ? getPool(route.params.poolId) : undefined;
 
   function handleContinue() {
     if (!selectedBrand.supported) return;

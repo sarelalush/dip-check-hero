@@ -1,12 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { StatusTone } from '../components/StatusBadge';
-import { mockPools } from '../data/mockAppData';
 import type { StripAnalysisResult } from '../domain/scanResults';
+import { usePools } from './PoolsContext';
 
 export interface SavedHistoryRecord {
   id: string;
   date: string;
+  poolId?: string;
   poolName: string;
   resultSummary: string;
   status: string;
@@ -22,6 +23,7 @@ interface ResultsHistoryContextValue {
 
 const ResultsHistoryContext = createContext<ResultsHistoryContextValue | null>(null);
 const HISTORY_STORAGE_KEY = '@aquasense/history-records';
+const FALLBACK_POOL_NAME = 'הבריכה שלי';
 
 function formatDateTime(timestamp: number) {
   return new Intl.DateTimeFormat('he-IL', {
@@ -45,6 +47,7 @@ function buildResultSummary(analysisResult: StripAnalysisResult) {
 }
 
 export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
+  const { getPool } = usePools();
   const [historyRecords, setHistoryRecords] = useState<SavedHistoryRecord[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
@@ -95,12 +98,13 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
     () => ({
       historyRecords,
       saveAnalysisResult(analysisResult) {
-        const pool = analysisResult.poolId ? mockPools.find((item) => item.id === analysisResult.poolId) : undefined;
+        const pool = analysisResult.poolId ? getPool(analysisResult.poolId) : undefined;
         const createdAt = Date.now();
         const record: SavedHistoryRecord = {
           id: `history-${createdAt}`,
           date: formatDateTime(createdAt),
-          poolName: pool?.name ?? mockPools[0].name,
+          poolId: analysisResult.poolId,
+          poolName: pool?.name ?? FALLBACK_POOL_NAME,
           resultSummary: buildResultSummary(analysisResult),
           status: analysisResult.overallStatus.label,
           tone: analysisResult.overallStatus.tone,
@@ -112,7 +116,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         return record;
       },
     }),
-    [historyRecords],
+    [getPool, historyRecords],
   );
 
   return <ResultsHistoryContext.Provider value={value}>{children}</ResultsHistoryContext.Provider>;
