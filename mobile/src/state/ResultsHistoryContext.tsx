@@ -5,10 +5,13 @@ import { getBrand } from '../config/stripBrands';
 import type { DosageCalculationResult } from '../domain/dosage';
 import type { StripAnalysisResult } from '../domain/scanResults';
 import { usePools } from './PoolsContext';
+import { useAuth } from './AuthContext';
+import { syncTestsWithCloud, upsertTestToCloud } from '../services/testCloudSync';
 
 export interface SavedHistoryRecord {
   id: string;
   testId: string;
+  cloudId?: string;
   date: string;
   poolId?: string;
   poolName: string;
@@ -20,6 +23,7 @@ export interface SavedHistoryRecord {
   tone: StatusTone;
   testedAt: number;
   createdAt: number;
+  updatedAt?: number;
   analysisResult?: StripAnalysisResult;
   dosageResult?: DosageCalculationResult;
 }
@@ -27,6 +31,8 @@ export interface SavedHistoryRecord {
 interface ResultsHistoryContextValue {
   historyRecords: SavedHistoryRecord[];
   isHydrated: boolean;
+  syncing: boolean;
+  syncError?: string;
   getHistoryRecord: (testId: string) => SavedHistoryRecord | undefined;
   getPoolHistoryRecords: (poolId: string, limit?: number) => SavedHistoryRecord[];
   saveAnalysisResult: (analysisResult: StripAnalysisResult) => SavedHistoryRecord;
@@ -81,6 +87,7 @@ function normalizeHistoryRecord(record: SavedHistoryRecord): SavedHistoryRecord 
     testId,
     testedAt,
     createdAt: record.createdAt ?? testedAt,
+    updatedAt: record.updatedAt ?? record.createdAt ?? testedAt,
     brandId,
     brandName: record.brandName ?? brand?.nameHe,
     imageUri: record.imageUri ?? record.analysisResult?.imageUri,
@@ -89,9 +96,12 @@ function normalizeHistoryRecord(record: SavedHistoryRecord): SavedHistoryRecord 
 }
 
 export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
-  const { getPool } = usePools();
+  const { user, loading: authLoading } = useAuth();
+  const { getPool, pools } = usePools();
   const [historyRecords, setHistoryRecords] = useState<SavedHistoryRecord[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState<string | undefined>();
 
   useEffect(() => {
     let isMounted = true;
@@ -136,10 +146,66 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
     persistHistoryRecords();
   }, [hydrated, historyRecords]);
 
+  useEffect(() => {
+    if (!hydrated || authLoading || !user) return;
+
+    let isMounted = true;
+    const currentUser = user;
+    const currentPools = pools;
+
+    async function syncAuthenticatedHistory() {
+      setSyncing(true);
+      setSyncError(undefined);
+
+      try {
+        const result = await syncTestsWithCloud(historyRecords, currentUser, currentPools);
+        if (!isMounted) return;
+        setHistoryRecords(result.records.map(normalizeHistoryRecord));
+      } catch (error) {
+        if (!isMounted) return;
+        console.warn('Failed to sync history with cloud', error);
+        setSyncError('סנכרון היסטוריית הבדיקות לענן נכשל. הנתונים המקומיים נשמרו.');
+      } finally {
+        if (isMounted) {
+          setSyncing(false);
+        }
+      }
+    }
+
+    syncAuthenticatedHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authLoading, hydrated, user?.id, pools]);
+
+  async function syncRecordToCloud(record: SavedHistoryRecord) {
+    if (!user) return;
+
+    try {
+      const syncedRecord = await upsertTestToCloud(record, user.id, pools);
+      if (!syncedRecord) return;
+
+      setHistoryRecords((current) =>
+        current.map((item) =>
+          item.testId === syncedRecord.testId || item.id === syncedRecord.id
+            ? normalizeHistoryRecord({ ...item, cloudId: syncedRecord.cloudId, updatedAt: syncedRecord.updatedAt })
+            : item,
+        ),
+      );
+      setSyncError(undefined);
+    } catch (error) {
+      console.warn('Failed to sync history record with cloud', error);
+      setSyncError('שמירת הבדיקה לענן נכשלה. היא נשמרה מקומית.');
+    }
+  }
+
   const value = useMemo<ResultsHistoryContextValue>(
     () => ({
       historyRecords,
       isHydrated: hydrated,
+      syncing,
+      syncError,
       getHistoryRecord(testId) {
         return historyRecords.find((record) => record.testId === testId || record.id === testId);
       },
@@ -169,15 +235,17 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
           tone: analysisResult.overallStatus.tone,
           testedAt,
           createdAt,
+          updatedAt: createdAt,
           analysisResult,
           dosageResult: analysisResult.dosage,
         };
 
         setHistoryRecords((current) => [record, ...current]);
+        syncRecordToCloud(record);
         return record;
       },
     }),
-    [getPool, historyRecords, hydrated],
+    [getPool, historyRecords, hydrated, pools, syncError, syncing, user],
   );
 
   return <ResultsHistoryContext.Provider value={value}>{children}</ResultsHistoryContext.Provider>;
