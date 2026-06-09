@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
@@ -10,6 +10,7 @@ import { getBrand, getRecommendedBrand, stripBrands } from '../config/stripBrand
 import { getBrandSwatches } from '../config/brandSwatches';
 import { PARAM_LABEL_HE, type StripBrand } from '../domain/strip';
 import { usePools } from '../state/PoolsContext';
+import { useScanSession } from '../state/ScanSessionContext';
 import { colors, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
@@ -17,20 +18,37 @@ type Props = NativeStackScreenProps<RootStackParamList, 'SelectStrip'>;
 
 export function SelectStripScreen({ navigation, route }: Props) {
   const { getPool } = usePools();
-  const pool = route.params?.poolId ? getPool(route.params.poolId) : undefined;
+  const { session, setSelectedBrand, startScanSession } = useScanSession();
+  const didStartSession = useRef(false);
+  const selectedPoolId = route.params?.poolId ?? session.selectedPoolId;
+  const pool = selectedPoolId ? getPool(selectedPoolId) : undefined;
   const initialBrand = useMemo(
     () => {
+      const sessionBrand = session.selectedBrandId ? getBrand(session.selectedBrandId) : undefined;
+      if (sessionBrand?.supported) return sessionBrand;
       const poolBrand = pool?.stripBrandId ? getBrand(pool.stripBrandId) : undefined;
       return poolBrand?.supported ? poolBrand : getRecommendedBrand();
     },
-    [pool?.stripBrandId],
+    [pool?.stripBrandId, session.selectedBrandId],
   );
   const [selectedBrandId, setSelectedBrandId] = useState(initialBrand.id);
   const selectedBrand = stripBrands.find((brand) => brand.id === selectedBrandId) ?? initialBrand;
 
+  useEffect(() => {
+    if (didStartSession.current) return;
+    didStartSession.current = true;
+    startScanSession({ brandId: initialBrand.id, poolId: selectedPoolId });
+  }, [initialBrand.id, selectedPoolId, startScanSession]);
+
+  function selectBrand(brandId: string) {
+    setSelectedBrandId(brandId);
+    setSelectedBrand(brandId);
+  }
+
   function handleContinue() {
     if (!selectedBrand.supported) return;
-    navigation.navigate('Scan', { brandId: selectedBrand.id, poolId: route.params?.poolId });
+    setSelectedBrand(selectedBrand.id);
+    navigation.navigate('Scan', { brandId: selectedBrand.id, poolId: selectedPoolId });
   }
 
   return (
@@ -51,7 +69,7 @@ export function SelectStripScreen({ navigation, route }: Props) {
             key={brand.id}
             brand={brand}
             selected={selectedBrand.id === brand.id}
-            onPress={() => setSelectedBrandId(brand.id)}
+            onPress={() => selectBrand(brand.id)}
           />
         ))}
       </View>

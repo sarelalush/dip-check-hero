@@ -1,10 +1,12 @@
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
 import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
+import { useScanSession } from '../state/ScanSessionContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ConfirmScan'>;
@@ -12,9 +14,19 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ConfirmScan'>;
 const checklistItems = ['הסטיק חד וברור', 'כל ריבועי הצבע נראים', 'התאורה טובה'];
 
 export function ConfirmScanScreen({ navigation, route }: Props) {
-  const { brandId, imageUri, poolId } = route.params;
+  const { confirmImage, session, setImageUri } = useScanSession();
+  const brandId = session.selectedBrandId ?? route.params.brandId;
+  const imageUri = session.imageUri ?? route.params.imageUri;
+  const poolId = session.selectedPoolId ?? route.params.poolId;
+
+  useEffect(() => {
+    if (!session.imageUri && route.params.imageUri) {
+      setImageUri(route.params.imageUri);
+    }
+  }, [route.params.imageUri, session.imageUri, setImageUri]);
 
   function continueToResults() {
+    confirmImage();
     navigation.navigate('Results', {
       brandId,
       imageUri,
@@ -23,7 +35,8 @@ export function ConfirmScanScreen({ navigation, route }: Props) {
   }
 
   function retakeImage() {
-    navigation.goBack();
+    setImageUri(undefined);
+    navigation.replace('Scan', { brandId, poolId });
   }
 
   return (

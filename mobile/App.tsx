@@ -20,6 +20,7 @@ import { ScanScreen } from './src/screens/ScanScreen';
 import { SelectStripScreen } from './src/screens/SelectStripScreen';
 import { PoolsProvider } from './src/state/PoolsContext';
 import { ResultsHistoryProvider } from './src/state/ResultsHistoryContext';
+import { ScanSessionProvider } from './src/state/ScanSessionContext';
 
 export type RootStackParamList = {
   Home: undefined;
@@ -59,22 +60,24 @@ export default function App() {
 
   return (
     <PoolsProvider>
-      <ResultsHistoryProvider>
-        <NavigationContainer>
-          <Stack.Navigator initialRouteName="Home" screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="Home" component={HomeScreen} />
-            <Stack.Screen name="Pools" component={PoolsScreen} />
-            <Stack.Screen name="PoolDetails" component={PoolDetailsScreen} />
-            <Stack.Screen name="AddPool" component={AddPoolScreen} />
-            <Stack.Screen name="EditPool" component={EditPoolScreen} />
-            <Stack.Screen name="SelectStrip" component={SelectStripScreen} />
-            <Stack.Screen name="Scan" component={ScanScreen} />
-            <Stack.Screen name="ConfirmScan" component={ConfirmScanScreen} />
-            <Stack.Screen name="Results" component={ResultsScreen} />
-            <Stack.Screen name="History" component={HistoryScreen} />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </ResultsHistoryProvider>
+      <ScanSessionProvider>
+        <ResultsHistoryProvider>
+          <NavigationContainer>
+            <Stack.Navigator initialRouteName="Home" screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="Home" component={HomeScreen} />
+              <Stack.Screen name="Pools" component={PoolsScreen} />
+              <Stack.Screen name="PoolDetails" component={PoolDetailsScreen} />
+              <Stack.Screen name="AddPool" component={AddPoolScreen} />
+              <Stack.Screen name="EditPool" component={EditPoolScreen} />
+              <Stack.Screen name="SelectStrip" component={SelectStripScreen} />
+              <Stack.Screen name="Scan" component={ScanScreen} />
+              <Stack.Screen name="ConfirmScan" component={ConfirmScanScreen} />
+              <Stack.Screen name="Results" component={ResultsScreen} />
+              <Stack.Screen name="History" component={HistoryScreen} />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </ResultsHistoryProvider>
+      </ScanSessionProvider>
     </PoolsProvider>
   );
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -6,6 +6,7 @@ import { AppShell } from '../components/AppShell';
 import { LineIcon } from '../components/LineIcon';
 import { WaterTexture } from '../components/WaterVisuals';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
+import { useScanSession } from '../state/ScanSessionContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Scan'>;
@@ -18,17 +19,37 @@ const pickerOptions: ImagePicker.ImagePickerOptions = {
 };
 
 export function ScanScreen({ navigation, route }: Props) {
-  const [selectedImageUri, setSelectedImageUri] = useState<string>();
+  const { resetScanSession, session, setImageUri, startScanSession } = useScanSession();
+  const didInitializeSession = useRef(false);
+  const [selectedImageUri, setSelectedImageUri] = useState<string | undefined>(session.imageUri);
   const [feedback, setFeedback] = useState('בחרו תמונת סטיק או צלמו אחת חדשה');
   const [isPicking, setIsPicking] = useState(false);
 
   const resultParams = useMemo(
     () => ({
-      brandId: route.params?.brandId,
-      poolId: route.params?.poolId,
+      brandId: session.selectedBrandId ?? route.params?.brandId,
+      poolId: session.selectedPoolId ?? route.params?.poolId,
     }),
-    [route.params?.brandId, route.params?.poolId]
+    [route.params?.brandId, route.params?.poolId, session.selectedBrandId, session.selectedPoolId]
   );
+
+  useEffect(() => {
+    if (didInitializeSession.current) return;
+    didInitializeSession.current = true;
+
+    if (route.params?.brandId || route.params?.poolId) {
+      startScanSession({
+        brandId: route.params?.brandId ?? session.selectedBrandId,
+        poolId: route.params?.poolId ?? session.selectedPoolId,
+      });
+    }
+  }, [
+    route.params?.brandId,
+    route.params?.poolId,
+    session.selectedBrandId,
+    session.selectedPoolId,
+    startScanSession,
+  ]);
 
   async function pickImage(source: PickSource) {
     if (isPicking) {
@@ -70,6 +91,7 @@ export function ScanScreen({ navigation, route }: Props) {
       }
 
       setSelectedImageUri(uri);
+      setImageUri(uri);
       setFeedback('התמונה התקבלה. אפשר להמשיך לתוצאות.');
     } catch {
       setFeedback('משהו השתבש בטעינת התמונה. נסו שוב.');
@@ -79,15 +101,22 @@ export function ScanScreen({ navigation, route }: Props) {
   }
 
   function continueToResults() {
-    if (!selectedImageUri) {
+    const imageUri = selectedImageUri ?? session.imageUri;
+
+    if (!imageUri) {
       setFeedback('בחרו תמונה או צלמו סטיק לפני שממשיכים.');
       return;
     }
 
     navigation.navigate('ConfirmScan', {
       ...resultParams,
-      imageUri: selectedImageUri,
+      imageUri,
     });
+  }
+
+  function closeScan() {
+    resetScanSession();
+    navigation.navigate('Home');
   }
 
   return (
@@ -165,7 +194,7 @@ export function ScanScreen({ navigation, route }: Props) {
             <LineIcon name="results" color={colors.white} size={16} />
             <Text style={styles.resultsButtonText}>המשך לתוצאות</Text>
           </Pressable>
-          <Pressable onPress={() => navigation.navigate('Home')} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
+          <Pressable onPress={closeScan} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
             <LineIcon name="close" color={colors.text} size={24} />
           </Pressable>
         </View>

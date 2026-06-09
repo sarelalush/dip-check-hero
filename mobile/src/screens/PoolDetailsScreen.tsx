@@ -11,6 +11,7 @@ import { getPoolShapeLabel, getPoolTypeLabel } from '../domain/pool';
 import { colors, rtl, typography } from '../theme';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory, type SavedHistoryRecord } from '../state/ResultsHistoryContext';
+import { useScanSession } from '../state/ScanSessionContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PoolDetails'>;
@@ -18,6 +19,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'PoolDetails'>;
 export function PoolDetailsScreen({ navigation, route }: Props) {
   const { deletePool, getPool } = usePools();
   const { getPoolHistoryRecords } = useResultsHistory();
+  const { startScanSession } = useScanSession();
   const pool = getPool(route.params.poolId);
   const recentTests = pool ? getPoolHistoryRecords(pool.id, 3) : [];
   const poolName = pool?.name ?? 'בריכה ללא שם';
@@ -40,6 +42,11 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
         },
       },
     ]);
+  }
+
+  function startPoolScan() {
+    startScanSession({ brandId: pool?.stripBrandId, poolId: route.params.poolId });
+    navigation.navigate('SelectStrip', { poolId: route.params.poolId });
   }
 
   return (
@@ -78,7 +85,7 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
         <PrimaryButton
           label="התחל סריקה"
           icon="scan"
-          onPress={() => navigation.navigate('SelectStrip', { poolId: route.params.poolId })}
+          onPress={startPoolScan}
         />
       </View>
 

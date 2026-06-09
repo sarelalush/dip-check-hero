@@ -12,6 +12,7 @@ import { calculateDosage } from '../domain/dosage';
 import { analyzeStripImageMock } from '../services/mockAnalysisService';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory } from '../state/ResultsHistoryContext';
+import { useScanSession } from '../state/ScanSessionContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Results'>;
@@ -38,14 +39,17 @@ function formatRangeLabel(analysisResult: StripAnalysisResult, parameterIndex: n
 export function ResultsScreen({ navigation, route }: Props) {
   const { getHistoryRecord, isHydrated, saveAnalysisResult } = useResultsHistory();
   const { getPool } = usePools();
+  const { resetScanSession, session, setAnalysisResult: setSessionAnalysisResult } = useScanSession();
   const [analysisResult, setAnalysisResult] = useState<StripAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
   const savedTestId = route.params?.testId;
   const savedRecord = savedTestId ? getHistoryRecord(savedTestId) : undefined;
-  const poolId = savedRecord?.poolId ?? route.params?.poolId;
+  const inputBrandId = savedTestId ? route.params?.brandId : session.selectedBrandId ?? route.params?.brandId;
+  const inputImageUri = savedTestId ? route.params?.imageUri : session.confirmedImageUri ?? session.imageUri ?? route.params?.imageUri;
+  const poolId = savedRecord?.poolId ?? (savedTestId ? route.params?.poolId : session.selectedPoolId ?? route.params?.poolId);
   const pool = poolId ? getPool(poolId) : undefined;
   const poolName = savedRecord?.poolName ?? pool?.name ?? FALLBACK_POOL_NAME;
-  const hasImage = Boolean(savedRecord?.imageUri ?? route.params?.imageUri);
+  const hasImage = Boolean(savedRecord?.imageUri ?? inputImageUri);
   const isSavedResult = Boolean(savedTestId);
 
   useEffect(() => {
@@ -72,9 +76,9 @@ export function ResultsScreen({ navigation, route }: Props) {
 
       setIsAnalyzing(true);
       const result = await analyzeStripImageMock({
-        brandId: route.params?.brandId,
-        imageUri: route.params?.imageUri,
-        poolId: route.params?.poolId,
+        brandId: inputBrandId,
+        imageUri: inputImageUri,
+        poolId,
       });
       const dosage = calculateDosage(result, pool);
       const enrichedResult: StripAnalysisResult = {
@@ -89,6 +93,7 @@ export function ResultsScreen({ navigation, route }: Props) {
 
       if (isMounted) {
         setAnalysisResult(enrichedResult);
+        setSessionAnalysisResult(enrichedResult);
         setIsAnalyzing(false);
       }
     }
@@ -100,7 +105,10 @@ export function ResultsScreen({ navigation, route }: Props) {
     };
   }, [
     isHydrated,
+    inputBrandId,
+    inputImageUri,
     pool,
+    poolId,
     route.params?.brandId,
     route.params?.imageUri,
     route.params?.poolId,
@@ -114,6 +122,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     }
 
     saveAnalysisResult(analysisResult);
+    resetScanSession();
     navigation.navigate('History');
   }
 
