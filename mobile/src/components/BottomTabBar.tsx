@@ -28,7 +28,7 @@ export function BottomTabBar({ active, navigation }: Props) {
     else if (tab === 'scan') navigation.navigate('SelectStrip');
     else if (tab === 'results') navigation.navigate('Results');
     else if (tab === 'history') navigation.navigate('History');
-    else navigation.navigate('Home');
+    else navigation.navigate('Settings');
   }
 
   return (

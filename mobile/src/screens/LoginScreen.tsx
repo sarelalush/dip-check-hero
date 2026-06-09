@@ -3,19 +3,29 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
+import { useAuth } from '../state/AuthContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
+  const { signInWithEmail } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  function submit() {
+  async function submit() {
     if (!email.trim()) return setError('יש להזין אימייל כדי להמשיך.');
     if (!password.trim()) return setError('יש להזין סיסמה כדי להמשיך.');
+
+    setBusy(true);
     setError('');
-    navigation.replace('Dashboard');
+    const result = await signInWithEmail(email, password);
+    setBusy(false);
+
+    if (result.error) {
+      setError(result.error);
+    }
   }
 
   return (
@@ -36,8 +46,8 @@ export function LoginScreen({ navigation }: Props) {
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          <Pressable onPress={submit} style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}>
-            <Text style={styles.primaryBtnLabel}>כניסה</Text>
+          <Pressable disabled={busy} onPress={submit} style={({ pressed }) => [styles.primaryBtn, busy && styles.disabled, pressed && { opacity: 0.9 }]}>
+            <Text style={styles.primaryBtnLabel}>{busy ? 'מתחבר...' : 'כניסה'}</Text>
           </Pressable>
 
           <Pressable onPress={() => navigation.navigate('Signup')} style={styles.linkBtn}>
@@ -84,6 +94,7 @@ const styles = StyleSheet.create({
   error: { color: colors.danger, fontSize: 13, fontWeight: '800', ...rtl.text, fontFamily: typography.fontFamily },
   primaryBtn: { marginTop: 4, backgroundColor: colors.primary, borderRadius: 999, paddingVertical: 16, alignItems: 'center', ...shadows.button },
   primaryBtnLabel: { color: colors.white, fontSize: 16, fontWeight: '900', fontFamily: typography.fontFamily },
+  disabled: { opacity: 0.62 },
   linkBtn: { alignItems: 'center', paddingVertical: 4 },
   linkText: { color: colors.primary, fontSize: 13, fontWeight: '900', fontFamily: typography.fontFamily },
 });

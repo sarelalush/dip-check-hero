@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
+import { useAuth } from '../state/AuthContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
@@ -14,6 +16,18 @@ const SETTINGS = [
 ];
 
 export function SettingsScreen({ navigation }: Props) {
+  const { user, signOut } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const displayName = (user?.user_metadata?.display_name as string | undefined) || user?.email || 'משתמש Dip Check';
+  const email = user?.email ?? 'לא מחובר';
+  const initial = displayName.trim().charAt(0).toUpperCase() || 'ד';
+
+  async function handleSignOut() {
+    setBusy(true);
+    await signOut();
+    setBusy(false);
+  }
+
   return (
     <View style={styles.root}>
       <View style={styles.blob} />
@@ -23,10 +37,10 @@ export function SettingsScreen({ navigation }: Props) {
         <Text style={styles.subtitle}>בקרוב תוכל לנהל חשבון, תזכורות והעדפות בדיקה.</Text>
 
         <View style={styles.profileCard}>
-          <View style={styles.avatar}><Text style={styles.avatarText}>ד</Text></View>
+          <View style={styles.avatar}><Text style={styles.avatarText}>{initial}</Text></View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.profileName}>משתמש Dip Check</Text>
-            <Text style={styles.profileMeta}>מצב פיתוח · חשבון לדוגמה</Text>
+            <Text style={styles.profileName}>{displayName}</Text>
+            <Text style={styles.profileMeta}>{email}</Text>
           </View>
         </View>
 
@@ -42,6 +56,10 @@ export function SettingsScreen({ navigation }: Props) {
             </Pressable>
           ))}
         </View>
+
+        <Pressable disabled={busy} onPress={handleSignOut} style={({ pressed }) => [styles.logoutButton, busy && styles.disabled, pressed && styles.pressed]}>
+          <Text style={styles.logoutText}>{busy ? 'יוצא מהחשבון...' : 'יציאה מהחשבון'}</Text>
+        </Pressable>
       </ScrollView>
       <BottomTabBar active="settings" navigation={navigation} />
     </View>
@@ -68,4 +86,7 @@ const styles = StyleSheet.create({
   settingTitle: { color: colors.text, fontSize: 16, fontWeight: '900', ...rtl.text, fontFamily: typography.fontFamily },
   settingSubtitle: { marginTop: 3, color: colors.muted, fontSize: 12, fontWeight: '700', ...rtl.text, fontFamily: typography.fontFamily },
   chevron: { color: colors.primaryDark, fontSize: 24, fontWeight: '900' },
+  logoutButton: { marginTop: 18, backgroundColor: colors.card, borderRadius: radius.round, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: colors.dangerSoft, ...shadows.soft },
+  logoutText: { color: colors.danger, fontSize: 15, fontWeight: '900', fontFamily: typography.fontFamily },
+  disabled: { opacity: 0.62 },
 });

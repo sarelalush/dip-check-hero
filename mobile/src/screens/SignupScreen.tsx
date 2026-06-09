@@ -3,20 +3,42 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
+import { useAuth } from '../state/AuthContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
 
 export function SignupScreen({ navigation }: Props) {
+  const { signUpWithEmail } = useAuth();
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [busy, setBusy] = useState(false);
 
-  function submit() {
+  async function submit() {
+    const phoneClean = phone.trim().replace(/\s+/g, '');
+
+    if (!name.trim()) return setError('יש להזין שם מלא כדי ליצור חשבון.');
     if (!email.trim()) return setError('יש להזין אימייל כדי ליצור חשבון.');
-    if (!password.trim()) return setError('יש להזין סיסמה כדי ליצור חשבון.');
+    if (!phoneClean) return setError('יש להזין מספר טלפון כדי ליצור חשבון.');
+    if (!/^0\d{1,2}-?\d{7}$|^\+?\d{9,15}$/.test(phoneClean)) return setError('יש להזין מספר טלפון תקין.');
+    if (password.length < 6) return setError('הסיסמה חייבת להכיל לפחות 6 תווים.');
+
+    setBusy(true);
     setError('');
-    navigation.replace('Dashboard');
+    setSuccess('');
+    const result = await signUpWithEmail(email, password, name, phoneClean);
+    setBusy(false);
+
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+
+    setSuccess('נשלח אליכם אימייל לאימות. לאחר האישור תוכלו להתחבר.');
+    setTimeout(() => navigation.navigate('Login'), 2200);
   }
 
   return (
@@ -32,14 +54,16 @@ export function SignupScreen({ navigation }: Props) {
           <Text style={styles.title}>מתחילים לשמור{'\n'}על המים</Text>
           <Text style={styles.subtitle}>נכין לך מקום אישי לבריכות, סריקות והיסטוריה.</Text>
 
-          <Field label="שם לתצוגה" value={name} onChangeText={setName} placeholder="ישראל ישראלי" />
+          <Field label="שם מלא" value={name} onChangeText={setName} placeholder="ישראל ישראלי" />
+          <Field label="מספר טלפון נייד" value={phone} onChangeText={setPhone} placeholder="050-1234567" keyboardType="phone-pad" />
           <Field label="אימייל" value={email} onChangeText={setEmail} placeholder="name@example.com" keyboardType="email-address" />
           <Field label="סיסמה" value={password} onChangeText={setPassword} placeholder="בחר סיסמה" secure />
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
+          {success ? <Text style={styles.success}>{success}</Text> : null}
 
-          <Pressable onPress={submit} style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}>
-            <Text style={styles.primaryBtnLabel}>יצירת חשבון</Text>
+          <Pressable disabled={busy} onPress={submit} style={({ pressed }) => [styles.primaryBtn, busy && styles.disabled, pressed && { opacity: 0.9 }]}>
+            <Text style={styles.primaryBtnLabel}>{busy ? 'יוצר חשבון...' : 'יצירת חשבון'}</Text>
           </Pressable>
 
           <Pressable onPress={() => navigation.navigate('Login')} style={styles.linkBtn}>
@@ -53,7 +77,7 @@ export function SignupScreen({ navigation }: Props) {
 
 function Field({ label, value, onChangeText, placeholder, keyboardType, secure }: {
   label: string; value: string; onChangeText: (v: string) => void;
-  placeholder?: string; keyboardType?: 'default' | 'email-address'; secure?: boolean;
+  placeholder?: string; keyboardType?: 'default' | 'email-address' | 'phone-pad'; secure?: boolean;
 }) {
   return (
     <View style={fieldStyles.wrap}>
@@ -84,8 +108,10 @@ const styles = StyleSheet.create({
   title: { fontSize: 26, fontWeight: '900', color: colors.text, ...rtl.text, lineHeight: 34, fontFamily: typography.fontFamily },
   subtitle: { fontSize: 13, fontWeight: '600', color: colors.muted, ...rtl.text, lineHeight: 20, fontFamily: typography.fontFamily },
   error: { color: colors.danger, fontSize: 13, fontWeight: '800', ...rtl.text, fontFamily: typography.fontFamily },
+  success: { color: colors.success, fontSize: 13, fontWeight: '800', ...rtl.text, fontFamily: typography.fontFamily },
   primaryBtn: { marginTop: 4, backgroundColor: colors.primary, borderRadius: 999, paddingVertical: 16, alignItems: 'center', ...shadows.button },
   primaryBtnLabel: { color: colors.white, fontSize: 16, fontWeight: '900', fontFamily: typography.fontFamily },
+  disabled: { opacity: 0.62 },
   linkBtn: { alignItems: 'center', paddingVertical: 4 },
   linkText: { color: colors.primary, fontSize: 13, fontWeight: '900', fontFamily: typography.fontFamily },
 });
