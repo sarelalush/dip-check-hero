@@ -84,4 +84,3 @@ export async function analyzeStripImageMock({
     recommendation: 'הוסף 120 מ״ל כלור והוסף 80 גרם אלקליניות+',
   };
 }
-

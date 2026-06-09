@@ -40,4 +40,3 @@ export interface StripAnalysisResult {
   parameters: ScanResultParameter[];
   recommendation: string;
 }
-
