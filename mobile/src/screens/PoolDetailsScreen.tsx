@@ -80,9 +80,14 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
       </View>
 
       {pool ? (
-        <Pressable onPress={handleDelete} style={styles.deleteButton}>
-          <Text style={styles.deleteText}>מחיקת בריכה</Text>
-        </Pressable>
+        <View style={styles.actions}>
+          <Pressable onPress={() => navigation.navigate('EditPool', { poolId: pool.id })} style={styles.editButton}>
+            <Text style={styles.editText}>עריכת בריכה</Text>
+          </Pressable>
+          <Pressable onPress={handleDelete} style={styles.deleteButton}>
+            <Text style={styles.deleteText}>מחיקת בריכה</Text>
+          </Pressable>
+        </View>
       ) : null}
     </AppShell>
   );
@@ -201,8 +206,24 @@ const styles = StyleSheet.create({
   cta: {
     marginTop: 16,
   },
-  deleteButton: {
+  actions: {
     marginTop: 10,
+    flexDirection: 'row-reverse',
+    justifyContent: 'center',
+    gap: 18,
+  },
+  editButton: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  editText: {
+    color: colors.primaryDark,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 13,
+    fontWeight: '900',
+    ...rtl.textCenter,
+  },
+  deleteButton: {
     alignItems: 'center',
     paddingVertical: 12,
   },
