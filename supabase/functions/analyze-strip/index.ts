@@ -18,8 +18,9 @@
 // 6. Return remote-mock only when both AI and CV cannot produce a safe result.
 //
 // Required secrets for AI mode:
-// - LOVABLE_API_KEY for the same Lovable AI gateway used by the web app, or
-// - GEMINI_API_KEY for direct Gemini generateContent fallback.
+// - LOVABLE_API_KEY for the same Lovable AI gateway used by the web app.
+// Direct Gemini API is intentionally not prioritized here; the goal is to
+// reproduce the web app path through Lovable first, then CV fallback.
 //
 // This is V1, not lab-grade analysis. Future versions should improve strip
 // detection, rotation handling, pad localization, lighting calibration, and
@@ -29,7 +30,7 @@ import { Image as ImageScript } from 'https://deno.land/x/imagescript@1.2.15/mod
 
 type StatusTone = 'success' | 'warning' | 'danger';
 type AnalysisSource = 'ai' | 'cv' | 'remote-mock';
-type AiProviderName = 'lovable' | 'gemini';
+type AiProviderName = 'lovable';
 type FailureReason = 'none' | 'not_strip' | 'blurry' | 'lighting' | 'framing' | 'low_confidence' | 'ai_error' | 'unknown';
 type StripParameter =
   | 'freeChlorine'
@@ -89,6 +90,8 @@ interface StripAnalysisResult {
   imageUrl?: string;
   poolId?: string;
   source: AnalysisSource;
+  provider?: AiProviderName;
+  model?: string;
   confidence: number;
   lowConfidence?: boolean;
   notes?: string;
@@ -108,6 +111,7 @@ interface AiRunData {
   confidence: number;
   notes: string;
   provider: AiProviderName;
+  model: string;
 }
 
 type AiRunResponse =
@@ -146,6 +150,8 @@ interface DecodedImage {
 }
 
 const SCAN_IMAGES_BUCKET = 'scan-images';
+const LOVABLE_AI_GATEWAY_URL = 'https://ai.gateway.lovable.dev/v1/chat/completions';
+const LOVABLE_AI_MODEL = 'google/gemini-2.5-flash';
 const MULTI_SHOT_RUNS = 3;
 const CONFIDENCE_WARN_THRESHOLD = 0.55;
 const CONFIDENCE_BLOCK_THRESHOLD = 0.4;
@@ -393,7 +399,7 @@ function buildResult(
   values: Partial<Record<StripParameter, number>>,
   source: AnalysisSource,
   confidence: number,
-  options: { lowConfidence?: boolean; notes?: string; shotsUsed?: number } = {},
+  options: { lowConfidence?: boolean; model?: string; notes?: string; provider?: AiProviderName; shotsUsed?: number } = {},
 ): StripAnalysisResult {
   const parameters = brand.parameters
     .map((parameter) => {
@@ -416,6 +422,8 @@ function buildResult(
     imageUrl: request.imageUrl,
     poolId: request.poolId,
     source,
+    provider: options.provider,
+    model: options.model,
     confidence: Number(Math.max(0, Math.min(1, confidence)).toFixed(2)),
     lowConfidence: options.lowConfidence,
     notes: options.notes,
@@ -704,21 +712,12 @@ Return values via the report_strip tool. Only include the requested parameters.`
 }
 
 function getAiProviderConfig(): AiProviderConfig | null {
-  const lovableKey = Deno.env.get('LOVABLE_API_KEY') ?? Deno.env.get('STRIP_ANALYSIS_AI_KEY');
+  const lovableKey = Deno.env.get('LOVABLE_API_KEY');
   if (lovableKey) {
     return {
       name: 'lovable',
       apiKey: lovableKey,
-      model: Deno.env.get('STRIP_ANALYSIS_AI_MODEL') ?? 'google/gemini-2.5-flash',
-    };
-  }
-
-  const geminiKey = Deno.env.get('GEMINI_API_KEY');
-  if (geminiKey) {
-    return {
-      name: 'gemini',
-      apiKey: geminiKey,
-      model: Deno.env.get('GEMINI_MODEL') ?? 'gemini-2.5-flash',
+      model: LOVABLE_AI_MODEL,
     };
   }
 
@@ -731,7 +730,7 @@ function buildNumberProps() {
   return numberProps;
 }
 
-function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provider: AiProviderName): AiRunResponse {
+function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provider: AiProviderConfig): AiRunResponse {
   const values: Partial<Record<StripParameter, number>> = {};
   for (const parameter of brand.parameters) {
     if (typeof args[parameter] === 'number') {
@@ -747,38 +746,23 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
       values,
       confidence: Number(args.confidence ?? 0.5),
       notes: String(args.notes ?? ''),
-      provider,
+      provider: provider.name,
+      model: provider.model,
     },
   };
 }
 
-function dataUrlParts(dataUrl: string) {
-  const match = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl);
-  if (!match) {
-    return {
-      mimeType: 'image/jpeg',
-      base64: dataUrl,
-    };
-  }
-
-  return {
-    mimeType: match[1],
-    base64: match[2],
-  };
-}
-
 async function analyzeWithLovable(dataUrl: string, brand: StripBrand, provider: AiProviderConfig): Promise<AiRunResponse> {
-  const gatewayUrl = Deno.env.get('STRIP_ANALYSIS_AI_GATEWAY_URL') ?? 'https://ai.gateway.lovable.dev/v1/chat/completions';
   const numberProps = buildNumberProps();
   try {
-    const response = await fetch(gatewayUrl, {
+    const response = await fetch(LOVABLE_AI_GATEWAY_URL, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${provider.apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: provider.model,
+        model: LOVABLE_AI_MODEL,
         temperature: 0.1,
         top_p: 0.1,
         messages: [
@@ -831,7 +815,7 @@ async function analyzeWithLovable(dataUrl: string, brand: StripBrand, provider: 
     }
 
     const args = JSON.parse(toolCall.function.arguments);
-    return normalizeAiArgs(args, brand, 'lovable');
+    return normalizeAiArgs(args, brand, provider);
   } catch (error) {
     return {
       ok: false,
@@ -842,91 +826,13 @@ async function analyzeWithLovable(dataUrl: string, brand: StripBrand, provider: 
   }
 }
 
-async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: AiProviderConfig): Promise<AiRunResponse> {
-  const { base64, mimeType } = dataUrlParts(dataUrl);
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(provider.model)}:generateContent?key=${encodeURIComponent(provider.apiKey)}`;
-  const numberProps: Record<string, { type: 'number' }> = {};
-  for (const key of PARAM_KEYS) numberProps[key] = { type: 'number' };
-  const schema = {
-    type: 'OBJECT',
-    properties: {
-      isStrip: { type: 'BOOLEAN' },
-      failureReason: {
-        type: 'STRING',
-        enum: ['none', 'not_strip', 'blurry', 'lighting', 'framing', 'low_confidence'],
-      },
-      ...Object.fromEntries(Object.entries(numberProps).map(([key]) => [key, { type: 'NUMBER' }])),
-      confidence: { type: 'NUMBER' },
-      notes: { type: 'STRING' },
-    },
-    required: ['isStrip', 'failureReason', 'confidence', 'notes'],
-  };
-
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: `${buildSystemPrompt(brand)}
-
-Analyze this ${brand.nameHe} strip. Return a JSON object only, matching the response schema. Include numeric values for only the requested parameters.`,
-              },
-              {
-                inlineData: {
-                  mimeType,
-                  data: base64,
-                },
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          topP: 0.1,
-          responseMimeType: 'application/json',
-          responseSchema: schema,
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const text = await response.text();
-      return { ok: false, error: `gemini_${response.status}`, message: text.slice(0, 300), provider: 'gemini' };
-    }
-
-    const json = await response.json();
-    const text = json.candidates?.[0]?.content?.parts?.find((part: { text?: string }) => typeof part.text === 'string')?.text;
-    if (!text) {
-      return { ok: false, error: 'gemini_no_text', message: 'Gemini returned no JSON text.', provider: 'gemini' };
-    }
-
-    return normalizeAiArgs(JSON.parse(text), brand, 'gemini');
-  } catch (error) {
-    return {
-      ok: false,
-      error: 'gemini_exception',
-      message: error instanceof Error ? error.message : 'Unexpected Gemini provider error.',
-      provider: 'gemini',
-    };
-  }
-}
-
 async function analyzeWithAiProvider(dataUrl: string, brand: StripBrand): Promise<AiRunResponse> {
   const provider = getAiProviderConfig();
   if (!provider) {
     return { ok: false, error: 'missing_ai_key', message: 'AI provider is not configured.' };
   }
 
-  return provider.name === 'lovable'
-    ? analyzeWithLovable(dataUrl, brand, provider)
-    : analyzeWithGemini(dataUrl, brand, provider);
+  return analyzeWithLovable(dataUrl, brand, provider);
 }
 
 function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, brand: StripBrand): StripAnalysisResult | null {
@@ -964,7 +870,9 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
 
   const notes: string[] = [];
   const providers = Array.from(new Set(stripRuns.map((run) => run.data.provider))).join(', ');
+  const models = Array.from(new Set(stripRuns.map((run) => run.data.model))).join(', ');
   if (providers) notes.push(`AI provider: ${providers}.`);
+  if (models) notes.push(`AI model: ${models}.`);
   if (stripRuns.length < MULTI_SHOT_RUNS) notes.push(`בוצעו ${stripRuns.length} מתוך ${MULTI_SHOT_RUNS} ניתוחי AI.`);
   if (lowConfidence) notes.push('ביטחון נמוך - מומלץ לצלם שוב באור טבעי ועל רקע בהיר.');
   for (const run of stripRuns) {
@@ -973,6 +881,8 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
 
   return buildResult(request, brand, values, 'ai', consensusConfidence, {
     lowConfidence,
+    provider: stripRuns[0]?.data.provider,
+    model: stripRuns[0]?.data.model,
     notes: notes.join(' ') || undefined,
     shotsUsed: stripRuns.length,
   });

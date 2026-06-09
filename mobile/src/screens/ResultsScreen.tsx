@@ -40,9 +40,11 @@ function formatRangeLabel(analysisResult: StripAnalysisResult, parameterIndex: n
 
 function formatAnalysisSource(analysisResult: StripAnalysisResult) {
   const confidence = typeof analysisResult.confidence === 'number' ? ` · ביטחון ${Math.round(analysisResult.confidence * 100)}%` : '';
+  const provider = analysisResult.provider ? ` · ${analysisResult.provider}` : '';
+  const model = analysisResult.model ? ` · ${analysisResult.model}` : '';
 
   if (analysisResult.source === 'ai') {
-    return `מקור ניתוח: AI${confidence}`;
+    return `מקור ניתוח: AI${provider}${model}${confidence}`;
   }
 
   if (analysisResult.source === 'cv') {

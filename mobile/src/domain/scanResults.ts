@@ -38,6 +38,8 @@ export interface StripAnalysisResult {
   imageUrl?: string;
   poolId?: string;
   source?: 'mock' | 'remote-mock' | 'remote-v1' | 'remote' | 'native' | 'ai' | 'cv';
+  provider?: 'lovable';
+  model?: string;
   confidence?: number;
   lowConfidence?: boolean;
   notes?: string;
