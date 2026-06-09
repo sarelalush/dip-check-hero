@@ -1,4 +1,5 @@
 import type { StatusTone } from '../components/StatusBadge';
+import type { DosageCalculationResult } from './dosage';
 import type { StripParameter } from './strip';
 
 export type ScanParameterKey = StripParameter;
@@ -40,4 +41,5 @@ export interface StripAnalysisResult {
   };
   parameters: ScanResultParameter[];
   recommendation: string;
+  dosage?: DosageCalculationResult;
 }

@@ -8,6 +8,7 @@ import { ResultRow } from '../components/ResultRow';
 import { LineIcon } from '../components/LineIcon';
 import { colors, rtl, typography } from '../theme';
 import type { StripAnalysisResult } from '../domain/scanResults';
+import { calculateDosage } from '../domain/dosage';
 import { analyzeStripImageMock } from '../services/mockAnalysisService';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory } from '../state/ResultsHistoryContext';
@@ -53,9 +54,19 @@ export function ResultsScreen({ navigation, route }: Props) {
         imageUri: route.params?.imageUri,
         poolId: route.params?.poolId,
       });
+      const dosage = calculateDosage(result, pool);
+      const enrichedResult: StripAnalysisResult = {
+        ...result,
+        dosage,
+        overallStatus: {
+          label: dosage.primaryRecommendation ? 'נדרש תיקון קל' : 'המים מאוזנים',
+          tone: dosage.primaryRecommendation ? 'warning' : 'success',
+        },
+        recommendation: dosage.summary,
+      };
 
       if (isMounted) {
-        setAnalysisResult(result);
+        setAnalysisResult(enrichedResult);
         setIsAnalyzing(false);
       }
     }
@@ -65,7 +76,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     return () => {
       isMounted = false;
     };
-  }, [route.params?.brandId, route.params?.imageUri, route.params?.poolId]);
+  }, [pool, route.params?.brandId, route.params?.imageUri, route.params?.poolId]);
 
   function handleSave() {
     if (!analysisResult) {
@@ -136,6 +147,8 @@ export function ResultsScreen({ navigation, route }: Props) {
         <View style={styles.recommendationCopy}>
           <Text style={styles.recommendationTitle}>המלצה</Text>
           <Text style={styles.recommendationText}>{analysisResult.recommendation}</Text>
+          {analysisResult.dosage?.retestNote ? <Text style={styles.noteText}>{analysisResult.dosage.retestNote}</Text> : null}
+          {analysisResult.dosage?.safetyNote ? <Text style={styles.safetyText}>{analysisResult.dosage.safetyNote}</Text> : null}
         </View>
       </Card>
 
@@ -271,6 +284,24 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '800',
     lineHeight: 19,
+    ...rtl.text,
+  },
+  noteText: {
+    marginTop: 8,
+    color: colors.primaryDark,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
+    lineHeight: 18,
+    ...rtl.text,
+  },
+  safetyText: {
+    marginTop: 6,
+    color: colors.muted,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 17,
     ...rtl.text,
   },
   saveButton: {

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { StatusTone } from '../components/StatusBadge';
+import type { DosageCalculationResult } from '../domain/dosage';
 import type { StripAnalysisResult } from '../domain/scanResults';
 import { usePools } from './PoolsContext';
 
@@ -14,6 +15,7 @@ export interface SavedHistoryRecord {
   tone: StatusTone;
   createdAt: number;
   analysisResult?: StripAnalysisResult;
+  dosageResult?: DosageCalculationResult;
 }
 
 interface ResultsHistoryContextValue {
@@ -39,6 +41,10 @@ function formatParameterValue(value: number, unit: string) {
 }
 
 function buildResultSummary(analysisResult: StripAnalysisResult) {
+  if (analysisResult.dosage?.summary) {
+    return analysisResult.dosage.summary.split('\n')[0];
+  }
+
   const importantValues = analysisResult.parameters
     .filter((parameter) => parameter.key === 'ph' || parameter.key === 'freeChlorine' || parameter.key === 'alkalinity')
     .map((parameter) => `${parameter.name} ${formatParameterValue(parameter.value, parameter.unit)}`);
@@ -110,6 +116,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
           tone: analysisResult.overallStatus.tone,
           createdAt,
           analysisResult,
+          dosageResult: analysisResult.dosage,
         };
 
         setHistoryRecords((current) => [record, ...current]);
