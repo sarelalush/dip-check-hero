@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 export type PoolShape = 'rectangle';
 
@@ -31,9 +32,54 @@ interface PoolsContextValue {
 }
 
 const PoolsContext = createContext<PoolsContextValue | null>(null);
+const POOLS_STORAGE_KEY = '@aquasense/pools';
 
 export function PoolsProvider({ children }: { children: ReactNode }) {
   const [pools, setPools] = useState<Pool[]>([]);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function restorePools() {
+      try {
+        const storedPools = await AsyncStorage.getItem(POOLS_STORAGE_KEY);
+        if (!isMounted) return;
+        if (storedPools) {
+          const parsedPools = JSON.parse(storedPools) as Pool[];
+          if (Array.isArray(parsedPools)) {
+            setPools(parsedPools);
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to restore pools from storage', error);
+      } finally {
+        if (isMounted) {
+          setHydrated(true);
+        }
+      }
+    }
+
+    restorePools();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    async function persistPools() {
+      try {
+        await AsyncStorage.setItem(POOLS_STORAGE_KEY, JSON.stringify(pools));
+      } catch (error) {
+        console.warn('Failed to persist pools to storage', error);
+      }
+    }
+
+    persistPools();
+  }, [hydrated, pools]);
 
   const value = useMemo<PoolsContextValue>(
     () => ({

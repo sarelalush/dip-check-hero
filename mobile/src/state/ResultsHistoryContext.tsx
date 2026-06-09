@@ -1,4 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { StatusTone } from '../components/StatusBadge';
 import { mockPools, resultRows } from '../data/mockAppData';
 
@@ -22,6 +23,7 @@ interface ResultsHistoryContextValue {
 }
 
 const ResultsHistoryContext = createContext<ResultsHistoryContextValue | null>(null);
+const HISTORY_STORAGE_KEY = '@aquasense/history-records';
 
 function formatDateTime(timestamp: number) {
   return new Intl.DateTimeFormat('he-IL', {
@@ -42,6 +44,50 @@ function buildResultSummary() {
 
 export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
   const [historyRecords, setHistoryRecords] = useState<SavedHistoryRecord[]>([]);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function restoreHistoryRecords() {
+      try {
+        const storedRecords = await AsyncStorage.getItem(HISTORY_STORAGE_KEY);
+        if (!isMounted) return;
+        if (storedRecords) {
+          const parsedRecords = JSON.parse(storedRecords) as SavedHistoryRecord[];
+          if (Array.isArray(parsedRecords)) {
+            setHistoryRecords(parsedRecords);
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to restore history records from storage', error);
+      } finally {
+        if (isMounted) {
+          setHydrated(true);
+        }
+      }
+    }
+
+    restoreHistoryRecords();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+
+    async function persistHistoryRecords() {
+      try {
+        await AsyncStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(historyRecords));
+      } catch (error) {
+        console.warn('Failed to persist history records to storage', error);
+      }
+    }
+
+    persistHistoryRecords();
+  }, [hydrated, historyRecords]);
 
   const value = useMemo<ResultsHistoryContextValue>(
     () => ({
