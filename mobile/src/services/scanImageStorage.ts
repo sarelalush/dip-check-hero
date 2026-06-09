@@ -1,0 +1,94 @@
+// Mobile scan-image storage parity source:
+// src/lib/cloudSync.ts uploads scan images to the "scan-images" bucket and
+// stores the resulting storage path in tests.image_url. This native version
+// uses Expo/RN-compatible fetch(imageUri) -> ArrayBuffer, without FileReader,
+// DOM image elements, canvas, or browser file inputs.
+import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
+
+export const SCAN_IMAGES_BUCKET = 'scan-images';
+
+interface UploadScanImageInput {
+  imageUri: string;
+  testId: string;
+  userId: string;
+}
+
+export interface UploadedScanImage {
+  bucket: typeof SCAN_IMAGES_BUCKET;
+  contentType: string;
+  path: string;
+  publicUrl?: string;
+}
+
+function isRemoteOrStorageValue(uri: string) {
+  return /^https?:\/\//i.test(uri);
+}
+
+function extensionFromContentType(contentType: string) {
+  if (contentType.includes('png')) return 'png';
+  if (contentType.includes('webp')) return 'webp';
+  return 'jpg';
+}
+
+function contentTypeFromUri(uri: string) {
+  const lower = uri.split('?')[0]?.toLowerCase() ?? '';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  return 'image/jpeg';
+}
+
+function buildScanImagePath(userId: string, testId: string, contentType: string) {
+  const ext = extensionFromContentType(contentType);
+  return `users/${userId}/tests/${testId}/scan.${ext}`;
+}
+
+export function getPublicScanImageUrl(path?: string | null) {
+  if (!path) return undefined;
+  if (isRemoteOrStorageValue(path) || path.startsWith('data:') || path.startsWith('file:') || path.startsWith('blob:')) {
+    return path;
+  }
+  if (!isSupabaseConfigured) return undefined;
+
+  const { data } = getSupabaseClient().storage.from(SCAN_IMAGES_BUCKET).getPublicUrl(path);
+  return data.publicUrl;
+}
+
+export function isLocalUploadCandidate(uri?: string) {
+  if (!uri) return false;
+  if (isRemoteOrStorageValue(uri)) return false;
+  return uri.startsWith('file:') || uri.startsWith('content:') || uri.startsWith('blob:') || uri.startsWith('data:');
+}
+
+export async function uploadScanImage({ imageUri, testId, userId }: UploadScanImageInput): Promise<UploadedScanImage | undefined> {
+  if (!isSupabaseConfigured || !isLocalUploadCandidate(imageUri)) {
+    return undefined;
+  }
+
+  const fallbackContentType = contentTypeFromUri(imageUri);
+  const response = await fetch(imageUri);
+
+  if (!response.ok) {
+    throw new Error(`Failed to read scan image: ${response.status}`);
+  }
+
+  const responseContentType = response.headers.get('content-type');
+  const contentType = responseContentType?.startsWith('image/') ? responseContentType : fallbackContentType;
+  const body = await response.arrayBuffer();
+  const path = buildScanImagePath(userId, testId, contentType);
+
+  const { error } = await getSupabaseClient().storage.from(SCAN_IMAGES_BUCKET).upload(path, body, {
+    contentType,
+    upsert: true,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    bucket: SCAN_IMAGES_BUCKET,
+    contentType,
+    path,
+    publicUrl: getPublicScanImageUrl(path),
+  };
+}

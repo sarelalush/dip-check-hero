@@ -1,4 +1,4 @@
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import { useEffect, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
@@ -55,7 +55,8 @@ export function ResultsScreen({ navigation, route }: Props) {
   const poolId = savedRecord?.poolId ?? (savedTestId ? route.params?.poolId : session.selectedPoolId ?? route.params?.poolId);
   const pool = poolId ? getPool(poolId) : undefined;
   const poolName = savedRecord?.poolName ?? pool?.name ?? FALLBACK_POOL_NAME;
-  const hasImage = Boolean(savedRecord?.imageUri ?? inputImageUri);
+  const imageDisplayUri = savedRecord?.imageUrl ?? savedRecord?.imageUri ?? inputImageUri;
+  const hasImage = Boolean(imageDisplayUri);
   const isSavedResult = Boolean(savedTestId);
 
   useEffect(() => {
@@ -239,6 +240,18 @@ export function ResultsScreen({ navigation, route }: Props) {
       </View>
 
       <View style={styles.resultsList}>
+        {isSavedResult && imageDisplayUri ? (
+          <Card compact style={styles.savedImageCard}>
+            <Image source={{ uri: imageDisplayUri }} style={styles.savedImage} resizeMode="cover" />
+            <View style={styles.savedImageCopy}>
+              <Text style={styles.savedImageTitle}>תמונת הסטיק</Text>
+              <Text style={styles.savedImageText}>
+                {savedRecord?.imageUrl ? 'נטענה מהענן' : 'מוצגת מהשמירה המקומית'}
+              </Text>
+            </View>
+          </Card>
+        ) : null}
+
         {hasImage ? (
           <View style={styles.imageReceived}>
             <View style={styles.imageReceivedIcon}>
@@ -346,6 +359,35 @@ const styles = StyleSheet.create({
   resultsList: {
     marginTop: 18,
     gap: 11,
+  },
+  savedImageCard: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+  },
+  savedImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 18,
+    backgroundColor: colors.primarySoft,
+  },
+  savedImageCopy: {
+    flex: 1,
+  },
+  savedImageTitle: {
+    color: colors.primaryDeep,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 14,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  savedImageText: {
+    marginTop: 4,
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    fontWeight: '800',
+    ...rtl.text,
   },
   imageReceived: {
     minHeight: 42,

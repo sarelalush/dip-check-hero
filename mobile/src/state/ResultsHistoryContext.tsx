@@ -7,6 +7,7 @@ import type { StripAnalysisResult } from '../domain/scanResults';
 import { usePools } from './PoolsContext';
 import { useAuth } from './AuthContext';
 import { syncTestsWithCloud, upsertTestToCloud } from '../services/testCloudSync';
+import { getPublicScanImageUrl } from '../services/scanImageStorage';
 
 export interface SavedHistoryRecord {
   id: string;
@@ -18,6 +19,9 @@ export interface SavedHistoryRecord {
   brandId?: string;
   brandName?: string;
   imageUri?: string;
+  imagePath?: string;
+  imageUrl?: string;
+  imageUploadError?: string;
   resultSummary: string;
   status: string;
   tone: StatusTone;
@@ -91,6 +95,9 @@ function normalizeHistoryRecord(record: SavedHistoryRecord): SavedHistoryRecord 
     brandId,
     brandName: record.brandName ?? brand?.nameHe,
     imageUri: record.imageUri ?? record.analysisResult?.imageUri,
+    imagePath: record.imagePath,
+    imageUrl: record.imageUrl ?? getPublicScanImageUrl(record.imagePath),
+    imageUploadError: record.imageUploadError,
     dosageResult: record.dosageResult ?? record.analysisResult?.dosage,
   };
 }
@@ -189,7 +196,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
       setHistoryRecords((current) =>
         current.map((item) =>
           item.testId === syncedRecord.testId || item.id === syncedRecord.id
-            ? normalizeHistoryRecord({ ...item, cloudId: syncedRecord.cloudId, updatedAt: syncedRecord.updatedAt })
+            ? normalizeHistoryRecord({ ...item, ...syncedRecord })
             : item,
         ),
       );

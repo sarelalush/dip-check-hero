@@ -6,6 +6,7 @@ import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabas
 import type { Database, Json } from '../integrations/supabase/types';
 import type { Pool } from '../domain/pool';
 import type { SavedHistoryRecord } from '../state/ResultsHistoryContext';
+import { getPublicScanImageUrl, uploadScanImage } from './scanImageStorage';
 
 type TestRow = Database['public']['Tables']['tests']['Row'];
 type TestUpsert = Database['public']['Tables']['tests']['Insert'];
@@ -19,6 +20,8 @@ interface MobileTestResultsPayload {
   summary: SavedHistoryRecord['resultSummary'];
   brandId?: string;
   brandName?: string;
+  imagePath?: string;
+  imageUrl?: string;
   poolName: string;
 }
 
@@ -83,6 +86,10 @@ function getLocalPoolId(remotePoolId: string, pools: Pool[]) {
   return pools.find((pool) => pool.cloudId === remotePoolId || pool.id === remotePoolId)?.id ?? remotePoolId;
 }
 
+function isStoragePath(value?: string | null) {
+  return Boolean(value && !/^https?:\/\//i.test(value) && !value.startsWith('file:') && !value.startsWith('blob:') && !value.startsWith('data:'));
+}
+
 function isMobileResultsPayload(value: unknown): value is MobileTestResultsPayload {
   return Boolean(
     value &&
@@ -110,6 +117,9 @@ export function mapCloudTestToLocal(row: TestRow, pools: Pool[]): SavedHistoryRe
   const dosagePayload = isMobileRecommendationsPayload(recommendationsPayload) ? recommendationsPayload.dosageResult : undefined;
   const poolId = baseRecord?.poolId ?? getLocalPoolId(row.pool_id, pools);
   const pool = pools.find((item) => item.id === poolId || item.cloudId === row.pool_id);
+  const rowImageValue = row.image_url ?? undefined;
+  const imagePath = baseRecord?.imagePath ?? (isStoragePath(rowImageValue) ? rowImageValue : undefined);
+  const imageUrl = baseRecord?.imageUrl ?? (imagePath ? getPublicScanImageUrl(imagePath) : rowImageValue);
 
   return {
     id: baseRecord?.id ?? row.id,
@@ -120,7 +130,10 @@ export function mapCloudTestToLocal(row: TestRow, pools: Pool[]): SavedHistoryRe
     poolName: baseRecord?.poolName ?? pool?.name ?? 'הבריכה שלי',
     brandId: baseRecord?.brandId,
     brandName: baseRecord?.brandName,
-    imageUri: baseRecord?.imageUri ?? row.image_url ?? undefined,
+    imageUri: baseRecord?.imageUri ?? (!imagePath ? rowImageValue : undefined),
+    imagePath,
+    imageUrl,
+    imageUploadError: baseRecord?.imageUploadError,
     resultSummary: baseRecord?.resultSummary ?? 'תוצאת בדיקה שמורה',
     status: baseRecord?.status ?? 'המים מאוזנים',
     tone: baseRecord?.tone ?? 'success',
@@ -152,6 +165,8 @@ export function mapLocalTestToCloud(record: SavedHistoryRecord, userId: string, 
     summary: normalizedRecord.resultSummary,
     brandId: normalizedRecord.brandId,
     brandName: normalizedRecord.brandName,
+    imagePath: normalizedRecord.imagePath,
+    imageUrl: normalizedRecord.imageUrl,
     poolName: normalizedRecord.poolName,
   };
 
@@ -168,7 +183,7 @@ export function mapLocalTestToCloud(record: SavedHistoryRecord, userId: string, 
     pool_id: poolId,
     results: toJson(resultsPayload),
     recommendations: toJson(recommendationsPayload),
-    image_url: normalizedRecord.imageUri ?? null,
+    image_url: normalizedRecord.imagePath ?? normalizedRecord.imageUrl ?? normalizedRecord.imageUri ?? null,
     tested_at: new Date(normalizedRecord.testedAt).toISOString(),
     created_at: new Date(normalizedRecord.createdAt).toISOString(),
   };
@@ -190,16 +205,50 @@ export async function fetchCloudTests(userId: string, pools: Pool[]): Promise<Sa
 export async function upsertTestToCloud(record: SavedHistoryRecord, userId: string, pools: Pool[]): Promise<SavedHistoryRecord | undefined> {
   if (!isSupabaseConfigured) return record;
 
-  const upsert = mapLocalTestToCloud(record, userId, pools);
+  const cloudId = getTestCloudId(record);
+  let recordForCloud: SavedHistoryRecord = {
+    ...record,
+    cloudId,
+    updatedAt: record.updatedAt ?? record.createdAt ?? record.testedAt,
+  };
+
+  if (recordForCloud.imageUri && !recordForCloud.imagePath && !recordForCloud.imageUrl) {
+    try {
+      const uploadedImage = await uploadScanImage({
+        imageUri: recordForCloud.imageUri,
+        testId: cloudId,
+        userId,
+      });
+
+      if (uploadedImage) {
+        recordForCloud = {
+          ...recordForCloud,
+          imagePath: uploadedImage.path,
+          imageUrl: uploadedImage.publicUrl,
+          imageUploadError: undefined,
+          updatedAt: Date.now(),
+        };
+      }
+    } catch (error) {
+      console.warn('Failed to upload scan image to storage', error);
+      recordForCloud = {
+        ...recordForCloud,
+        imageUploadError: 'העלאת תמונת הסטיק לענן נכשלה. הבדיקה נשמרה עם התמונה המקומית.',
+        updatedAt: Date.now(),
+      };
+    }
+  }
+
+  const upsert = mapLocalTestToCloud(recordForCloud, userId, pools);
   if (!upsert) return undefined;
 
   const { error } = await getSupabaseClient().from('tests').upsert(upsert);
   if (error) throw error;
 
   return {
-    ...record,
+    ...recordForCloud,
     cloudId: upsert.id,
-    updatedAt: record.updatedAt ?? record.createdAt ?? record.testedAt,
+    updatedAt: recordForCloud.updatedAt ?? recordForCloud.createdAt ?? recordForCloud.testedAt,
   };
 }
 
@@ -215,8 +264,9 @@ export interface TestSyncResult {
 
 // Simple conflict strategy for this first history-sync slice:
 // keep local AsyncStorage visible immediately, fetch cloud tests after auth, and
-// prefer the record with the newest updatedAt/testedAt. Images are not uploaded
-// here; imageUri/image_url stores only the existing local URI/path when present.
+// prefer the record with the newest updatedAt/testedAt. Local scan images are
+// uploaded to the scan-images bucket before metadata upsert when possible; if
+// upload fails, the test is still saved with its local imageUri fallback.
 export async function syncTestsWithCloud(
   localRecords: SavedHistoryRecord[],
   user: User,
