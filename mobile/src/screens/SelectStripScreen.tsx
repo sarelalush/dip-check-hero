@@ -6,7 +6,7 @@ import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { StatusBadge } from '../components/StatusBadge';
-import { getRecommendedBrand, stripBrands } from '../config/stripBrands';
+import { getBrand, getRecommendedBrand, stripBrands } from '../config/stripBrands';
 import { getBrandSwatches } from '../config/brandSwatches';
 import { PARAM_LABEL_HE, type StripBrand } from '../domain/strip';
 import { usePools } from '../state/PoolsContext';
@@ -17,13 +17,16 @@ type Props = NativeStackScreenProps<RootStackParamList, 'SelectStrip'>;
 
 export function SelectStripScreen({ navigation, route }: Props) {
   const { getPool } = usePools();
+  const pool = route.params?.poolId ? getPool(route.params.poolId) : undefined;
   const initialBrand = useMemo(
-    () => getRecommendedBrand(),
-    [],
+    () => {
+      const poolBrand = pool?.stripBrandId ? getBrand(pool.stripBrandId) : undefined;
+      return poolBrand?.supported ? poolBrand : getRecommendedBrand();
+    },
+    [pool?.stripBrandId],
   );
   const [selectedBrandId, setSelectedBrandId] = useState(initialBrand.id);
   const selectedBrand = stripBrands.find((brand) => brand.id === selectedBrandId) ?? initialBrand;
-  const pool = route.params?.poolId ? getPool(route.params.poolId) : undefined;
 
   function handleContinue() {
     if (!selectedBrand.supported) return;

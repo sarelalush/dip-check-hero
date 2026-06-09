@@ -1,41 +1,90 @@
 import { useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { getRecommendedBrand } from '../config/stripBrands';
+import {
+  calculateManualVolumeLiters,
+  calculatePoolVolume,
+  type PoolShape,
+  type PoolType,
+  type PoolVolumeEntryMethod,
+  type PoolVolumeUnit,
+} from '../domain/pool';
 import { colors, rtl, shadows, typography } from '../theme';
-import { calculateRectangularVolumeLiters, usePools } from '../state/PoolsContext';
+import { usePools } from '../state/PoolsContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddPool'>;
+type TabletsChoice = 'yes' | 'no' | 'unknown';
 
-function parseMeters(value: string) {
+function parseNumber(value: string) {
   const parsed = Number.parseFloat(value.replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export function AddPoolScreen({ navigation }: Props) {
   const { addPool } = usePools();
+  const recommendedBrand = getRecommendedBrand();
   const [name, setName] = useState('');
+  const [type, setType] = useState<PoolType>('chlorine');
+  const [method, setMethod] = useState<PoolVolumeEntryMethod>('manual');
+  const [unit, setUnit] = useState<PoolVolumeUnit>('liters');
+  const [manualVolume, setManualVolume] = useState('');
+  const [shape, setShape] = useState<PoolShape>('rectangle');
   const [length, setLength] = useState('');
   const [width, setWidth] = useState('');
+  const [diameter, setDiameter] = useState('');
   const [averageDepth, setAverageDepth] = useState('');
+  const [tabletsChoice, setTabletsChoice] = useState<TabletsChoice>('unknown');
+  const [tabletsCount, setTabletsCount] = useState('1');
+  const [tabletWeight, setTabletWeight] = useState('200');
+  const [pumpHoursPerDay, setPumpHoursPerDay] = useState('8');
+  const [retestHours, setRetestHours] = useState('6');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
 
-  const lengthMeters = parseMeters(length);
-  const widthMeters = parseMeters(width);
-  const averageDepthMeters = parseMeters(averageDepth);
+  const lengthMeters = parseNumber(length);
+  const widthMeters = parseNumber(width);
+  const diameterMeters = parseNumber(diameter);
+  const averageDepthMeters = parseNumber(averageDepth);
+  const manualVolumeValue = parseNumber(manualVolume);
 
-  const volumeLiters = useMemo(
-    () => calculateRectangularVolumeLiters(lengthMeters, widthMeters, averageDepthMeters),
-    [averageDepthMeters, lengthMeters, widthMeters],
-  );
+  const volumeLiters = useMemo(() => {
+    if (method === 'manual') {
+      return calculateManualVolumeLiters(manualVolumeValue, unit);
+    }
+    if (shape === 'round') {
+      return calculatePoolVolume({ shape, diameter: diameterMeters, depth: averageDepthMeters });
+    }
+    return calculatePoolVolume({ shape, length: lengthMeters, width: widthMeters, depth: averageDepthMeters });
+  }, [averageDepthMeters, diameterMeters, lengthMeters, manualVolumeValue, method, shape, unit, widthMeters]);
 
   function save() {
     if (!name.trim()) return setError('יש להזין שם לבריכה.');
-    if (lengthMeters <= 0 || widthMeters <= 0 || averageDepthMeters <= 0) {
-      return setError('יש להזין אורך, רוחב ועומק ממוצע גדולים מאפס.');
-    }
-    const pool = addPool({ averageDepthMeters, lengthMeters, name: name.trim(), notes: notes.trim() || undefined, shape: 'rectangle', volumeLiters, widthMeters });
+    if (volumeLiters <= 0) return setError('יש להזין נפח ידני או מידות תקינות לחישוב נפח.');
+
+    const tabletsActive = tabletsChoice === 'yes';
+    const pool = addPool({
+      name: name.trim(),
+      type,
+      sanitizerType: type,
+      volumeLiters,
+      volumeEntryMethod: method,
+      volumeUnit: method === 'manual' ? unit : undefined,
+      shape: method === 'dimensions' ? shape : undefined,
+      lengthMeters: method === 'dimensions' && shape !== 'round' ? lengthMeters : undefined,
+      widthMeters: method === 'dimensions' && shape !== 'round' ? widthMeters : undefined,
+      diameterMeters: method === 'dimensions' && shape === 'round' ? diameterMeters : undefined,
+      averageDepthMeters: method === 'dimensions' ? averageDepthMeters : undefined,
+      stripBrandId: recommendedBrand.id,
+      notes: notes.trim() || undefined,
+      tabletsActive,
+      tabletsCount: tabletsActive ? Math.max(1, Math.round(parseNumber(tabletsCount)) || 1) : 1,
+      tabletWeightGrams: tabletsActive ? Math.max(1, Math.round(parseNumber(tabletWeight)) || 200) : 200,
+      pumpHoursPerDay: Math.max(0, parseNumber(pumpHoursPerDay) || 8),
+      retestHours: Math.max(1, parseNumber(retestHours) || 6),
+    });
+
     setError('');
     navigation.navigate('PoolDetails', { poolId: pool.id });
   }
@@ -54,26 +103,113 @@ export function AddPoolScreen({ navigation }: Props) {
         <View style={styles.card}>
           <Field label="שם הבריכה" value={name} onChangeText={setName} placeholder="למשל: הבריכה בבית" />
 
-          <View style={styles.shapeRow}>
-            <Text style={styles.shapeLabel}>צורה</Text>
-            <View style={styles.pill}><Text style={styles.pillText}>מלבנית</Text></View>
-          </View>
+          <SectionLabel label="סוג בריכה" />
+          <ToggleGroup
+            value={type}
+            onChange={(value) => setType(value as PoolType)}
+            options={[
+              { value: 'chlorine', label: 'כלור רגיל' },
+              { value: 'salt', label: 'בריכת מלח' },
+            ]}
+          />
 
-          <View style={styles.grid}>
-            <View style={{ flex: 1 }}>
-              <Field label="אורך (מ')" value={length} onChangeText={setLength} placeholder="8" numeric />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Field label="רוחב (מ')" value={width} onChangeText={setWidth} placeholder="4" numeric />
-            </View>
-          </View>
+          <SectionLabel label="הזנת נפח" />
+          <ToggleGroup
+            value={method}
+            onChange={(value) => setMethod(value as PoolVolumeEntryMethod)}
+            options={[
+              { value: 'manual', label: 'ידני' },
+              { value: 'dimensions', label: 'לפי מידות' },
+            ]}
+          />
 
-          <Field label="עומק ממוצע (מ')" value={averageDepth} onChangeText={setAverageDepth} placeholder="1.5" numeric />
+          {method === 'manual' ? (
+            <View style={styles.group}>
+              <ToggleGroup
+                value={unit}
+                onChange={(value) => setUnit(value as PoolVolumeUnit)}
+                options={[
+                  { value: 'liters', label: 'ליטרים' },
+                  { value: 'cubic', label: 'קוב' },
+                ]}
+              />
+              <Field label={unit === 'liters' ? 'נפח בליטרים' : 'נפח בקוב'} value={manualVolume} onChangeText={setManualVolume} placeholder={unit === 'liters' ? '12000' : '12'} numeric />
+            </View>
+          ) : (
+            <View style={styles.group}>
+              <ToggleGroup
+                value={shape}
+                onChange={(value) => setShape(value as PoolShape)}
+                options={[
+                  { value: 'rectangle', label: 'מלבנית' },
+                  { value: 'round', label: 'עגולה' },
+                  { value: 'oval', label: 'אובלית' },
+                ]}
+              />
+
+              {shape === 'round' ? (
+                <Field label="קוטר (מ')" value={diameter} onChangeText={setDiameter} placeholder="4.5" numeric />
+              ) : (
+                <View style={styles.grid}>
+                  <View style={{ flex: 1 }}>
+                    <Field label="אורך (מ')" value={length} onChangeText={setLength} placeholder="8" numeric />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Field label="רוחב (מ')" value={width} onChangeText={setWidth} placeholder="4" numeric />
+                  </View>
+                </View>
+              )}
+
+              <Field label="עומק ממוצע (מ')" value={averageDepth} onChangeText={setAverageDepth} placeholder="1.5" numeric />
+            </View>
+          )}
 
           <View style={styles.volumeBox}>
             <Text style={styles.volumeLabel}>נפח מחושב</Text>
             <Text style={styles.volumeValue}>{volumeLiters > 0 ? volumeLiters.toLocaleString('he-IL') : '0'} ליטר</Text>
           </View>
+
+          <SectionLabel label="סטיק ברירת מחדל" />
+          <View style={styles.infoRow}>
+            <Text style={styles.infoValue}>{recommendedBrand.nameHe}</Text>
+            <Text style={styles.infoLabel}>אפשר לשנות לפני כל סריקה</Text>
+          </View>
+
+          <SectionLabel label="טבליות כלור פעילות כרגע?" />
+          <ToggleGroup
+            value={tabletsChoice}
+            onChange={(value) => setTabletsChoice(value as TabletsChoice)}
+            options={[
+              { value: 'yes', label: 'כן' },
+              { value: 'no', label: 'לא' },
+              { value: 'unknown', label: 'לא יודע' },
+            ]}
+          />
+
+          {tabletsChoice === 'yes' ? (
+            <View style={styles.grid}>
+              <View style={{ flex: 1 }}>
+                <Field label="מספר טבליות" value={tabletsCount} onChangeText={setTabletsCount} placeholder="1" numeric />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field label="משקל טבליה (גרם)" value={tabletWeight} onChangeText={setTabletWeight} placeholder="200" numeric />
+              </View>
+            </View>
+          ) : null}
+
+          <Field label="שעות משאבה ביום" value={pumpHoursPerDay} onChangeText={setPumpHoursPerDay} placeholder="8" numeric />
+
+          <SectionLabel label="בדיקה חוזרת בעוד" />
+          <ToggleGroup
+            value={retestHours}
+            onChange={setRetestHours}
+            options={[
+              { value: '3', label: '3 שעות' },
+              { value: '6', label: '6 שעות' },
+              { value: '12', label: '12 שעות' },
+              { value: '24', label: '24 שעות' },
+            ]}
+          />
 
           <Field label="הערות (אופציונלי)" value={notes} onChangeText={setNotes} placeholder="כיסוי, חשיפה לשמש, וכו'" multiline />
 
@@ -91,8 +227,35 @@ export function AddPoolScreen({ navigation }: Props) {
   );
 }
 
+function SectionLabel({ label }: { label: string }) {
+  return <Text style={styles.sectionLabel}>{label}</Text>;
+}
+
+function ToggleGroup({
+  onChange,
+  options,
+  value,
+}: {
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+  value: string;
+}) {
+  return (
+    <View style={styles.toggleGroup}>
+      {options.map((option) => {
+        const selected = option.value === value;
+        return (
+          <Pressable key={option.value} onPress={() => onChange(option.value)} style={[styles.toggleOption, selected && styles.toggleOptionSelected]}>
+            <Text style={[styles.toggleText, selected && styles.toggleTextSelected]}>{option.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function Field({ label, value, onChangeText, placeholder, numeric, multiline }: {
-  label: string; value: string; onChangeText: (v: string) => void;
+  label: string; value: string; onChangeText: (value: string) => void;
   placeholder?: string; numeric?: boolean; multiline?: boolean;
 }) {
   return (
@@ -119,14 +282,38 @@ const styles = StyleSheet.create({
   iconGlyph: { fontSize: 24, color: colors.text, fontWeight: '900' },
   heading: { fontSize: 18, fontWeight: '900', color: colors.text, ...rtl.textCenter, flex: 1, fontFamily: typography.fontFamily },
   card: { backgroundColor: colors.card, borderRadius: 28, padding: 20, gap: 14, ...shadows.card },
-  shapeRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  shapeLabel: { color: colors.muted, fontSize: 13, fontWeight: '800', fontFamily: typography.fontFamily },
-  pill: { backgroundColor: colors.primarySoft, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 6 },
-  pillText: { color: colors.primaryDark, fontSize: 13, fontWeight: '900', fontFamily: typography.fontFamily },
+  sectionLabel: { color: colors.text, fontSize: 13, fontWeight: '900', fontFamily: typography.fontFamilySemiBold, ...rtl.text },
+  group: { gap: 12 },
   grid: { flexDirection: 'row-reverse', gap: 12 },
+  toggleGroup: { flexDirection: 'row-reverse', gap: 8 },
+  toggleOption: {
+    flex: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    backgroundColor: colors.surfaceSoft,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: 'center',
+  },
+  toggleOptionSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  toggleText: { color: colors.textSoft, fontSize: 12, fontWeight: '900', fontFamily: typography.fontFamilySemiBold, ...rtl.textCenter },
+  toggleTextSelected: { color: colors.white },
   volumeBox: { backgroundColor: '#ECFEFF', borderRadius: 18, padding: 14, borderWidth: 1, borderColor: '#BDECF6' },
   volumeLabel: { color: colors.primaryDark, fontSize: 12, fontWeight: '800', ...rtl.text, fontFamily: typography.fontFamily },
   volumeValue: { marginTop: 4, color: colors.primaryDark, fontSize: 22, fontWeight: '900', ...rtl.text, fontFamily: typography.fontFamily },
+  infoRow: {
+    borderRadius: 18,
+    backgroundColor: colors.surfaceSoft,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 12,
+  },
+  infoValue: { color: colors.text, fontSize: 13, fontWeight: '900', fontFamily: typography.fontFamilyBold, ...rtl.text },
+  infoLabel: { marginTop: 3, color: colors.muted, fontSize: 11, fontWeight: '800', fontFamily: typography.fontFamilyRegular, ...rtl.text },
   error: { color: colors.danger, fontSize: 13, fontWeight: '800', ...rtl.text, fontFamily: typography.fontFamily },
   primaryBtn: { marginTop: 18, backgroundColor: colors.primary, borderRadius: 999, paddingVertical: 16, alignItems: 'center', ...shadows.button },
   primaryBtnLabel: { color: colors.white, fontSize: 16, fontWeight: '900', fontFamily: typography.fontFamily },

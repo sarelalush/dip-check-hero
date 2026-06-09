@@ -1,33 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-
-export type PoolShape = 'rectangle';
-
-export interface Pool {
-  id: string;
-  name: string;
-  shape: PoolShape;
-  lengthMeters: number;
-  widthMeters: number;
-  averageDepthMeters: number;
-  volumeLiters: number;
-  notes?: string;
-  createdAt: number;
-}
-
-export interface NewPoolInput {
-  name: string;
-  shape: PoolShape;
-  lengthMeters: number;
-  widthMeters: number;
-  averageDepthMeters: number;
-  volumeLiters: number;
-  notes?: string;
-}
+import {
+  calculateRectangularVolumeLiters,
+  type NewPoolInput,
+  normalizePool,
+  type Pool,
+  type PoolShape,
+  type PoolType,
+  type UpdatePoolInput,
+} from '../domain/pool';
 
 interface PoolsContextValue {
   pools: Pool[];
   addPool: (pool: NewPoolInput) => Pool;
+  updatePool: (poolId: string, updates: UpdatePoolInput) => Pool | undefined;
+  deletePool: (poolId: string) => void;
   getPool: (poolId: string) => Pool | undefined;
 }
 
@@ -48,7 +35,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
         if (storedPools) {
           const parsedPools = JSON.parse(storedPools) as Pool[];
           if (Array.isArray(parsedPools)) {
-            setPools(parsedPools);
+            setPools(parsedPools.map((pool) => normalizePool(pool)));
           }
         }
       } catch (error) {
@@ -85,13 +72,29 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
     () => ({
       pools,
       addPool(input) {
-        const pool: Pool = {
+        const now = Date.now();
+        const pool = normalizePool({
           ...input,
-          id: `pool-${Date.now()}`,
-          createdAt: Date.now(),
-        };
+          id: `pool-${now}`,
+          createdAt: input.createdAt ?? now,
+          updatedAt: now,
+        });
         setPools((current) => [pool, ...current]);
         return pool;
+      },
+      updatePool(poolId, updates) {
+        let updatedPool: Pool | undefined;
+        setPools((current) =>
+          current.map((pool) => {
+            if (pool.id !== poolId) return pool;
+            updatedPool = normalizePool({ ...pool, ...updates, id: pool.id, createdAt: pool.createdAt, updatedAt: Date.now() });
+            return updatedPool;
+          }),
+        );
+        return updatedPool;
+      },
+      deletePool(poolId) {
+        setPools((current) => current.filter((pool) => pool.id !== poolId));
       },
       getPool(poolId) {
         return pools.find((pool) => pool.id === poolId);
@@ -111,10 +114,5 @@ export function usePools() {
   return context;
 }
 
-export function calculateRectangularVolumeLiters(
-  lengthMeters: number,
-  widthMeters: number,
-  averageDepthMeters: number,
-) {
-  return Math.round(lengthMeters * widthMeters * averageDepthMeters * 1000);
-}
+export { calculateRectangularVolumeLiters };
+export type { NewPoolInput, Pool, PoolShape, PoolType, UpdatePoolInput };
