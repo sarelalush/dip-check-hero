@@ -39,7 +39,13 @@ function formatRangeLabel(analysisResult: StripAnalysisResult, parameterIndex: n
 export function ResultsScreen({ navigation, route }: Props) {
   const { getHistoryRecord, isHydrated, saveAnalysisResult } = useResultsHistory();
   const { getPool } = usePools();
-  const { resetScanSession, session, setAnalysisResult: setSessionAnalysisResult } = useScanSession();
+  const {
+    resetScanSession,
+    session,
+    setAnalysisResult: setSessionAnalysisResult,
+    setCurrentStep,
+    setScanError,
+  } = useScanSession();
   const [analysisResult, setAnalysisResult] = useState<StripAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
   const savedTestId = route.params?.testId;
@@ -74,6 +80,26 @@ export function ResultsScreen({ navigation, route }: Props) {
         return;
       }
 
+      if (session.analysisResult) {
+        setAnalysisResult({
+          ...session.analysisResult,
+          dosage: session.dosageResult ?? session.analysisResult.dosage,
+        });
+        setIsAnalyzing(false);
+        return;
+      }
+
+      if (!inputImageUri) {
+        setScanError({
+          code: 'missingImage',
+          message: 'בחרו או אשרו תמונת סטיק לפני הצגת תוצאות.',
+        });
+        setAnalysisResult(null);
+        setIsAnalyzing(false);
+        return;
+      }
+
+      setCurrentStep('analyzing');
       setIsAnalyzing(true);
       const result = await analyzeStripImageMock({
         brandId: inputBrandId,
@@ -112,8 +138,13 @@ export function ResultsScreen({ navigation, route }: Props) {
     route.params?.brandId,
     route.params?.imageUri,
     route.params?.poolId,
+    session.analysisResult,
+    session.dosageResult,
     savedRecord,
     savedTestId,
+    setCurrentStep,
+    setScanError,
+    setSessionAnalysisResult,
   ]);
 
   function handleSave() {
@@ -144,6 +175,32 @@ export function ResultsScreen({ navigation, route }: Props) {
             <Text style={styles.analyzingText}>חזרו להיסטוריה או התחילו סריקה חדשה עבור הבריכה.</Text>
           </View>
         </Card>
+      </AppShell>
+    );
+  }
+
+  if (!savedTestId && !inputImageUri && !analysisResult) {
+    return (
+      <AppShell activeTab="scan" navigation={navigation}>
+        <View style={styles.header}>
+          <Text style={styles.title}>תוצאות הבדיקה</Text>
+          <Text style={styles.poolName}>אין תמונה לניתוח</Text>
+          <Text style={styles.subtitle}>בחרו או אשרו תמונת סטיק לפני שמציגים תוצאות.</Text>
+        </View>
+
+        <Card compact style={styles.analyzingCard}>
+          <View style={styles.analyzingIcon}>
+            <LineIcon name="image" color={colors.primaryDark} size={16} />
+          </View>
+          <View style={styles.analyzingCopy}>
+            <Text style={styles.analyzingTitle}>חסר צילום סטיק</Text>
+            <Text style={styles.analyzingText}>חזרו למסך הסריקה ובחרו תמונה ברורה של הסטיק.</Text>
+          </View>
+        </Card>
+
+        <View style={styles.saveButton}>
+          <PrimaryButton label="חזרה לסריקה" icon="scan" onPress={() => navigation.replace('Scan')} />
+        </View>
       </AppShell>
     );
   }

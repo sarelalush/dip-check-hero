@@ -19,11 +19,12 @@ const pickerOptions: ImagePicker.ImagePickerOptions = {
 };
 
 export function ScanScreen({ navigation, route }: Props) {
-  const { resetScanSession, session, setImageUri, startScanSession } = useScanSession();
+  const { resetScanSession, session, setCurrentStep, setImageUri, setScanError, startScanSession } = useScanSession();
   const didInitializeSession = useRef(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | undefined>(session.imageUri);
   const [feedback, setFeedback] = useState('בחרו תמונת סטיק או צלמו אחת חדשה');
   const [isPicking, setIsPicking] = useState(false);
+  const activeBrandId = session.selectedBrandId ?? route.params?.brandId;
 
   const resultParams = useMemo(
     () => ({
@@ -51,6 +52,21 @@ export function ScanScreen({ navigation, route }: Props) {
     startScanSession,
   ]);
 
+  useEffect(() => {
+    if (activeBrandId) return;
+
+    setScanError({
+      code: 'missingBrand',
+      message: 'בחרו מותג סטיק לפני שמתחילים סריקה.',
+    });
+    navigation.replace('SelectStrip', route.params?.poolId ? { poolId: route.params.poolId } : undefined);
+  }, [activeBrandId, navigation, route.params?.poolId, setScanError]);
+
+  useEffect(() => {
+    if (!activeBrandId) return;
+    setCurrentStep('scan');
+  }, [activeBrandId, setCurrentStep]);
+
   async function pickImage(source: PickSource) {
     if (isPicking) {
       return;
@@ -66,6 +82,13 @@ export function ScanScreen({ navigation, route }: Props) {
           : await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permission.granted) {
+        setScanError({
+          code: 'permissionDenied',
+          message:
+            source === 'camera'
+              ? 'כדי לצלם סטיק צריך לאשר גישה למצלמה.'
+              : 'כדי לבחור תמונה צריך לאשר גישה לגלריה.',
+        });
         setFeedback(
           source === 'camera'
             ? 'כדי לצלם סטיק צריך לאשר גישה למצלמה'
@@ -94,6 +117,10 @@ export function ScanScreen({ navigation, route }: Props) {
       setImageUri(uri);
       setFeedback('התמונה התקבלה. אפשר להמשיך לתוצאות.');
     } catch {
+      setScanError({
+        code: 'imagePickerFailed',
+        message: 'משהו השתבש בטעינת התמונה. נסו שוב.',
+      });
       setFeedback('משהו השתבש בטעינת התמונה. נסו שוב.');
     } finally {
       setIsPicking(false);

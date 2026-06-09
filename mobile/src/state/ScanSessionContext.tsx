@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { getBrand } from '../config/stripBrands';
 import type { DosageCalculationResult } from '../domain/dosage';
 import type { StripAnalysisResult } from '../domain/scanResults';
+import type { StripBrand } from '../domain/strip';
 
 // Parity source: src/utils/scanSession.ts and the web scan flow routes:
 // select-strip, scan, scan-live, scan-confirm, select-pool, results.$testId.
@@ -8,14 +10,28 @@ import type { StripAnalysisResult } from '../domain/scanResults';
 export type ScanSessionStep = 'idle' | 'selectStrip' | 'scan' | 'confirm' | 'analyzing' | 'results';
 export type ScanQualityStatus = 'unchecked' | 'needsReview' | 'passed';
 
+export interface ScanSessionError {
+  code:
+    | 'missingBrand'
+    | 'missingImage'
+    | 'permissionDenied'
+    | 'imagePickerFailed'
+    | 'analysisFailed'
+    | 'qualityFailed'
+    | 'unknown';
+  message: string;
+}
+
 export interface ScanSessionState {
   selectedPoolId?: string;
   selectedBrandId?: string;
+  selectedBrand?: StripBrand;
   imageUri?: string;
   confirmedImageUri?: string;
   analysisResult?: StripAnalysisResult;
   dosageResult?: DosageCalculationResult;
   currentStep: ScanSessionStep;
+  error?: ScanSessionError;
   qualityStatus: ScanQualityStatus;
   qualityNotes: string[];
   createdAt?: number;
@@ -31,8 +47,12 @@ interface ScanSessionContextValue {
   session: ScanSessionState;
   confirmImage: () => void;
   resetScanSession: () => void;
+  markQualityFailed: (notes: string[]) => void;
   setAnalysisResult: (result: StripAnalysisResult) => void;
+  setScanError: (error?: ScanSessionError) => void;
+  setCurrentStep: (step: ScanSessionStep) => void;
   setImageUri: (imageUri?: string) => void;
+  setQualityNotes: (notes: string[], status?: ScanQualityStatus) => void;
   setSelectedBrand: (brandId: string) => void;
   setSelectedPool: (poolId: string) => void;
   startScanSession: (input?: StartScanSessionInput) => void;
@@ -59,10 +79,13 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
 
   const startScanSession = useCallback((input: StartScanSessionInput = {}) => {
     const timestamp = Date.now();
+    const selectedBrand = input.brandId ? getBrand(input.brandId) : undefined;
     setSession({
       selectedBrandId: input.brandId,
+      selectedBrand,
       selectedPoolId: input.poolId,
       currentStep: 'selectStrip',
+      error: undefined,
       qualityNotes: [],
       qualityStatus: 'unchecked',
       createdAt: timestamp,
@@ -74,8 +97,16 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
     setSession((current) =>
       withTimestamp({
         ...current,
+        analysisResult: undefined,
+        confirmedImageUri: undefined,
+        dosageResult: undefined,
+        error: undefined,
+        imageUri: undefined,
         selectedBrandId: brandId,
+        selectedBrand: getBrand(brandId),
         currentStep: 'selectStrip',
+        qualityNotes: [],
+        qualityStatus: 'unchecked',
       }),
     );
   }, []);
@@ -85,6 +116,7 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
       withTimestamp({
         ...current,
         selectedPoolId: poolId,
+        error: undefined,
       }),
     );
   }, []);
@@ -96,6 +128,7 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         analysisResult: undefined,
         confirmedImageUri: undefined,
         dosageResult: undefined,
+        error: undefined,
         imageUri,
         currentStep: 'scan',
         qualityNotes: [],
@@ -110,8 +143,51 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         ...current,
         confirmedImageUri: current.imageUri,
         currentStep: 'confirm',
+        error: undefined,
         qualityNotes: ['הסטיק חד וברור', 'כל ריבועי הצבע נראים', 'התאורה טובה'],
         qualityStatus: 'passed',
+      }),
+    );
+  }, []);
+
+  const setQualityNotes = useCallback((notes: string[], status: ScanQualityStatus = 'needsReview') => {
+    setSession((current) =>
+      withTimestamp({
+        ...current,
+        qualityNotes: notes,
+        qualityStatus: status,
+      }),
+    );
+  }, []);
+
+  const markQualityFailed = useCallback((notes: string[]) => {
+    setSession((current) =>
+      withTimestamp({
+        ...current,
+        error: {
+          code: 'qualityFailed',
+          message: notes[0] ?? 'נדרש צילום ברור יותר לפני המשך הסריקה.',
+        },
+        qualityNotes: notes,
+        qualityStatus: 'needsReview',
+      }),
+    );
+  }, []);
+
+  const setScanError = useCallback((error?: ScanSessionError) => {
+    setSession((current) =>
+      withTimestamp({
+        ...current,
+        error,
+      }),
+    );
+  }, []);
+
+  const setCurrentStep = useCallback((step: ScanSessionStep) => {
+    setSession((current) =>
+      withTimestamp({
+        ...current,
+        currentStep: step,
       }),
     );
   }, []);
@@ -122,6 +198,7 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         ...current,
         analysisResult: result,
         dosageResult: result.dosage,
+        error: undefined,
         currentStep: 'results',
       }),
     );
@@ -135,19 +212,27 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       confirmImage,
+      markQualityFailed,
       resetScanSession,
       setAnalysisResult,
+      setScanError,
+      setCurrentStep,
       setImageUri,
+      setQualityNotes,
       setSelectedBrand,
       setSelectedPool,
       startScanSession,
     }),
     [
       confirmImage,
+      markQualityFailed,
       resetScanSession,
       session,
       setAnalysisResult,
+      setScanError,
+      setCurrentStep,
       setImageUri,
+      setQualityNotes,
       setSelectedBrand,
       setSelectedPool,
       startScanSession,

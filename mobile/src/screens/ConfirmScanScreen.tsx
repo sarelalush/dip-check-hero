@@ -14,7 +14,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ConfirmScan'>;
 const checklistItems = ['הסטיק חד וברור', 'כל ריבועי הצבע נראים', 'התאורה טובה'];
 
 export function ConfirmScanScreen({ navigation, route }: Props) {
-  const { confirmImage, session, setImageUri } = useScanSession();
+  const { confirmImage, session, setCurrentStep, setImageUri, setScanError } = useScanSession();
   const brandId = session.selectedBrandId ?? route.params.brandId;
   const imageUri = session.imageUri ?? route.params.imageUri;
   const poolId = session.selectedPoolId ?? route.params.poolId;
@@ -24,6 +24,21 @@ export function ConfirmScanScreen({ navigation, route }: Props) {
       setImageUri(route.params.imageUri);
     }
   }, [route.params.imageUri, session.imageUri, setImageUri]);
+
+  useEffect(() => {
+    if (imageUri) return;
+
+    setScanError({
+      code: 'missingImage',
+      message: 'בחרו תמונת סטיק לפני אישור הסריקה.',
+    });
+    navigation.replace('Scan', { brandId, poolId });
+  }, [brandId, imageUri, navigation, poolId, setScanError]);
+
+  useEffect(() => {
+    if (!imageUri) return;
+    setCurrentStep('confirm');
+  }, [imageUri, setCurrentStep]);
 
   function continueToResults() {
     confirmImage();
@@ -37,6 +52,26 @@ export function ConfirmScanScreen({ navigation, route }: Props) {
   function retakeImage() {
     setImageUri(undefined);
     navigation.replace('Scan', { brandId, poolId });
+  }
+
+  if (!imageUri) {
+    return (
+      <AppShell activeTab="scan" navigation={navigation}>
+        <View style={styles.header}>
+          <Text style={styles.title}>אישור תמונה</Text>
+          <Text style={styles.subtitle}>בחרו תמונת סטיק לפני שממשיכים לאישור.</Text>
+        </View>
+
+        <Card compact style={styles.checklistCard}>
+          <View style={styles.checkRow}>
+            <View style={styles.checkIcon}>
+              <LineIcon name="help" color={colors.warning} size={14} />
+            </View>
+            <Text style={styles.checkText}>מחזירים אתכם למסך הסריקה.</Text>
+          </View>
+        </Card>
+      </AppShell>
+    );
   }
 
   return (
