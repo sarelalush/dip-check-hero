@@ -12,6 +12,7 @@ import { HomeScreen } from './src/screens/HomeScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { PoolsScreen } from './src/screens/PoolsScreen';
 import { PoolDetailsScreen } from './src/screens/PoolDetailsScreen';
+import { ConfirmScanScreen } from './src/screens/ConfirmScanScreen';
 import { ResultsScreen } from './src/screens/ResultsScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
 import { SelectStripScreen } from './src/screens/SelectStripScreen';
@@ -24,6 +25,7 @@ export type RootStackParamList = {
   PoolDetails: { poolId: string };
   SelectStrip: { poolId?: string } | undefined;
   Scan: { brandId?: string; poolId?: string } | undefined;
+  ConfirmScan: { brandId?: string; poolId?: string; imageUri: string };
   Results: { brandId?: string; poolId?: string; imageUri?: string } | undefined;
   History: undefined;
 
@@ -62,6 +64,7 @@ export default function App() {
             <Stack.Screen name="PoolDetails" component={PoolDetailsScreen} />
             <Stack.Screen name="SelectStrip" component={SelectStripScreen} />
             <Stack.Screen name="Scan" component={ScanScreen} />
+            <Stack.Screen name="ConfirmScan" component={ConfirmScanScreen} />
             <Stack.Screen name="Results" component={ResultsScreen} />
             <Stack.Screen name="History" component={HistoryScreen} />
           </Stack.Navigator>

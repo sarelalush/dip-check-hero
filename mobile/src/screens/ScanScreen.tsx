@@ -26,9 +26,8 @@ export function ScanScreen({ navigation, route }: Props) {
     () => ({
       brandId: route.params?.brandId,
       poolId: route.params?.poolId,
-      imageUri: selectedImageUri,
     }),
-    [route.params?.brandId, route.params?.poolId, selectedImageUri]
+    [route.params?.brandId, route.params?.poolId]
   );
 
   async function pickImage(source: PickSource) {
@@ -80,7 +79,15 @@ export function ScanScreen({ navigation, route }: Props) {
   }
 
   function continueToResults() {
-    navigation.navigate('Results', resultParams);
+    if (!selectedImageUri) {
+      setFeedback('בחרו תמונה או צלמו סטיק לפני שממשיכים.');
+      return;
+    }
+
+    navigation.navigate('ConfirmScan', {
+      ...resultParams,
+      imageUri: selectedImageUri,
+    });
   }
 
   return (
