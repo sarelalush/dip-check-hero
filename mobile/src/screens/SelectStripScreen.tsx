@@ -1,131 +1,262 @@
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { BottomTabBar } from '../components/BottomTabBar';
-import { stripBrands } from '../data/stripBrands';
+import { AppShell } from '../components/AppShell';
+import { Card } from '../components/Card';
+import { LineIcon } from '../components/LineIcon';
+import { PrimaryButton } from '../components/PrimaryButton';
+import { StatusBadge } from '../components/StatusBadge';
+import { stripBrands, type MobileStripBrand } from '../data/stripBrands';
+import { mockPools } from '../data/mockAppData';
 import { colors, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SelectStrip'>;
 
 export function SelectStripScreen({ navigation, route }: Props) {
-  const recommendedBrand = useMemo(
-    () => stripBrands.find((brand) => brand.recommended && brand.supported) ?? stripBrands[0],
+  const initialBrand = useMemo(
+    () => stripBrands.find((brand) => brand.supported && brand.recommended) ?? stripBrands.find((brand) => brand.supported) ?? stripBrands[0],
     [],
   );
-  const [selectedBrandId, setSelectedBrandId] = useState(recommendedBrand.id);
-  const selectedBrand = stripBrands.find((b) => b.id === selectedBrandId) ?? recommendedBrand;
+  const [selectedBrandId, setSelectedBrandId] = useState(initialBrand.id);
+  const selectedBrand = stripBrands.find((brand) => brand.id === selectedBrandId) ?? initialBrand;
+  const pool = route.params?.poolId ? mockPools.find((item) => item.id === route.params?.poolId) : undefined;
 
   function handleContinue() {
     if (!selectedBrand.supported) return;
-    navigation.navigate('ScanPlaceholder', { brandId: selectedBrand.id, poolId: route.params?.poolId });
+    navigation.navigate('Scan', { brandId: selectedBrand.id, poolId: route.params?.poolId });
   }
 
   return (
-    <View style={styles.root}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.topBar}>
-          <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('Dashboard')}>
-            <Text style={styles.iconGlyph}>‹</Text>
-          </Pressable>
-          <Text style={styles.heading}>בחירת סטיק</Text>
-          <View style={{ width: 40 }} />
+    <AppShell activeTab="scan" navigation={navigation}>
+      <View style={styles.header}>
+        <View style={styles.headerIcon}>
+          <LineIcon name="scan" color={colors.primaryDark} size={24} />
         </View>
+        <Text style={styles.title}>בחירת סטיק</Text>
+        <Text style={styles.subtitle}>
+          {pool ? `${pool.name} · בחר מותג לפני הסריקה` : 'בחר מותג סטיק לפני שמתחילים סריקה'}
+        </Text>
+      </View>
 
-        <View style={styles.hero}>
-          <View style={styles.heroBadge}><Text style={styles.heroBadgeGlyph}>⌗</Text></View>
-          <Text style={styles.heroTitle}>איזה סטיק תרצה לסרוק?</Text>
-          <Text style={styles.heroSub}>בחר את מותג הסטיק לפני שמתחילים את הסריקה.</Text>
+      <View style={styles.list}>
+        {stripBrands.map((brand) => (
+          <StripCard
+            key={brand.id}
+            brand={brand}
+            selected={selectedBrand.id === brand.id}
+            onPress={() => setSelectedBrandId(brand.id)}
+          />
+        ))}
+      </View>
+
+      <Card compact style={styles.noteCard}>
+        <View style={styles.noteIcon}>
+          <LineIcon name="help" color={colors.primaryDark} size={16} />
         </View>
-
-        <View style={styles.list}>
-          {stripBrands.map((brand) => {
-            const isSelected = selectedBrandId === brand.id;
-            const canSelect = brand.supported;
-            return (
-              <Pressable
-                key={brand.id}
-                disabled={!canSelect}
-                onPress={() => setSelectedBrandId(brand.id)}
-                style={({ pressed }) => [
-                  styles.brandCard,
-                  isSelected && styles.brandCardSelected,
-                  !canSelect && styles.brandCardDisabled,
-                  pressed && { opacity: 0.92 },
-                ]}
-              >
-                <View style={styles.brandHead}>
-                  <View style={styles.badges}>
-                    {brand.recommended && <View style={[styles.badge, styles.badgePrimary]}><Text style={styles.badgePrimaryText}>מומלץ</Text></View>}
-                    <View style={[styles.badge, brand.supported ? styles.badgeOk : styles.badgeSoon]}>
-                      <Text style={brand.supported ? styles.badgeOkText : styles.badgeSoonText}>{brand.supported ? 'נתמך' : 'בקרוב'}</Text>
-                    </View>
-                  </View>
-                  <View style={[styles.radio, isSelected && styles.radioActive]}>
-                    {isSelected && <View style={styles.radioDot} />}
-                  </View>
-                </View>
-                <Text style={styles.brandName}>{brand.nameHe}</Text>
-                <Text style={styles.brandDesc}>{brand.descriptionHe}</Text>
-                <View style={styles.swatches}>
-                  {brand.swatches.map((s) => (
-                    <View key={`${brand.id}-${s}`} style={[styles.swatch, { backgroundColor: s }]} />
-                  ))}
-                </View>
-              </Pressable>
-            );
-          })}
+        <View style={styles.noteCopy}>
+          <Text style={styles.noteTitle}>הסטיק שלך לא ברשימה?</Text>
+          <Text style={styles.noteText}>כרגע הסריקה תומכת במותגים מסומנים בלבד. מותגים נוספים ייפתחו בהמשך.</Text>
         </View>
+      </Card>
 
-        <View style={styles.requestCard}>
-          <Text style={styles.requestTitle}>הסטיק שלך לא ברשימה?</Text>
-          <Text style={styles.requestText}>נוסיף בהמשך טופס בקשה קצר כדי לתעדף תמיכה במותגים נוספים.</Text>
+      <View style={styles.cta}>
+        <PrimaryButton
+          disabled={!selectedBrand.supported}
+          label={selectedBrand.supported ? 'המשך לסריקה' : 'מותג זה ייתמך בקרוב'}
+          icon="scan"
+          onPress={handleContinue}
+        />
+      </View>
+    </AppShell>
+  );
+}
+
+function StripCard({
+  brand,
+  onPress,
+  selected,
+}: {
+  brand: MobileStripBrand;
+  onPress: () => void;
+  selected: boolean;
+}) {
+  const canContinue = brand.supported;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.stripCard,
+        selected && styles.stripCardSelected,
+        !canContinue && styles.stripCardSoon,
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={styles.cardTop}>
+        <View style={[styles.radio, selected && styles.radioSelected]}>
+          {selected ? <LineIcon name="check" color={colors.white} size={14} /> : null}
         </View>
+        <View style={styles.brandTitleWrap}>
+          <Text style={styles.brandName}>{brand.nameHe}</Text>
+          <View style={styles.badges}>
+            {brand.recommended ? <StatusBadge label="מומלץ" tone="neutral" /> : null}
+            <StatusBadge label={brand.supported ? 'נתמך' : 'בקרוב'} tone={brand.supported ? 'success' : 'warning'} />
+          </View>
+        </View>
+      </View>
 
-        <Pressable onPress={handleContinue} disabled={!selectedBrand.supported} style={({ pressed }) => [styles.primaryBtn, !selectedBrand.supported && { opacity: 0.5 }, pressed && { opacity: 0.9 }]}>
-          <Text style={styles.primaryBtnGlyph}>⌗</Text>
-          <Text style={styles.primaryBtnLabel}>המשך לסריקה</Text>
-        </Pressable>
-      </ScrollView>
-
-      <BottomTabBar active="scan" navigation={navigation} />
-    </View>
+      <Text style={styles.brandDescription}>{brand.descriptionHe}</Text>
+      <View style={styles.swatches}>
+        {brand.swatches.map((color) => (
+          <View key={`${brand.id}-${color}`} style={[styles.swatch, { backgroundColor: color }]} />
+        ))}
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.background },
-  content: { paddingHorizontal: 20, paddingTop: 50, paddingBottom: 140 },
-  topBar: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
-  iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', ...shadows.card },
-  iconGlyph: { fontSize: 24, color: colors.text, fontWeight: '900' },
-  heading: { fontSize: 18, fontWeight: '900', color: colors.text, ...rtl.textCenter, flex: 1, fontFamily: typography.fontFamily },
-  hero: { backgroundColor: colors.card, borderRadius: 28, padding: 22, alignItems: 'center', ...shadows.card },
-  heroBadge: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#E0F7FA', alignItems: 'center', justifyContent: 'center' },
-  heroBadgeGlyph: { fontSize: 30, color: colors.primary, fontWeight: '900' },
-  heroTitle: { marginTop: 10, fontSize: 20, fontWeight: '900', color: colors.text, ...rtl.textCenter, fontFamily: typography.fontFamily },
-  heroSub: { marginTop: 6, fontSize: 13, fontWeight: '600', color: colors.muted, ...rtl.textCenter, lineHeight: 20, fontFamily: typography.fontFamily },
-  list: { marginTop: 18, gap: 12 },
-  brandCard: { backgroundColor: colors.card, borderRadius: 22, padding: 16, borderWidth: 2, borderColor: 'transparent', gap: 8, ...shadows.card },
-  brandCardSelected: { borderColor: colors.primary },
-  brandCardDisabled: { opacity: 0.65 },
-  brandHead: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
-  badges: { flexDirection: 'row-reverse', gap: 6 },
-  badge: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
-  badgePrimary: { backgroundColor: colors.primary }, badgePrimaryText: { color: colors.white, fontSize: 11, fontWeight: '900', fontFamily: typography.fontFamily },
-  badgeOk: { backgroundColor: '#ECFDF5' }, badgeOkText: { color: '#059669', fontSize: 11, fontWeight: '900', fontFamily: typography.fontFamily },
-  badgeSoon: { backgroundColor: '#FFF7ED' }, badgeSoonText: { color: colors.warning, fontSize: 11, fontWeight: '900', fontFamily: typography.fontFamily },
-  radio: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  radioActive: { borderColor: colors.primary },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.primary },
-  brandName: { fontSize: 17, fontWeight: '900', color: colors.text, ...rtl.text, fontFamily: typography.fontFamily },
-  brandDesc: { fontSize: 13, fontWeight: '600', color: colors.muted, ...rtl.text, lineHeight: 20, fontFamily: typography.fontFamily },
-  swatches: { flexDirection: 'row-reverse', gap: 6, marginTop: 4 },
-  swatch: { width: 26, height: 26, borderRadius: 8, borderWidth: 1, borderColor: colors.border },
-  requestCard: { marginTop: 16, backgroundColor: '#F5FAFD', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: colors.border },
-  requestTitle: { fontSize: 15, fontWeight: '900', color: colors.text, ...rtl.text, fontFamily: typography.fontFamily },
-  requestText: { marginTop: 4, fontSize: 13, fontWeight: '600', color: colors.muted, ...rtl.text, lineHeight: 20, fontFamily: typography.fontFamily },
-  primaryBtn: { marginTop: 18, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.primary, borderRadius: 999, paddingVertical: 18, ...shadows.button },
-  primaryBtnGlyph: { color: colors.white, fontSize: 20, fontWeight: '900' },
-  primaryBtnLabel: { color: colors.white, fontSize: 17, fontWeight: '900', fontFamily: typography.fontFamily },
+  header: {
+    marginTop: 18,
+    alignItems: 'center',
+  },
+  headerIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  title: {
+    color: colors.text,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 22,
+    fontWeight: '900',
+    ...rtl.textCenter,
+  },
+  subtitle: {
+    marginTop: 5,
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 13,
+    fontWeight: '700',
+    ...rtl.textCenter,
+  },
+  list: {
+    marginTop: 18,
+    gap: 12,
+  },
+  stripCard: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 14,
+    gap: 10,
+    ...shadows.soft,
+  },
+  stripCardSelected: {
+    borderColor: colors.primary,
+    shadowOpacity: 0.1,
+  },
+  stripCardSoon: {
+    opacity: 0.72,
+  },
+  cardTop: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 12,
+  },
+  radio: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.borderStrong,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  radioSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  brandTitleWrap: {
+    flex: 1,
+    alignItems: 'flex-end',
+  },
+  brandName: {
+    color: colors.text,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 16,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  badges: {
+    marginTop: 7,
+    flexDirection: 'row-reverse',
+    gap: 6,
+  },
+  brandDescription: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+    ...rtl.text,
+  },
+  swatches: {
+    flexDirection: 'row-reverse',
+    gap: 6,
+  },
+  swatch: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  noteCard: {
+    marginTop: 14,
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: colors.surfaceSoft,
+  },
+  noteIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noteCopy: {
+    flex: 1,
+  },
+  noteTitle: {
+    color: colors.text,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 13,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  noteText: {
+    marginTop: 3,
+    color: colors.muted,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+    ...rtl.text,
+  },
+  cta: {
+    marginTop: 16,
+  },
+  pressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
 });
