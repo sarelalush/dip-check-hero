@@ -38,7 +38,7 @@ export type RootStackParamList = {
   SelectStrip: { poolId?: string } | undefined;
   Scan: { brandId?: string; poolId?: string } | undefined;
   ConfirmScan: { brandId?: string; poolId?: string; imageUri: string };
-  Results: { brandId?: string; poolId?: string; imageUri?: string; testId?: string } | undefined;
+  Results: { brandId?: string; poolId?: string; imageUri?: string; imagePath?: string; imageUrl?: string; testId?: string } | undefined;
   History: undefined;
 
   Welcome: undefined;

@@ -35,6 +35,8 @@ export interface StripAnalysisResult {
   brandId?: string;
   imageUri?: string;
   poolId?: string;
+  source?: 'mock' | 'remote-mock' | 'remote' | 'native';
+  confidence?: number;
   overallStatus: {
     label: string;
     tone: StatusTone;

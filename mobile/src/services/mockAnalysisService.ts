@@ -76,6 +76,8 @@ export async function analyzeStripImageMock({
     brandId,
     imageUri,
     poolId,
+    source: 'mock',
+    confidence: 0.76,
     overallStatus: {
       label: hasWarning ? 'נדרש תיקון קל' : 'המים מאוזנים',
       tone: hasWarning ? 'warning' : 'success',

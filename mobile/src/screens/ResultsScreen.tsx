@@ -52,6 +52,8 @@ export function ResultsScreen({ navigation, route }: Props) {
   const savedRecord = savedTestId ? getHistoryRecord(savedTestId) : undefined;
   const inputBrandId = savedTestId ? route.params?.brandId : session.selectedBrandId ?? route.params?.brandId;
   const inputImageUri = savedTestId ? route.params?.imageUri : session.confirmedImageUri ?? session.imageUri ?? route.params?.imageUri;
+  const inputImagePath = savedTestId ? undefined : route.params?.imagePath;
+  const inputImageUrl = savedTestId ? undefined : route.params?.imageUrl;
   const poolId = savedRecord?.poolId ?? (savedTestId ? route.params?.poolId : session.selectedPoolId ?? route.params?.poolId);
   const pool = poolId ? getPool(poolId) : undefined;
   const poolName = savedRecord?.poolName ?? pool?.name ?? FALLBACK_POOL_NAME;
@@ -104,6 +106,8 @@ export function ResultsScreen({ navigation, route }: Props) {
       setIsAnalyzing(true);
       const result = await analyzeStripImage({
         brandId: inputBrandId,
+        imagePath: inputImagePath,
+        imageUrl: inputImageUrl,
         imageUri: inputImageUri,
         poolId,
         qualityNotes: session.qualityNotes,
@@ -136,7 +140,9 @@ export function ResultsScreen({ navigation, route }: Props) {
   }, [
     isHydrated,
     inputBrandId,
+    inputImagePath,
     inputImageUri,
+    inputImageUrl,
     pool,
     poolId,
     route.params?.brandId,

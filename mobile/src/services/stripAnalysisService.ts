@@ -1,6 +1,7 @@
 import type { StripAnalysisResult } from '../domain/scanResults';
 import type { StripBrand } from '../domain/strip';
 import type { ScanSessionState } from '../state/ScanSessionContext';
+import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
 import { analyzeStripImageMock } from './mockAnalysisService';
 
 // Parity sources:
@@ -24,8 +25,12 @@ export type StripAnalysisMode = 'mock' | 'remote' | 'native';
 
 export interface StripAnalysisInput {
   imageUri: string;
+  testId?: string;
+  userId?: string;
   brandId?: string;
   poolId?: string;
+  imagePath?: string;
+  imageUrl?: string;
   qualityNotes?: string[];
   scanSession?: Pick<
     ScanSessionState,
@@ -42,11 +47,15 @@ export interface StripAnalysisInput {
 
 export interface StripAnalysisServiceConfig {
   mode: StripAnalysisMode;
-  remoteEndpoint?: string;
+  remoteFunctionName: string;
 }
 
+const expoEnv = (typeof process !== 'undefined' ? process.env : {}) as Record<string, string | undefined>;
+const configuredMode = expoEnv.EXPO_PUBLIC_STRIP_ANALYSIS_MODE;
+
 const analysisConfig: StripAnalysisServiceConfig = {
-  mode: 'mock',
+  mode: configuredMode === 'remote' || configuredMode === 'native' ? configuredMode : 'mock',
+  remoteFunctionName: expoEnv.EXPO_PUBLIC_STRIP_ANALYSIS_FUNCTION ?? 'analyze-strip',
 };
 
 export function getStripAnalysisConfig() {
@@ -87,15 +96,61 @@ async function analyzeStripImageRemote(
   input: StripAnalysisInput,
   config: StripAnalysisServiceConfig,
 ): Promise<StripAnalysisResult | null> {
-  if (!config.remoteEndpoint) {
+  if (!isSupabaseConfigured) {
     return null;
   }
 
-  // Future shape: POST { imageUri/base64, brandId, poolId, qualityNotes,
-  // selectedBrand, scanSession } and map the response into StripAnalysisResult.
-  // No endpoint is configured for mobile yet, so this intentionally falls back.
-  void input;
-  return null;
+  const { data: userData } = await getSupabaseClient().auth.getUser();
+  const userId = input.userId ?? userData.user?.id;
+  const testId = input.testId ?? `remote-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+
+  const { data, error } = await getSupabaseClient().functions.invoke(config.remoteFunctionName, {
+    body: {
+      testId,
+      userId,
+      poolId: input.poolId,
+      brandId: input.brandId ?? input.selectedBrand?.id,
+      imagePath: input.imagePath,
+      imageUrl: input.imageUrl,
+      imageUri: input.imageUri,
+      qualityNotes: input.qualityNotes,
+      metadata: {
+        scanSession: input.scanSession,
+        selectedBrand: input.selectedBrand
+          ? {
+              id: input.selectedBrand.id,
+              nameHe: input.selectedBrand.nameHe,
+              parameters: input.selectedBrand.parameters,
+            }
+          : undefined,
+      },
+    },
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  if (!isRemoteAnalysisResponse(data)) {
+    throw new Error('Remote analysis returned an unexpected response shape.');
+  }
+
+  return data.result;
+}
+
+function isRemoteAnalysisResponse(value: unknown): value is { ok: true; result: StripAnalysisResult } {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as { ok?: unknown; result?: unknown };
+  if (payload.ok !== true || !payload.result || typeof payload.result !== 'object') return false;
+
+  const result = payload.result as Partial<StripAnalysisResult>;
+  return (
+    typeof result.id === 'string' &&
+    typeof result.analyzedAt === 'number' &&
+    Array.isArray(result.parameters) &&
+    Boolean(result.overallStatus) &&
+    typeof result.recommendation === 'string'
+  );
 }
 
 async function analyzeStripImageNative(input: StripAnalysisInput): Promise<StripAnalysisResult | null> {
