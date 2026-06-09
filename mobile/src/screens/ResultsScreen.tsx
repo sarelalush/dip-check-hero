@@ -9,7 +9,7 @@ import { LineIcon } from '../components/LineIcon';
 import { colors, rtl, typography } from '../theme';
 import type { StripAnalysisResult } from '../domain/scanResults';
 import { calculateDosage } from '../domain/dosage';
-import { analyzeStripImageMock } from '../services/mockAnalysisService';
+import { analyzeStripImage } from '../services/stripAnalysisService';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory } from '../state/ResultsHistoryContext';
 import { useScanSession } from '../state/ScanSessionContext';
@@ -101,10 +101,13 @@ export function ResultsScreen({ navigation, route }: Props) {
 
       setCurrentStep('analyzing');
       setIsAnalyzing(true);
-      const result = await analyzeStripImageMock({
+      const result = await analyzeStripImage({
         brandId: inputBrandId,
         imageUri: inputImageUri,
         poolId,
+        qualityNotes: session.qualityNotes,
+        scanSession: session,
+        selectedBrand: session.selectedBrand,
       });
       const dosage = calculateDosage(result, pool);
       const enrichedResult: StripAnalysisResult = {
