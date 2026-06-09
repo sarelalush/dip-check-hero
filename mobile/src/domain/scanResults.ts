@@ -37,7 +37,7 @@ export interface StripAnalysisResult {
   imagePath?: string;
   imageUrl?: string;
   poolId?: string;
-  source?: 'mock' | 'remote-mock' | 'remote' | 'native';
+  source?: 'mock' | 'remote-mock' | 'remote-v1' | 'remote' | 'native';
   confidence?: number;
   overallStatus: {
     label: string;

@@ -38,6 +38,19 @@ function formatRangeLabel(analysisResult: StripAnalysisResult, parameterIndex: n
   return parameter.unit ? `${parameter.idealRange.label} ${parameter.unit}` : parameter.idealRange.label;
 }
 
+function formatAnalysisSource(analysisResult: StripAnalysisResult) {
+  if (analysisResult.source === 'remote-v1') {
+    const confidence = typeof analysisResult.confidence === 'number' ? ` · ביטחון ${Math.round(analysisResult.confidence * 100)}%` : '';
+    return `תמונת הסטיק נותחה בענן${confidence}`;
+  }
+
+  if (analysisResult.source === 'remote-mock') {
+    return 'התמונה נשלחה לענן, הוחזר fallback mock';
+  }
+
+  return 'תמונת הסטיק התקבלה - מוצגות תוצאות mock';
+}
+
 export function ResultsScreen({ navigation, route }: Props) {
   const { user } = useAuth();
   const { getHistoryRecord, isHydrated, saveAnalysisResult } = useResultsHistory();
@@ -115,7 +128,7 @@ export function ResultsScreen({ navigation, route }: Props) {
       let imageUploadError: string | undefined;
       const analysisMode = getStripAnalysisConfig().mode;
 
-      if (analysisMode === 'remote' && user?.id && !imagePath && !imageUrl) {
+      if ((analysisMode === 'remote' || analysisMode === 'auto') && user?.id && !imagePath && !imageUrl) {
         const preparedImage = await prepareScanImageForRemoteAnalysis({
           imageUri: inputImageUri,
           testId,
@@ -136,7 +149,7 @@ export function ResultsScreen({ navigation, route }: Props) {
         qualityNotes: session.qualityNotes,
         scanSession: session,
         selectedBrand: session.selectedBrand,
-        skipImageUpload: analysisMode === 'remote',
+        skipImageUpload: analysisMode === 'remote' || analysisMode === 'auto',
         testId,
         userId: user?.id,
       });
@@ -304,7 +317,7 @@ export function ResultsScreen({ navigation, route }: Props) {
             <View style={styles.imageReceivedIcon}>
               <LineIcon name="image" color={colors.primaryDark} size={15} />
             </View>
-            <Text style={styles.imageReceivedText}>תמונת הסטיק התקבלה - מוצגות תוצאות mock</Text>
+            <Text style={styles.imageReceivedText}>{formatAnalysisSource(analysisResult)}</Text>
           </View>
         ) : null}
 

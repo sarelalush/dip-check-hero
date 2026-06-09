@@ -3,7 +3,7 @@ import type { StripBrand } from '../domain/strip';
 import type { ScanSessionState } from '../state/ScanSessionContext';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
 import { analyzeStripImageMock } from './mockAnalysisService';
-import { uploadScanImage } from './scanImageStorage';
+import { isLocalUploadCandidate, uploadScanImage } from './scanImageStorage';
 
 // Parity sources:
 // - src/utils/analyzeStripImage.ts
@@ -22,7 +22,7 @@ import { uploadScanImage } from './scanImageStorage';
 // Native replacements should use Expo-compatible image manipulation, camera,
 // and a remote service or native CV module instead of browser primitives.
 
-export type StripAnalysisMode = 'mock' | 'remote' | 'native';
+export type StripAnalysisMode = 'auto' | 'mock' | 'remote' | 'native';
 
 export interface StripAnalysisInput {
   imageUri: string;
@@ -58,10 +58,14 @@ export interface StripAnalysisServiceConfig {
 
 const expoEnv = (typeof process !== 'undefined' ? process.env : {}) as Record<string, string | undefined>;
 const configuredMode = expoEnv.EXPO_PUBLIC_STRIP_ANALYSIS_MODE;
+const configuredFunctionName = expoEnv.EXPO_PUBLIC_STRIP_ANALYSIS_FUNCTION?.trim();
 
 const analysisConfig: StripAnalysisServiceConfig = {
-  mode: configuredMode === 'remote' || configuredMode === 'native' ? configuredMode : 'mock',
-  remoteFunctionName: expoEnv.EXPO_PUBLIC_STRIP_ANALYSIS_FUNCTION ?? 'analyze-strip',
+  mode:
+    configuredMode === 'mock' || configuredMode === 'remote' || configuredMode === 'native' || configuredMode === 'auto'
+      ? configuredMode
+      : 'auto',
+  remoteFunctionName: configuredFunctionName || 'analyze-strip',
 };
 
 export function getStripAnalysisConfig() {
@@ -69,9 +73,20 @@ export function getStripAnalysisConfig() {
 }
 
 export async function analyzeStripImage(input: StripAnalysisInput): Promise<StripAnalysisResult> {
-  if (analysisConfig.mode === 'remote') {
+  if (analysisConfig.mode === 'mock') {
+    return analyzeStripImageMock({
+      brandId: input.brandId,
+      imageUri: input.imageUri,
+      poolId: input.poolId,
+    });
+  }
+
+  if (analysisConfig.mode === 'remote' || analysisConfig.mode === 'auto') {
     try {
-      const remoteResult = await analyzeStripImageRemote(input, analysisConfig);
+      const remoteResult = await analyzeStripImageRemote(input, analysisConfig, {
+        requireAuthenticatedUser: analysisConfig.mode === 'auto',
+        requireImageReference: analysisConfig.mode === 'auto',
+      });
       if (remoteResult) {
         return remoteResult;
       }
@@ -101,16 +116,26 @@ export async function analyzeStripImage(input: StripAnalysisInput): Promise<Stri
 async function analyzeStripImageRemote(
   input: StripAnalysisInput,
   config: StripAnalysisServiceConfig,
+  options: { requireAuthenticatedUser?: boolean; requireImageReference?: boolean } = {},
 ): Promise<StripAnalysisResult | null> {
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseConfigured || !config.remoteFunctionName) {
     return null;
   }
 
   const { data: userData } = await getSupabaseClient().auth.getUser();
   const userId = input.userId ?? userData.user?.id;
+  if (options.requireAuthenticatedUser && !userId) {
+    return null;
+  }
+
   const testId = input.testId ?? `remote-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
   let imagePath = input.imagePath;
   let imageUrl = input.imageUrl ?? (/^https?:\/\//i.test(input.imageUri) ? input.imageUri : undefined);
+  const canUploadLocalImage = Boolean(userId && isLocalUploadCandidate(input.imageUri));
+
+  if (options.requireImageReference && !imagePath && !imageUrl && !canUploadLocalImage) {
+    return null;
+  }
 
   if (!imagePath && !imageUrl && userId && !input.skipImageUpload) {
     try {
@@ -125,6 +150,10 @@ async function analyzeStripImageRemote(
     } catch (error) {
       console.warn('Remote strip analysis image upload failed, continuing with local image fallback', error);
     }
+  }
+
+  if (options.requireImageReference && !imagePath && !imageUrl) {
+    return null;
   }
 
   const { data, error } = await getSupabaseClient().functions.invoke(config.remoteFunctionName, {
