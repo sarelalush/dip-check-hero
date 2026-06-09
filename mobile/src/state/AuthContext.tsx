@@ -1,6 +1,11 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { makeRedirectUri } from 'expo-auth-session';
+import * as QueryParams from 'expo-auth-session/build/QueryParams';
+import * as WebBrowser from 'expo-web-browser';
 import type { Session, User } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured, supabase, supabaseConfigMessage } from '../integrations/supabase/client';
+
+WebBrowser.maybeCompleteAuthSession();
 
 interface AuthResult {
   error?: string;
@@ -14,6 +19,7 @@ interface AuthContextValue {
   isConfigured: boolean;
   signInWithEmail: (email: string, password: string) => Promise<AuthResult>;
   signUpWithEmail: (email: string, password: string, displayName?: string, phone?: string) => Promise<AuthResult>;
+  signInWithGoogle: () => Promise<AuthResult>;
   signOut: () => Promise<void>;
 }
 
@@ -22,6 +28,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 function toHebrewAuthError(message: string) {
   const lower = message.toLowerCase();
 
+  if (lower.includes('cancel')) return 'ההתחברות עם Google בוטלה.';
+  if (lower.includes('provider') || lower.includes('oauth')) return 'התחברות Google אינה מוגדרת עדיין ב-Supabase.';
+  if (lower.includes('redirect')) return 'כתובת החזרה של Google אינה מוגדרת נכון.';
   if (lower.includes('invalid login credentials')) return 'האימייל או הסיסמה אינם נכונים.';
   if (lower.includes('email not confirmed')) return 'יש לאשר את האימייל לפני התחברות.';
   if (lower.includes('password')) return 'הסיסמה אינה עומדת בדרישות או אינה נכונה.';
@@ -29,6 +38,45 @@ function toHebrewAuthError(message: string) {
   if (lower.includes('email')) return 'כתובת האימייל אינה תקינה.';
 
   return message || 'אירעה שגיאה. נסו שוב בעוד רגע.';
+}
+
+function getOAuthRedirectTo() {
+  return makeRedirectUri({
+    scheme: 'aquasense',
+    path: 'auth/callback',
+  });
+}
+
+async function setSessionFromOAuthUrl(url: string) {
+  const { params, errorCode } = QueryParams.getQueryParams(url);
+
+  if (errorCode) {
+    throw new Error(String(errorCode));
+  }
+
+  const accessToken = typeof params.access_token === 'string' ? params.access_token : undefined;
+  const refreshToken = typeof params.refresh_token === 'string' ? params.refresh_token : undefined;
+
+  if (accessToken && refreshToken) {
+    const { error } = await getSupabaseClient().auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+
+    if (error) throw error;
+    return;
+  }
+
+  const code = typeof params.code === 'string' ? params.code : undefined;
+
+  if (code) {
+    const { error } = await getSupabaseClient().auth.exchangeCodeForSession(code);
+
+    if (error) throw error;
+    return;
+  }
+
+  throw new Error('OAuth callback did not include a session.');
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -99,6 +147,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
 
           return error ? { error: toHebrewAuthError(error.message) } : {};
+        } catch (error) {
+          return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };
+        }
+      },
+      async signInWithGoogle() {
+        if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
+
+        try {
+          const redirectTo = getOAuthRedirectTo();
+          const { data, error } = await getSupabaseClient().auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+              redirectTo,
+              skipBrowserRedirect: true,
+            },
+          });
+
+          if (error) return { error: toHebrewAuthError(error.message) };
+          if (!data.url) return { error: 'לא התקבלה כתובת התחברות מ-Google.' };
+
+          const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+
+          if (result.type !== 'success') {
+            return { error: toHebrewAuthError('cancelled') };
+          }
+
+          await setSessionFromOAuthUrl(result.url);
+
+          return {};
         } catch (error) {
           return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };
         }

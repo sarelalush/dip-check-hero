@@ -4,6 +4,7 @@
     "slug": "dip-check-hero",
     "version": "0.1.0",
     "orientation": "portrait",
+    "scheme": "aquasense",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
@@ -30,7 +31,8 @@
           "photosPermission": "אפשר ל-AquaSense לבחור תמונת סטיק מהגלריה.",
           "cameraPermission": "אפשר ל-AquaSense לצלם סטיק בדיקה."
         }
-      ]
+      ],
+      "expo-web-browser"
     ]
   }
 }

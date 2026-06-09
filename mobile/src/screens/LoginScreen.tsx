@@ -8,11 +8,12 @@ import { useAuth } from '../state/AuthContext';
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
 export function LoginScreen({ navigation }: Props) {
-  const { signInWithEmail } = useAuth();
+  const { signInWithEmail, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
 
   async function submit() {
     if (!email.trim()) return setError('יש להזין אימייל כדי להמשיך.');
@@ -22,6 +23,17 @@ export function LoginScreen({ navigation }: Props) {
     setError('');
     const result = await signInWithEmail(email, password);
     setBusy(false);
+
+    if (result.error) {
+      setError(result.error);
+    }
+  }
+
+  async function google() {
+    setGoogleBusy(true);
+    setError('');
+    const result = await signInWithGoogle();
+    setGoogleBusy(false);
 
     if (result.error) {
       setError(result.error);
@@ -46,8 +58,19 @@ export function LoginScreen({ navigation }: Props) {
 
           {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          <Pressable disabled={busy} onPress={submit} style={({ pressed }) => [styles.primaryBtn, busy && styles.disabled, pressed && { opacity: 0.9 }]}>
+          <Pressable disabled={busy || googleBusy} onPress={submit} style={({ pressed }) => [styles.primaryBtn, (busy || googleBusy) && styles.disabled, pressed && { opacity: 0.9 }]}>
             <Text style={styles.primaryBtnLabel}>{busy ? 'מתחבר...' : 'כניסה'}</Text>
+          </Pressable>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>או</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <Pressable disabled={busy || googleBusy} onPress={google} style={({ pressed }) => [styles.googleBtn, (busy || googleBusy) && styles.disabled, pressed && { opacity: 0.9 }]}>
+            <Text style={styles.googleMark}>G</Text>
+            <Text style={styles.googleLabel}>{googleBusy ? 'מתחבר עם Google...' : 'התחברות עם Google'}</Text>
           </Pressable>
 
           <Pressable onPress={() => navigation.navigate('Signup')} style={styles.linkBtn}>
@@ -94,6 +117,22 @@ const styles = StyleSheet.create({
   error: { color: colors.danger, fontSize: 13, fontWeight: '800', ...rtl.text, fontFamily: typography.fontFamily },
   primaryBtn: { marginTop: 4, backgroundColor: colors.primary, borderRadius: 999, paddingVertical: 16, alignItems: 'center', ...shadows.button },
   primaryBtnLabel: { color: colors.white, fontSize: 16, fontWeight: '900', fontFamily: typography.fontFamily },
+  dividerRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, marginVertical: 2 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.borderSoft },
+  dividerText: { color: colors.muted, fontSize: 12, fontWeight: '800', fontFamily: typography.fontFamily },
+  googleBtn: {
+    alignItems: 'center',
+    backgroundColor: colors.card,
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
+    gap: 10,
+    justifyContent: 'center',
+    paddingVertical: 14,
+  },
+  googleMark: { color: '#4285F4', fontSize: 17, fontWeight: '900', fontFamily: typography.fontFamilyBold },
+  googleLabel: { color: colors.text, fontSize: 14, fontWeight: '900', fontFamily: typography.fontFamily },
   disabled: { opacity: 0.62 },
   linkBtn: { alignItems: 'center', paddingVertical: 4 },
   linkText: { color: colors.primary, fontSize: 13, fontWeight: '900', fontFamily: typography.fontFamily },
