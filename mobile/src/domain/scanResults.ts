@@ -37,8 +37,11 @@ export interface StripAnalysisResult {
   imagePath?: string;
   imageUrl?: string;
   poolId?: string;
-  source?: 'mock' | 'remote-mock' | 'remote-v1' | 'remote' | 'native';
+  source?: 'mock' | 'remote-mock' | 'remote-v1' | 'remote' | 'native' | 'ai' | 'cv';
   confidence?: number;
+  lowConfidence?: boolean;
+  notes?: string;
+  shotsUsed?: number;
   overallStatus: {
     label: string;
     tone: StatusTone;

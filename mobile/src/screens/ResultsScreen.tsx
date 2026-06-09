@@ -39,16 +39,25 @@ function formatRangeLabel(analysisResult: StripAnalysisResult, parameterIndex: n
 }
 
 function formatAnalysisSource(analysisResult: StripAnalysisResult) {
+  const confidence = typeof analysisResult.confidence === 'number' ? ` · ביטחון ${Math.round(analysisResult.confidence * 100)}%` : '';
+
+  if (analysisResult.source === 'ai') {
+    return `מקור ניתוח: AI${confidence}`;
+  }
+
+  if (analysisResult.source === 'cv') {
+    return `מקור ניתוח: CV fallback${confidence}`;
+  }
+
   if (analysisResult.source === 'remote-v1') {
-    const confidence = typeof analysisResult.confidence === 'number' ? ` · ביטחון ${Math.round(analysisResult.confidence * 100)}%` : '';
-    return `תמונת הסטיק נותחה בענן${confidence}`;
+    return `מקור ניתוח: remote-v1${confidence}`;
   }
 
   if (analysisResult.source === 'remote-mock') {
-    return 'התמונה נשלחה לענן, הוחזר fallback mock';
+    return `מקור ניתוח: remote-mock${confidence}`;
   }
 
-  return 'תמונת הסטיק התקבלה - מוצגות תוצאות mock';
+  return `מקור ניתוח: mock${confidence}`;
 }
 
 export function ResultsScreen({ navigation, route }: Props) {
@@ -149,7 +158,7 @@ export function ResultsScreen({ navigation, route }: Props) {
         qualityNotes: session.qualityNotes,
         scanSession: session,
         selectedBrand: session.selectedBrand,
-        skipImageUpload: analysisMode === 'remote' || analysisMode === 'auto',
+        skipImageUpload: Boolean(imagePath || imageUrl),
         testId,
         userId: user?.id,
       });

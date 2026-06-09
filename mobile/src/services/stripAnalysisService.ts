@@ -72,13 +72,36 @@ export function getStripAnalysisConfig() {
   return analysisConfig;
 }
 
+function logAnalysisDebug(message: string, details?: Record<string, unknown>) {
+  if (expoEnv.NODE_ENV !== 'production') {
+    console.log(`[strip-analysis] ${message}`, details ?? {});
+  }
+}
+
 export async function analyzeStripImage(input: StripAnalysisInput): Promise<StripAnalysisResult> {
+  logAnalysisDebug('selected analysis mode', {
+    mode: analysisConfig.mode,
+    hasFunctionName: Boolean(analysisConfig.remoteFunctionName),
+    hasImagePath: Boolean(input.imagePath),
+    hasImageUrl: Boolean(input.imageUrl),
+    hasLocalUploadCandidate: isLocalUploadCandidate(input.imageUri),
+    hasInputUserId: Boolean(input.userId),
+    isSupabaseConfigured,
+  });
+
   if (analysisConfig.mode === 'mock') {
-    return analyzeStripImageMock({
+    logAnalysisDebug('using mock mode by override');
+    const mockResult = await analyzeStripImageMock({
       brandId: input.brandId,
       imageUri: input.imageUri,
       poolId: input.poolId,
     });
+    logAnalysisDebug('analysis result selected', {
+      source: mockResult.source ?? 'mock',
+      confidence: mockResult.confidence,
+      remoteAttempted: false,
+    });
+    return mockResult;
   }
 
   if (analysisConfig.mode === 'remote' || analysisConfig.mode === 'auto') {
@@ -88,10 +111,21 @@ export async function analyzeStripImage(input: StripAnalysisInput): Promise<Stri
         requireImageReference: analysisConfig.mode === 'auto',
       });
       if (remoteResult) {
+        logAnalysisDebug('analysis result selected', {
+          source: remoteResult.source ?? 'remote',
+          confidence: remoteResult.confidence,
+          remoteAttempted: true,
+        });
         return remoteResult;
       }
+      logAnalysisDebug('remote analysis skipped, falling back to mock', {
+        mode: analysisConfig.mode,
+      });
     } catch (error) {
       console.warn('Remote strip analysis failed, falling back to mock analysis', error);
+      logAnalysisDebug('remote analysis failed, falling back to mock', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -106,11 +140,18 @@ export async function analyzeStripImage(input: StripAnalysisInput): Promise<Stri
     }
   }
 
-  return analyzeStripImageMock({
+  const fallbackResult = await analyzeStripImageMock({
     brandId: input.brandId,
     imageUri: input.imageUri,
     poolId: input.poolId,
   });
+  logAnalysisDebug('analysis result selected', {
+    source: fallbackResult.source ?? 'mock',
+    confidence: fallbackResult.confidence,
+    remoteAttempted: analysisConfig.mode === 'remote' || analysisConfig.mode === 'auto',
+    fallback: true,
+  });
+  return fallbackResult;
 }
 
 async function analyzeStripImageRemote(
@@ -119,12 +160,18 @@ async function analyzeStripImageRemote(
   options: { requireAuthenticatedUser?: boolean; requireImageReference?: boolean } = {},
 ): Promise<StripAnalysisResult | null> {
   if (!isSupabaseConfigured || !config.remoteFunctionName) {
+    logAnalysisDebug('remote not attempted', {
+      reason: !isSupabaseConfigured ? 'supabase-not-configured' : 'missing-function-name',
+    });
     return null;
   }
 
   const { data: userData } = await getSupabaseClient().auth.getUser();
   const userId = input.userId ?? userData.user?.id;
   if (options.requireAuthenticatedUser && !userId) {
+    logAnalysisDebug('remote not attempted', {
+      reason: 'missing-authenticated-user',
+    });
     return null;
   }
 
@@ -134,11 +181,19 @@ async function analyzeStripImageRemote(
   const canUploadLocalImage = Boolean(userId && isLocalUploadCandidate(input.imageUri));
 
   if (options.requireImageReference && !imagePath && !imageUrl && !canUploadLocalImage) {
+    logAnalysisDebug('remote not attempted', {
+      reason: 'missing-image-reference',
+      hasUserId: Boolean(userId),
+      hasLocalUploadCandidate: canUploadLocalImage,
+    });
     return null;
   }
 
   if (!imagePath && !imageUrl && userId && !input.skipImageUpload) {
     try {
+      logAnalysisDebug('uploading local image before remote analysis', {
+        testId,
+      });
       const uploadedImage = await uploadScanImage({
         imageUri: input.imageUri,
         testId,
@@ -149,12 +204,25 @@ async function analyzeStripImageRemote(
       imageUrl = uploadedImage?.publicUrl;
     } catch (error) {
       console.warn('Remote strip analysis image upload failed, continuing with local image fallback', error);
+      logAnalysisDebug('remote image upload failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
   if (options.requireImageReference && !imagePath && !imageUrl) {
+    logAnalysisDebug('remote not attempted', {
+      reason: 'image-upload-did-not-produce-path-or-url',
+    });
     return null;
   }
+
+  logAnalysisDebug('invoking remote analysis function', {
+    functionName: config.remoteFunctionName,
+    hasImagePath: Boolean(imagePath),
+    hasImageUrl: Boolean(imageUrl),
+    testId,
+  });
 
   const { data, error } = await getSupabaseClient().functions.invoke(config.remoteFunctionName, {
     body: {
@@ -186,6 +254,11 @@ async function analyzeStripImageRemote(
   if (!isRemoteAnalysisResponse(data)) {
     throw new Error('Remote analysis returned an unexpected response shape.');
   }
+
+  logAnalysisDebug('remote analysis response received', {
+    source: data.result.source ?? 'remote',
+    confidence: data.result.confidence,
+  });
 
   return {
     ...data.result,
