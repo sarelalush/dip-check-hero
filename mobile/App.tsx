@@ -24,7 +24,7 @@ export type RootStackParamList = {
   PoolDetails: { poolId: string };
   SelectStrip: { poolId?: string } | undefined;
   Scan: { brandId?: string; poolId?: string } | undefined;
-  Results: { brandId?: string; poolId?: string } | undefined;
+  Results: { brandId?: string; poolId?: string; imageUri?: string } | undefined;
   History: undefined;
 
   Welcome: undefined;

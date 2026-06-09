@@ -15,6 +15,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Results'>;
 export function ResultsScreen({ navigation, route }: Props) {
   const { saveMockResult } = useResultsHistory();
   const pool = route.params?.poolId ? mockPools.find((item) => item.id === route.params?.poolId) : undefined;
+  const hasImage = Boolean(route.params?.imageUri);
 
   function handleSave() {
     saveMockResult({ poolId: route.params?.poolId });
@@ -30,6 +31,15 @@ export function ResultsScreen({ navigation, route }: Props) {
       </View>
 
       <View style={styles.resultsList}>
+        {hasImage ? (
+          <View style={styles.imageReceived}>
+            <View style={styles.imageReceivedIcon}>
+              <LineIcon name="image" color={colors.primaryDark} size={15} />
+            </View>
+            <Text style={styles.imageReceivedText}>תמונת הסטיק התקבלה - מוצגות תוצאות mock</Text>
+          </View>
+        ) : null}
+
         {resultRows.map((row) => (
           <ResultRow
             key={row.label}
@@ -93,6 +103,33 @@ const styles = StyleSheet.create({
   resultsList: {
     marginTop: 18,
     gap: 11,
+  },
+  imageReceived: {
+    minHeight: 42,
+    borderRadius: 18,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+  },
+  imageReceivedIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageReceivedText: {
+    flex: 1,
+    color: colors.primaryDeep,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
+    ...rtl.text,
   },
   recommendation: {
     marginTop: 12,

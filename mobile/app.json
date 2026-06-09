@@ -9,7 +9,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.sarelalush.aquasense",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "אפשר ל-AquaSense לבחור תמונת סטיק מהגלריה.",
+        "NSCameraUsageDescription": "אפשר ל-AquaSense לצלם סטיק בדיקה."
       }
     },
     "android": {
@@ -21,7 +23,14 @@
       }
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "אפשר ל-AquaSense לבחור תמונת סטיק מהגלריה.",
+          "cameraPermission": "אפשר ל-AquaSense לצלם סטיק בדיקה."
+        }
+      ]
     ]
   }
 }

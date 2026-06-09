@@ -1,4 +1,6 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
 import { LineIcon } from '../components/LineIcon';
@@ -7,9 +9,79 @@ import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Scan'>;
+type PickSource = 'camera' | 'library';
+
+const pickerOptions: ImagePicker.ImagePickerOptions = {
+  mediaTypes: ['images'],
+  allowsEditing: false,
+  quality: 0.9,
+};
 
 export function ScanScreen({ navigation, route }: Props) {
-  const resultParams = { brandId: route.params?.brandId, poolId: route.params?.poolId };
+  const [selectedImageUri, setSelectedImageUri] = useState<string>();
+  const [feedback, setFeedback] = useState('בחרו תמונת סטיק או צלמו אחת חדשה');
+  const [isPicking, setIsPicking] = useState(false);
+
+  const resultParams = useMemo(
+    () => ({
+      brandId: route.params?.brandId,
+      poolId: route.params?.poolId,
+      imageUri: selectedImageUri,
+    }),
+    [route.params?.brandId, route.params?.poolId, selectedImageUri]
+  );
+
+  async function pickImage(source: PickSource) {
+    if (isPicking) {
+      return;
+    }
+
+    setIsPicking(true);
+    setFeedback(source === 'camera' ? 'פותח מצלמה...' : 'פותח גלריה...');
+
+    try {
+      const permission =
+        source === 'camera'
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        setFeedback(
+          source === 'camera'
+            ? 'כדי לצלם סטיק צריך לאשר גישה למצלמה'
+            : 'כדי לבחור תמונה צריך לאשר גישה לגלריה'
+        );
+        return;
+      }
+
+      const result =
+        source === 'camera'
+          ? await ImagePicker.launchCameraAsync(pickerOptions)
+          : await ImagePicker.launchImageLibraryAsync(pickerOptions);
+
+      if (result.canceled) {
+        setFeedback('לא נבחרה תמונה. אפשר לנסות שוב.');
+        return;
+      }
+
+      const uri = result.assets[0]?.uri;
+      if (!uri) {
+        setFeedback('לא הצלחנו לקרוא את התמונה. נסו תמונה אחרת.');
+        return;
+      }
+
+      setSelectedImageUri(uri);
+      setFeedback('התמונה התקבלה. אפשר להמשיך לתוצאות.');
+    } catch {
+      setFeedback('משהו השתבש בטעינת התמונה. נסו שוב.');
+    } finally {
+      setIsPicking(false);
+    }
+  }
+
+  function continueToResults() {
+    navigation.navigate('Results', resultParams);
+  }
 
   return (
     <AppShell activeTab="scan" navigation={navigation} scroll={false} waterMode="full">
@@ -25,34 +97,64 @@ export function ScanScreen({ navigation, route }: Props) {
           </View>
           <View style={styles.titleWrap}>
             <Text style={styles.title}>סריקת סטיק</Text>
-            <Text style={styles.subtitle}>מקם את הסטיק בתוך המסגרת</Text>
+            <Text style={styles.subtitle}>בחרו תמונה ברורה של הסטיק בתוך המסגרת</Text>
           </View>
           <View style={styles.actions}>
-            <Pressable style={styles.toolButton}>
+            <Pressable style={styles.toolButton} onPress={() => pickImage('camera')}>
               <LineIcon name="flash" color={colors.white} size={20} />
             </Pressable>
           </View>
         </View>
 
         <View style={styles.scanArea}>
-          <Pressable onPress={() => navigation.navigate('Results', resultParams)} style={styles.frame}>
+          <Pressable onPress={() => pickImage('library')} style={styles.frame}>
+            {selectedImageUri ? (
+              <>
+                <Image source={{ uri: selectedImageUri }} style={styles.previewImage} resizeMode="cover" />
+                <View style={styles.previewBadge}>
+                  <LineIcon name="check" color={colors.white} size={13} />
+                  <Text style={styles.previewBadgeText}>תמונה מוכנה</Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <MockStrip />
+                <View style={styles.hand}>
+                  <View style={styles.thumb} />
+                  <View style={styles.finger} />
+                </View>
+              </>
+            )}
             <View style={[styles.corner, styles.topRight]} />
             <View style={[styles.corner, styles.topLeft]} />
             <View style={[styles.corner, styles.bottomRight]} />
             <View style={[styles.corner, styles.bottomLeft]} />
-            <MockStrip />
-            <View style={styles.hand}>
-              <View style={styles.thumb} />
-              <View style={styles.finger} />
-            </View>
           </Pressable>
         </View>
 
         <View style={styles.bottomArea}>
           <View style={styles.instructionPill}>
-            <Text style={styles.instruction}>החזק את המצלמה יציבה ובאור טבעי</Text>
+            <Text style={styles.instruction}>{feedback}</Text>
           </View>
-          <Pressable onPress={() => navigation.navigate('Results', resultParams)} style={({ pressed }) => [styles.resultsButton, pressed && styles.pressed]}>
+
+          <View style={styles.pickActions}>
+            <Pressable
+              onPress={() => pickImage('library')}
+              style={({ pressed }) => [styles.pickButton, pressed && styles.pressed]}
+            >
+              <LineIcon name="image" color={colors.primaryDark} size={16} />
+              <Text style={styles.pickButtonText}>{selectedImageUri ? 'החלפת תמונה' : 'בחירה מהגלריה'}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => pickImage('camera')}
+              style={({ pressed }) => [styles.pickButton, pressed && styles.pressed]}
+            >
+              <LineIcon name="camera" color={colors.primaryDark} size={16} />
+              <Text style={styles.pickButtonText}>צילום סטיק</Text>
+            </Pressable>
+          </View>
+
+          <Pressable onPress={continueToResults} style={({ pressed }) => [styles.resultsButton, pressed && styles.pressed]}>
             <LineIcon name="results" color={colors.white} size={16} />
             <Text style={styles.resultsButtonText}>המשך לתוצאות</Text>
           </Pressable>
@@ -141,6 +243,33 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.42)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  previewImage: {
+    width: '88%',
+    height: '88%',
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.62)',
+  },
+  previewBadge: {
+    position: 'absolute',
+    bottom: 18,
+    alignSelf: 'center',
+    minHeight: 30,
+    borderRadius: radius.round,
+    backgroundColor: 'rgba(4,44,57,0.68)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+  },
+  previewBadgeText: {
+    color: colors.white,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
+    ...rtl.textCenter,
   },
   corner: {
     position: 'absolute',
@@ -238,6 +367,32 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontFamily: typography.fontFamilySemiBold,
     fontSize: 13,
+    fontWeight: '900',
+    ...rtl.textCenter,
+  },
+  pickActions: {
+    width: '100%',
+    flexDirection: 'row-reverse',
+    gap: 10,
+  },
+  pickButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: radius.round,
+    backgroundColor: colors.whiteSoft,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.72)',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    ...shadows.soft,
+  },
+  pickButtonText: {
+    color: colors.primaryDeep,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
     fontWeight: '900',
     ...rtl.textCenter,
   },
