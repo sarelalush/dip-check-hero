@@ -15,6 +15,7 @@ type PickSource = 'camera' | 'library';
 const pickerOptions: ImagePicker.ImagePickerOptions = {
   mediaTypes: ['images'],
   allowsEditing: false,
+  base64: true,
   quality: 0.9,
 };
 
@@ -107,7 +108,8 @@ export function ScanScreen({ navigation, route }: Props) {
         return;
       }
 
-      const uri = result.assets[0]?.uri;
+      const asset = result.assets[0];
+      const uri = asset?.base64 ? `data:${asset.mimeType ?? 'image/jpeg'};base64,${asset.base64}` : asset?.uri;
       if (!uri) {
         setFeedback('לא הצלחנו לקרוא את התמונה. נסו תמונה אחרת.');
         return;

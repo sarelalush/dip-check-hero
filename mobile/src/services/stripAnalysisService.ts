@@ -78,12 +78,17 @@ function logAnalysisDebug(message: string, details?: Record<string, unknown>) {
   }
 }
 
+function isDirectRemoteImageCandidate(uri?: string) {
+  return Boolean(uri && (uri.startsWith('data:image/') || /^https?:\/\//i.test(uri)));
+}
+
 export async function analyzeStripImage(input: StripAnalysisInput): Promise<StripAnalysisResult> {
   logAnalysisDebug('selected analysis mode', {
     mode: analysisConfig.mode,
     hasFunctionName: Boolean(analysisConfig.remoteFunctionName),
     hasImagePath: Boolean(input.imagePath),
     hasImageUrl: Boolean(input.imageUrl),
+    hasDirectImageUri: isDirectRemoteImageCandidate(input.imageUri),
     hasLocalUploadCandidate: isLocalUploadCandidate(input.imageUri),
     hasInputUserId: Boolean(input.userId),
     isSupabaseConfigured,
@@ -107,7 +112,7 @@ export async function analyzeStripImage(input: StripAnalysisInput): Promise<Stri
   if (analysisConfig.mode === 'remote' || analysisConfig.mode === 'auto') {
     try {
       const remoteResult = await analyzeStripImageRemote(input, analysisConfig, {
-        requireAuthenticatedUser: analysisConfig.mode === 'auto',
+        requireAuthenticatedUser: analysisConfig.mode === 'auto' && !isDirectRemoteImageCandidate(input.imageUri),
         requireImageReference: analysisConfig.mode === 'auto',
       });
       if (remoteResult) {
@@ -178,12 +183,14 @@ async function analyzeStripImageRemote(
   const testId = input.testId ?? `remote-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
   let imagePath = input.imagePath;
   let imageUrl = input.imageUrl ?? (/^https?:\/\//i.test(input.imageUri) ? input.imageUri : undefined);
+  const hasDirectImageUri = isDirectRemoteImageCandidate(input.imageUri);
   const canUploadLocalImage = Boolean(userId && isLocalUploadCandidate(input.imageUri));
 
-  if (options.requireImageReference && !imagePath && !imageUrl && !canUploadLocalImage) {
+  if (options.requireImageReference && !imagePath && !imageUrl && !hasDirectImageUri && !canUploadLocalImage) {
     logAnalysisDebug('remote not attempted', {
       reason: 'missing-image-reference',
       hasUserId: Boolean(userId),
+      hasDirectImageUri,
       hasLocalUploadCandidate: canUploadLocalImage,
     });
     return null;
@@ -210,7 +217,7 @@ async function analyzeStripImageRemote(
     }
   }
 
-  if (options.requireImageReference && !imagePath && !imageUrl) {
+  if (options.requireImageReference && !imagePath && !imageUrl && !hasDirectImageUri) {
     logAnalysisDebug('remote not attempted', {
       reason: 'image-upload-did-not-produce-path-or-url',
     });
@@ -221,6 +228,7 @@ async function analyzeStripImageRemote(
     functionName: config.remoteFunctionName,
     hasImagePath: Boolean(imagePath),
     hasImageUrl: Boolean(imageUrl),
+    hasDirectImageUri,
     testId,
   });
 

@@ -932,6 +932,24 @@ async function fetchImageBytesFromUrl(url: string) {
   };
 }
 
+function loadImageBytesFromDataUrl(dataUrl: string) {
+  const match = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl);
+  if (!match) {
+    throw new Error('Invalid image data URL.');
+  }
+
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return {
+    bytes,
+    mimeType: match[1]?.startsWith('image/') ? match[1] : 'image/jpeg',
+  };
+}
+
 async function loadImageBytes(body: AnalyzeStripRequest, request: Request) {
   if (body.imagePath && !body.imagePath.startsWith('http')) {
     return fetchImageBytesFromStorage(body.imagePath, request);
@@ -942,7 +960,11 @@ async function loadImageBytes(body: AnalyzeStripRequest, request: Request) {
     return fetchImageBytesFromUrl(url);
   }
 
-  throw new Error('No imagePath or imageUrl was provided for remote analysis.');
+  if (body.imageUri?.startsWith('data:image/')) {
+    return loadImageBytesFromDataUrl(body.imageUri);
+  }
+
+  throw new Error('No imagePath, imageUrl, or image data URL was provided for remote analysis.');
 }
 
 async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Request): Promise<StripAnalysisResult> {
