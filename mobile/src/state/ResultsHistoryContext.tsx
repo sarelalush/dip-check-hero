@@ -40,7 +40,7 @@ function formatParameterValue(value: number, unit: string) {
 
 function buildResultSummary(analysisResult: StripAnalysisResult) {
   const importantValues = analysisResult.parameters
-    .filter((parameter) => parameter.key === 'ph' || parameter.key === 'chlorine' || parameter.key === 'alkalinity')
+    .filter((parameter) => parameter.key === 'ph' || parameter.key === 'freeChlorine' || parameter.key === 'alkalinity')
     .map((parameter) => `${parameter.name} ${formatParameterValue(parameter.value, parameter.unit)}`);
 
   return importantValues.join(' · ');

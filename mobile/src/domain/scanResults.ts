@@ -1,6 +1,7 @@
 import type { StatusTone } from '../components/StatusBadge';
+import type { StripParameter } from './strip';
 
-export type ScanParameterKey = 'ph' | 'chlorine' | 'alkalinity' | 'salt';
+export type ScanParameterKey = StripParameter;
 
 export type ScanParameterStatusKind = 'ok' | 'low' | 'high';
 

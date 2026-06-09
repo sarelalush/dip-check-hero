@@ -18,7 +18,7 @@ const mockParameters: ScanResultParameter[] = [
     progress: 68,
   },
   {
-    key: 'chlorine',
+    key: 'freeChlorine',
     name: 'כלור',
     value: 1.5,
     unit: 'ppm',
@@ -42,7 +42,7 @@ const mockParameters: ScanResultParameter[] = [
     name: 'מלח',
     value: 3200,
     unit: 'ppm',
-    idealRange: { min: 2700, max: 3400, label: 'טווח מומלץ 2700-3400' },
+    idealRange: { min: 3000, max: 3500, label: 'טווח מומלץ 3000-3500' },
     status: { kind: 'high', label: 'גבוה', tone: 'warning' },
     recommendation: 'בדקו שוב את רמת המלח לפני תיקון.',
     progress: 74,
