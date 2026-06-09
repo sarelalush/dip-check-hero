@@ -8,7 +8,9 @@ import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Scan'>;
 
-export function ScanScreen({ navigation }: Props) {
+export function ScanScreen({ navigation, route }: Props) {
+  const resultParams = { brandId: route.params?.brandId, poolId: route.params?.poolId };
+
   return (
     <AppShell activeTab="scan" navigation={navigation} scroll={false} waterMode="full">
       <View style={styles.screen}>
@@ -33,7 +35,7 @@ export function ScanScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.scanArea}>
-          <Pressable onPress={() => navigation.navigate('Results')} style={styles.frame}>
+          <Pressable onPress={() => navigation.navigate('Results', resultParams)} style={styles.frame}>
             <View style={[styles.corner, styles.topRight]} />
             <View style={[styles.corner, styles.topLeft]} />
             <View style={[styles.corner, styles.bottomRight]} />
@@ -50,7 +52,7 @@ export function ScanScreen({ navigation }: Props) {
           <View style={styles.instructionPill}>
             <Text style={styles.instruction}>החזק את המצלמה יציבה ובאור טבעי</Text>
           </View>
-          <Pressable onPress={() => navigation.navigate('Results')} style={({ pressed }) => [styles.resultsButton, pressed && styles.pressed]}>
+          <Pressable onPress={() => navigation.navigate('Results', resultParams)} style={({ pressed }) => [styles.resultsButton, pressed && styles.pressed]}>
             <LineIcon name="results" color={colors.white} size={16} />
             <Text style={styles.resultsButtonText}>המשך לתוצאות</Text>
           </Pressable>

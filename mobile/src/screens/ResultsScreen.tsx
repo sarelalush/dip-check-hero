@@ -2,20 +2,30 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
 import { Card } from '../components/Card';
+import { PrimaryButton } from '../components/PrimaryButton';
 import { ResultRow } from '../components/ResultRow';
 import { LineIcon } from '../components/LineIcon';
 import { colors, rtl, typography } from '../theme';
 import { mockPools, resultRows } from '../data/mockAppData';
+import { useResultsHistory } from '../state/ResultsHistoryContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Results'>;
 
-export function ResultsScreen({ navigation }: Props) {
+export function ResultsScreen({ navigation, route }: Props) {
+  const { saveMockResult } = useResultsHistory();
+  const pool = route.params?.poolId ? mockPools.find((item) => item.id === route.params?.poolId) : undefined;
+
+  function handleSave() {
+    saveMockResult({ poolId: route.params?.poolId });
+    navigation.navigate('History');
+  }
+
   return (
     <AppShell activeTab="scan" navigation={navigation}>
       <View style={styles.header}>
         <Text style={styles.title}>תוצאות הבדיקה</Text>
-        <Text style={styles.poolName}>{mockPools[0].name}</Text>
+        <Text style={styles.poolName}>{pool?.name ?? mockPools[0].name}</Text>
         <Text style={styles.subtitle}>היום, 18 במאי 2024 09:41</Text>
       </View>
 
@@ -44,6 +54,10 @@ export function ResultsScreen({ navigation }: Props) {
           </Text>
         </View>
       </Card>
+
+      <View style={styles.saveButton}>
+        <PrimaryButton label="סיום ושמירה" icon="history" onPress={handleSave} />
+      </View>
     </AppShell>
   );
 }
@@ -114,5 +128,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 19,
     ...rtl.text,
+  },
+  saveButton: {
+    marginTop: 16,
   },
 });

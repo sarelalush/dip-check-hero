@@ -5,11 +5,24 @@ import { HistoryItem } from '../components/HistoryItem';
 import { LineIcon } from '../components/LineIcon';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
 import { historyItems } from '../data/mockAppData';
+import { useResultsHistory } from '../state/ResultsHistoryContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'History'>;
 
 export function HistoryScreen({ navigation }: Props) {
+  const { historyRecords } = useResultsHistory();
+  const visibleHistoryItems =
+    historyRecords.length > 0
+      ? historyRecords.map((record) => ({
+          date: record.date,
+          poolName: record.poolName,
+          status: record.status,
+          time: `${record.poolName} · ${record.resultSummary}`,
+          tone: record.tone,
+        }))
+      : historyItems;
+
   return (
     <AppShell activeTab="history" navigation={navigation}>
       <View style={styles.headerRow}>
@@ -25,7 +38,7 @@ export function HistoryScreen({ navigation }: Props) {
 
       <View style={styles.timeline}>
         <View style={styles.timelineLine} />
-        {historyItems.map((item) => (
+        {visibleHistoryItems.map((item) => (
           <HistoryItem
             key={`${item.date}-${item.time}`}
             date={item.date}
