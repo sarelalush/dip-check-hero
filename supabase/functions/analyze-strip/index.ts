@@ -18,8 +18,9 @@
 // 6. Return remote-mock only when both AI and CV cannot produce a safe result.
 //
 // Required secrets for AI mode:
-// - LOVABLE_API_KEY for the same Lovable AI gateway used by the web app.
-// The remote AI path intentionally uses only Lovable API, then CV fallback.
+// - GEMINI_API_KEY for direct server-side Gemini API access.
+// - GEMINI_MODEL is optional; defaults to gemini-2.5-flash.
+// Mobile never receives the Gemini key. It only invokes this Edge Function.
 //
 // This is V1, not lab-grade analysis. Future versions should improve strip
 // detection, rotation handling, pad localization, lighting calibration, and
@@ -29,7 +30,7 @@ import { Image as ImageScript } from 'https://deno.land/x/imagescript@1.2.15/mod
 
 type StatusTone = 'success' | 'warning' | 'danger';
 type AnalysisSource = 'ai' | 'cv' | 'remote-mock';
-type AiProviderName = 'lovable';
+type AiProviderName = 'gemini';
 type FailureReason = 'none' | 'not_strip' | 'blurry' | 'lighting' | 'framing' | 'low_confidence' | 'ai_error' | 'unknown';
 type StripParameter =
   | 'freeChlorine'
@@ -149,8 +150,7 @@ interface DecodedImage {
 }
 
 const SCAN_IMAGES_BUCKET = 'scan-images';
-const LOVABLE_AI_GATEWAY_URL = 'https://ai.gateway.lovable.dev/v1/chat/completions';
-const LOVABLE_AI_MODEL = 'google/gemini-2.5-flash';
+const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash';
 const MULTI_SHOT_RUNS = 3;
 const CONFIDENCE_WARN_THRESHOLD = 0.55;
 const CONFIDENCE_BLOCK_THRESHOLD = 0.4;
@@ -814,34 +814,33 @@ manufacturer chart for that brand. Critical rules:
 - Account for white balance: if the whole image has a yellow/blue cast,
   mentally neutralize it before comparing colors.
 ${isPro ? AQUACHEK_PRO_CHART : ''}${isYellow ? AQUACHEK_YELLOW_CHART : ''}
-Return values via the report_strip tool. Only include the parameters listed
-above - leave the others as 0.`;
+Return only JSON that matches the provided response schema. Only include real
+readings for the parameters listed above - leave the others as 0.`;
 }
 
 function getAiProviderConfig(): AiProviderConfig | null {
-  const lovableKey = Deno.env.get('LOVABLE_API_KEY');
-  if (lovableKey) {
+  const geminiKey = Deno.env.get('GEMINI_API_KEY');
+  if (geminiKey) {
     return {
-      name: 'lovable',
-      apiKey: lovableKey,
-      model: LOVABLE_AI_MODEL,
+      name: 'gemini',
+      apiKey: geminiKey,
+      model: Deno.env.get('GEMINI_MODEL') || GEMINI_DEFAULT_MODEL,
     };
   }
 
   return null;
 }
 
-function buildNumberProps() {
-  const numberProps: Record<string, { type: 'number' }> = {};
-  for (const key of PARAM_KEYS) numberProps[key] = { type: 'number' };
-  return numberProps;
-}
-
 function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provider: AiProviderConfig): AiRunResponse {
+  const rawValues =
+    args.values && typeof args.values === 'object' && !Array.isArray(args.values)
+      ? (args.values as Record<string, unknown>)
+      : args;
   const values: Partial<Record<StripParameter, number>> = {};
   for (const parameter of brand.parameters) {
-    if (typeof args[parameter] === 'number') {
-      values[parameter] = parameter === 'ph' ? calibratePhForBrand(Number(args[parameter]), brand.id) : Number(args[parameter]);
+    const rawValue = rawValues[parameter];
+    if (typeof rawValue === 'number') {
+      values[parameter] = parameter === 'ph' ? calibratePhForBrand(Number(rawValue), brand.id) : Number(rawValue);
     }
   }
 
@@ -859,83 +858,115 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
   };
 }
 
-async function analyzeWithLovable(dataUrl: string, brand: StripBrand, provider: AiProviderConfig): Promise<AiRunResponse> {
-  const numberProps = buildNumberProps();
-  try {
-    const response = await fetch(LOVABLE_AI_GATEWAY_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${provider.apiKey}`,
-        'Content-Type': 'application/json',
+function dataUrlToGeminiInlineData(dataUrl: string) {
+  const match = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl);
+  if (!match) {
+    throw new Error('Invalid image data URL for Gemini inlineData.');
+  }
+
+  return {
+    mimeType: match[1]?.startsWith('image/') ? match[1] : 'image/jpeg',
+    data: match[2],
+  };
+}
+
+function buildGeminiResponseSchema() {
+  const valueProperties: Record<string, { type: 'NUMBER' }> = {};
+  for (const key of PARAM_KEYS) valueProperties[key] = { type: 'NUMBER' };
+
+  return {
+    type: 'OBJECT',
+    properties: {
+      isStrip: { type: 'BOOLEAN' },
+      failureReason: {
+        type: 'STRING',
+        enum: ['none', 'not_strip', 'blurry', 'lighting', 'framing', 'low_confidence'],
       },
-      body: JSON.stringify({
-        model: LOVABLE_AI_MODEL,
-        temperature: 0.1,
-        top_p: 0.1,
-        messages: [
-          { role: 'system', content: buildSystemPrompt(brand) },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: `Analyze this ${brand.nameHe} strip. Return values via report_strip.` },
-              { type: 'image_url', image_url: { url: dataUrl } },
-            ],
+      confidence: { type: 'NUMBER' },
+      notes: { type: 'STRING' },
+      values: {
+        type: 'OBJECT',
+        properties: valueProperties,
+        required: PARAM_KEYS,
+      },
+    },
+    required: ['isStrip', 'failureReason', 'confidence', 'notes', 'values'],
+  };
+}
+
+function extractGeminiJson(json: Record<string, unknown>) {
+  const candidates = json.candidates as Array<Record<string, unknown>> | undefined;
+  const content = candidates?.[0]?.content as Record<string, unknown> | undefined;
+  const parts = content?.parts as Array<Record<string, unknown>> | undefined;
+  const text = parts?.map((part) => (typeof part.text === 'string' ? part.text : '')).join('').trim();
+  if (!text) {
+    throw new Error('Gemini returned no text content.');
+  }
+
+  const cleaned = text
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+  return JSON.parse(cleaned) as Record<string, unknown>;
+}
+
+async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: AiProviderConfig): Promise<AiRunResponse> {
+  try {
+    const inlineData = dataUrlToGeminiInlineData(dataUrl);
+    const modelPath = provider.model.startsWith('models/') ? provider.model.slice('models/'.length) : provider.model;
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelPath)}:generateContent?key=${encodeURIComponent(provider.apiKey)}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: buildSystemPrompt(brand) }],
           },
-        ],
-        tools: [
-          {
-            type: 'function',
-            function: {
-              name: 'report_strip',
-              description: 'Report parsed pool test strip values',
-              parameters: {
-                type: 'object',
-                properties: {
-                  isStrip: { type: 'boolean' },
-                  failureReason: {
-                    type: 'string',
-                    enum: ['none', 'not_strip', 'blurry', 'lighting', 'framing', 'low_confidence'],
-                  },
-                  ...numberProps,
-                  confidence: { type: 'number' },
-                  notes: { type: 'string' },
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  text:
+                    `Analyze this ${brand.nameHe} pool test strip. ` +
+                    'Return only the required JSON object matching the schema. Use 0 for values not present on this strip.',
                 },
-                required: ['isStrip', 'failureReason', 'confidence', 'notes'],
-                additionalProperties: false,
-              },
+                { inlineData },
+              ],
             },
+          ],
+          generationConfig: {
+            temperature: 0.1,
+            topP: 0.1,
+            responseMimeType: 'application/json',
+            responseSchema: buildGeminiResponseSchema(),
           },
-        ],
-        tool_choice: { type: 'function', function: { name: 'report_strip' } },
-      }),
-    });
+        }),
+      },
+    );
 
     if (response.status === 429) {
-      return { ok: false, error: 'rate_limit', message: 'יותר מדי בקשות, נסה שוב בעוד רגע', provider: 'lovable' };
-    }
-    if (response.status === 402) {
-      return { ok: false, error: 'credits', message: 'נדרשת טעינת קרדיטים ב-Lovable AI', provider: 'lovable' };
+      return { ok: false, error: 'rate_limit', message: 'יותר מדי בקשות, נסה שוב בעוד רגע', provider: 'gemini' };
     }
     if (!response.ok) {
       const text = await response.text();
-      console.error('AI gateway error:', response.status, text);
-      return { ok: false, error: 'gateway_error', message: `שגיאה (${response.status})`, provider: 'lovable' };
+      console.error('Gemini API error:', response.status, text);
+      return { ok: false, error: 'gemini_error', message: `שגיאה (${response.status})`, provider: 'gemini' };
     }
 
     const json = await response.json();
-    const toolCall = json.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall?.function?.arguments) {
-      return { ok: false, error: 'no_tool_call', message: 'המודל לא החזיר תוצאה', provider: 'lovable' };
-    }
-
-    const args = JSON.parse(toolCall.function.arguments);
+    const args = extractGeminiJson(json as Record<string, unknown>);
     return normalizeAiArgs(args, brand, provider);
   } catch (error) {
     return {
       ok: false,
-      error: 'lovable_exception',
+      error: 'gemini_exception',
       message: error instanceof Error ? error.message : 'Unexpected AI provider error.',
-      provider: 'lovable',
+      provider: 'gemini',
     };
   }
 }
@@ -946,7 +977,7 @@ async function analyzeWithAiProvider(dataUrl: string, brand: StripBrand): Promis
     return { ok: false, error: 'missing_ai_key', message: 'AI provider is not configured.' };
   }
 
-  return analyzeWithLovable(dataUrl, brand, provider);
+  return analyzeWithGemini(dataUrl, brand, provider);
 }
 
 function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, brand: StripBrand): StripAnalysisResult | null {
@@ -1109,7 +1140,7 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     Array.from({ length: MULTI_SHOT_RUNS }, () => analyzeWithAiProvider(dataUrl, brand)),
   );
   const aiResult = combineAiRuns(aiRuns, body, brand);
-  if (aiResult) {
+  if (aiResult && !aiResult.lowConfidence) {
     return aiResult;
   }
 
@@ -1118,7 +1149,7 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     if (cv) {
       return buildResult(body, brand, cv.values, 'cv', cv.confidence, {
         lowConfidence: true,
-        notes: `AI consensus was unavailable or low-confidence. ${cv.notes ?? ''}`.trim(),
+        notes: `Gemini consensus was unavailable or low-confidence. ${cv.notes ?? ''}`.trim(),
         shotsUsed: aiRuns.filter((run) => run.ok).length,
       });
     }

@@ -13,7 +13,7 @@ const SUPABASE_PUBLISHABLE_KEY =
 export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY);
 
 export const supabaseConfigMessage =
-  'חסרה הגדרת Supabase. יש להגדיר EXPO_PUBLIC_SUPABASE_URL ו-EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY.';
+  'חסרה הגדרת Supabase. יש להגדיר EXPO_PUBLIC_SUPABASE_URL ו-EXPO_PUBLIC_SUPABASE_ANON_KEY.';
 
 export const supabase = isSupabaseConfigured
   ? createClient<Database>(SUPABASE_URL as string, SUPABASE_PUBLISHABLE_KEY as string, {

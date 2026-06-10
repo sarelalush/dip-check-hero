@@ -294,8 +294,8 @@ export function ResultsScreen({ navigation, route }: Props) {
             <ActivityIndicator color={colors.primaryDark} size="small" />
           </View>
           <View style={styles.analyzingCopy}>
-            <Text style={styles.analyzingTitle}>ניתוח mock בפעולה</Text>
-            <Text style={styles.analyzingText}>אנחנו מכינים מבנה תוצאה מלא, הערכים עדיין דוגמתיים.</Text>
+            <Text style={styles.analyzingTitle}>ניתוח בדיקה בפעולה</Text>
+            <Text style={styles.analyzingText}>אנחנו מנתחים את תמונת הסטיק ומכינים את תוצאות הבדיקה.</Text>
           </View>
         </Card>
       </AppShell>
