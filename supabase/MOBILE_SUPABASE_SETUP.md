@@ -20,9 +20,13 @@ The migrations also create the private Storage bucket:
 - `scan-images`
 
 RLS policies are included for user-owned profiles, pools, tests, brand requests,
-roles, and scan images. Scan image policies support both
-`users/{user_id}/tests/{test_id}/scan.jpg` and the older `{user_id}/...`
-object layout. Admin helper policies/functions are also included.
+roles, and scan images. Scan image policies use the production mobile path:
+`accounts/{account_id}/users/{user_id}/tests/{test_id}/scan.jpg`.
+Admin helper policies/functions are also included.
+
+Older Lovable/user-only migrations were moved to `supabase/legacy_migrations`.
+The active `supabase/migrations` folder now contains the production
+account-based schema for the independent Supabase project.
 
 ## Create and Link a New Supabase Project
 
@@ -46,12 +50,14 @@ The mobile app must not contain the Gemini key. Set it only as a Supabase Edge
 Function secret:
 
 ```powershell
+npx supabase secrets set STRIP_AI_PROVIDER="gemini" --project-ref NEW_PROJECT_REF
 npx supabase secrets set GEMINI_API_KEY="YOUR_GEMINI_API_KEY" --project-ref NEW_PROJECT_REF
-npx supabase secrets set GEMINI_MODEL="gemini-2.5-flash" --project-ref NEW_PROJECT_REF
+npx supabase secrets set GEMINI_MODEL_PRIMARY="gemini-2.5-flash-lite" --project-ref NEW_PROJECT_REF
+npx supabase secrets set GEMINI_MODEL_ESCALATION="gemini-2.5-flash" --project-ref NEW_PROJECT_REF
 ```
 
-`GEMINI_MODEL` is optional. If omitted, `analyze-strip` uses
-`gemini-2.5-flash`.
+`GEMINI_MODEL_PRIMARY` is optional. If omitted, `analyze-strip` uses
+`gemini-2.5-flash-lite`.
 
 ## Deploy the Analysis Function
 
@@ -88,13 +94,13 @@ npm run web
 After uploading an image to `scan-images`, invoke the function with:
 
 ```powershell
-npx supabase functions invoke analyze-strip --project-ref NEW_PROJECT_REF --body '{\"testId\":\"test-demo-1\",\"userId\":\"USER_ID\",\"poolId\":\"POOL_ID\",\"brandId\":\"aquachek-pro-5in1\",\"imagePath\":\"users/USER_ID/tests/test-demo-1/scan.jpg\"}'
+npx supabase functions invoke analyze-strip --project-ref NEW_PROJECT_REF --body '{\"testId\":\"00000000-0000-4000-8000-000000000001\",\"accountId\":\"ACCOUNT_ID\",\"userId\":\"USER_ID\",\"poolId\":\"POOL_ID\",\"brandId\":\"aquachek-pro-5in1\",\"imagePath\":\"accounts/ACCOUNT_ID/users/USER_ID/tests/00000000-0000-4000-8000-000000000001/scan.jpg\"}'
 ```
 
 Expected successful AI metadata in the mobile Results screen:
 
 ```text
-מקור ניתוח: AI · gemini · gemini-2.5-flash · ביטחון XX%
+מקור ניתוח: AI · gemini · gemini-2.5-flash-lite · ביטחון XX%
 ```
 
 If Gemini is missing, fails, or returns low confidence, the Edge Function falls

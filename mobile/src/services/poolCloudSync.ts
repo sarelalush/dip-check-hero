@@ -2,7 +2,7 @@
 // src/lib/cloudSync.ts, src/utils/storage.ts, src/integrations/supabase/types.ts.
 import type { User } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
-import type { Database } from '../integrations/supabase/types';
+import type { Database, Json } from '../integrations/supabase/types';
 import { normalizePool, type Pool } from '../domain/pool';
 
 type PoolRow = Database['public']['Tables']['pools']['Row'];
@@ -30,6 +30,26 @@ function toMillis(value?: string | null) {
   return Number.isFinite(time) ? time : undefined;
 }
 
+function toJson(value: unknown): Json {
+  return JSON.parse(JSON.stringify(value ?? {})) as Json;
+}
+
+function readObject(value: Json | null | undefined): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function readNumber(value: unknown) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function readBoolean(value: unknown) {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function readString(value: unknown) {
+  return typeof value === 'string' ? value : undefined;
+}
+
 export function getPoolCloudId(pool: Pool) {
   if (pool.cloudId) return pool.cloudId;
   if (isUuid(pool.id)) return pool.id;
@@ -39,64 +59,91 @@ export function getPoolCloudId(pool: Pool) {
 export function mapCloudPoolToLocal(row: PoolRow): Pool {
   const createdAt = toMillis(row.created_at) ?? Date.now();
   const updatedAt = toMillis(row.updated_at) ?? createdAt;
+  const dimensions = readObject(row.dimensions);
+  const treatment = readObject(dimensions.treatment as Json);
+  const shape = row.shape === 'round' || row.shape === 'oval' || row.shape === 'rectangle' ? row.shape : readString(dimensions.shape);
+  const sanitizerType = row.sanitizer_type === 'salt' ? 'salt' : 'chlorine';
 
   return normalizePool({
     id: row.id,
     cloudId: row.id,
     name: row.name,
-    type: row.type === 'salt' ? 'salt' : 'chlorine',
-    sanitizerType: row.type === 'salt' ? 'salt' : 'chlorine',
-    volumeLiters: row.volume_liters,
-    volumeEntryMethod: 'manual',
-    volumeUnit: 'liters',
-    stripBrandId: row.strip_brand_id ?? undefined,
+    type: sanitizerType,
+    sanitizerType,
+    volumeLiters: Number(row.volume_liters ?? 0),
+    volumeEntryMethod: readString(dimensions.volumeEntryMethod) === 'dimensions' ? 'dimensions' : 'manual',
+    volumeUnit: readString(dimensions.volumeUnit) === 'cubic' ? 'cubic' : 'liters',
+    shape: shape === 'round' || shape === 'oval' || shape === 'rectangle' ? shape : 'rectangle',
+    lengthMeters: readNumber(dimensions.lengthMeters),
+    widthMeters: readNumber(dimensions.widthMeters),
+    diameterMeters: readNumber(dimensions.diameterMeters),
+    averageDepthMeters: readNumber(dimensions.averageDepthMeters),
+    stripBrandId: readString(dimensions.stripBrandId),
+    notes: row.notes ?? undefined,
     createdAt,
     updatedAt,
-    lastTestAt: toMillis(row.last_test_at),
-    tabletsActive: row.tablets_active ?? false,
-    tabletsCount: row.tablets_count ?? 1,
-    tabletWeightGrams: row.tablet_weight_g ?? 200,
-    pumpHoursPerDay: Number(row.pump_hours_per_day ?? 8),
-    retestHours: Number(row.retest_hours ?? 6),
+    lastTestAt: readNumber(dimensions.lastTestAt),
+    tabletsActive: readBoolean(treatment.tabletsActive) ?? false,
+    tabletsCount: readNumber(treatment.tabletsCount) ?? 1,
+    tabletWeightGrams: readNumber(treatment.tabletWeightGrams) ?? 200,
+    pumpHoursPerDay: readNumber(treatment.pumpHoursPerDay) ?? 8,
+    retestHours: readNumber(treatment.retestHours) ?? 6,
   });
 }
 
-export function mapLocalPoolToCloud(pool: Pool, userId: string): PoolUpsert {
+export function mapLocalPoolToCloud(pool: Pool, userId: string, accountId: string): PoolUpsert {
   const cloudId = getPoolCloudId(pool);
   const now = new Date(pool.updatedAt ?? Date.now()).toISOString();
 
   return {
     id: cloudId,
-    user_id: userId,
+    account_id: accountId,
+    owner_user_id: userId,
     name: pool.name,
-    type: pool.type,
+    pool_type: pool.type,
+    sanitizer_type: pool.sanitizerType ?? pool.type,
     volume_liters: pool.volumeLiters,
-    strip_brand_id: pool.stripBrandId ?? null,
-    last_test_at: pool.lastTestAt ? new Date(pool.lastTestAt).toISOString() : null,
-    tablets_active: pool.tabletsActive ?? false,
-    tablets_count: pool.tabletsCount ?? 1,
-    tablet_weight_g: pool.tabletWeightGrams ?? 200,
-    pump_hours_per_day: pool.pumpHoursPerDay ?? 8,
-    retest_hours: pool.retestHours ?? 6,
+    shape: pool.shape ?? null,
+    dimensions: toJson({
+      shape: pool.shape,
+      lengthMeters: pool.lengthMeters,
+      widthMeters: pool.widthMeters,
+      diameterMeters: pool.diameterMeters,
+      averageDepthMeters: pool.averageDepthMeters,
+      volumeEntryMethod: pool.volumeEntryMethod,
+      volumeUnit: pool.volumeUnit,
+      stripBrandId: pool.stripBrandId,
+      lastTestAt: pool.lastTestAt,
+      treatment: {
+        tabletsActive: pool.tabletsActive ?? false,
+        tabletsCount: pool.tabletsCount ?? 1,
+        tabletWeightGrams: pool.tabletWeightGrams ?? 200,
+        pumpHoursPerDay: pool.pumpHoursPerDay ?? 8,
+        retestHours: pool.retestHours ?? 6,
+      },
+    }),
+    notes: pool.notes ?? null,
+    is_archived: false,
     created_at: new Date(pool.createdAt).toISOString(),
     updated_at: now,
   };
 }
 
-export async function fetchCloudPools(userId: string): Promise<Pool[]> {
+export async function fetchCloudPools(accountId: string): Promise<Pool[]> {
   if (!isSupabaseConfigured) return [];
 
   const { data, error } = await getSupabaseClient()
     .from('pools')
     .select('*')
-    .eq('user_id', userId)
+    .eq('account_id', accountId)
+    .eq('is_archived', false)
     .order('updated_at', { ascending: false });
 
   if (error) throw error;
   return (data ?? []).map(mapCloudPoolToLocal);
 }
 
-export async function upsertPoolToCloud(pool: Pool, userId: string): Promise<Pool> {
+export async function upsertPoolToCloud(pool: Pool, userId: string, accountId: string): Promise<Pool> {
   const cloudId = getPoolCloudId(pool);
   const localPool = normalizePool({ ...pool, cloudId, updatedAt: pool.updatedAt ?? Date.now() });
 
@@ -104,7 +151,7 @@ export async function upsertPoolToCloud(pool: Pool, userId: string): Promise<Poo
 
   const { error } = await getSupabaseClient()
     .from('pools')
-    .upsert(mapLocalPoolToCloud(localPool, userId));
+    .upsert(mapLocalPoolToCloud(localPool, userId, accountId));
 
   if (error) throw error;
   return localPool;
@@ -116,7 +163,7 @@ export async function deletePoolFromCloud(pool: Pool, _userId: string): Promise<
   const cloudId = pool.cloudId ?? (isUuid(pool.id) ? pool.id : undefined);
   if (!cloudId) return;
 
-  const { error } = await getSupabaseClient().from('pools').delete().eq('id', cloudId);
+  const { error } = await getSupabaseClient().from('pools').update({ is_archived: true }).eq('id', cloudId);
   if (error) throw error;
 }
 
@@ -135,12 +182,12 @@ export interface PoolSyncResult {
 // prefer the record with the newest updatedAt/updated_at. Local-only fields
 // such as dimensions and notes stay in the AsyncStorage cache until matching
 // columns exist in Supabase.
-export async function syncPoolsWithCloud(localPools: Pool[], user: User): Promise<PoolSyncResult> {
+export async function syncPoolsWithCloud(localPools: Pool[], user: User, accountId: string): Promise<PoolSyncResult> {
   if (!isSupabaseConfigured) {
     return { pools: localPools.map((pool) => normalizePool(pool)), pushedCount: 0, pulledCount: 0 };
   }
 
-  const remotePools = await fetchCloudPools(user.id);
+  const remotePools = await fetchCloudPools(accountId);
   const remoteByCloudId = new Map(remotePools.map((pool) => [pool.cloudId ?? pool.id, pool]));
   const merged: Pool[] = [];
   let pushedCount = 0;
@@ -151,7 +198,7 @@ export async function syncPoolsWithCloud(localPools: Pool[], user: User): Promis
     const remotePool = cloudId ? remoteByCloudId.get(cloudId) : undefined;
 
     if (!remotePool) {
-      const pushed = await upsertPoolToCloud(localPool, user.id);
+      const pushed = await upsertPoolToCloud(localPool, user.id, accountId);
       pushedCount += 1;
       merged.push(pushed);
       if (pushed.cloudId) remoteByCloudId.delete(pushed.cloudId);
@@ -164,7 +211,7 @@ export async function syncPoolsWithCloud(localPools: Pool[], user: User): Promis
     const remoteUpdatedAt = remotePool.updatedAt ?? remotePool.createdAt;
 
     if (localUpdatedAt >= remoteUpdatedAt) {
-      const pushed = await upsertPoolToCloud({ ...localPool, cloudId: remotePool.cloudId ?? remotePool.id }, user.id);
+      const pushed = await upsertPoolToCloud({ ...localPool, cloudId: remotePool.cloudId ?? remotePool.id }, user.id, accountId);
       pushedCount += 1;
       merged.push(pushed);
     } else {

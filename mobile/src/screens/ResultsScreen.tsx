@@ -63,7 +63,7 @@ function formatAnalysisSource(analysisResult: StripAnalysisResult) {
 }
 
 export function ResultsScreen({ navigation, route }: Props) {
-  const { user } = useAuth();
+  const { accountId, user } = useAuth();
   const { getHistoryRecord, isHydrated, saveAnalysisResult } = useResultsHistory();
   const { getPool } = usePools();
   const {
@@ -139,8 +139,9 @@ export function ResultsScreen({ navigation, route }: Props) {
       let imageUploadError: string | undefined;
       const analysisMode = getStripAnalysisConfig().mode;
 
-      if ((analysisMode === 'remote' || analysisMode === 'auto') && user?.id && !imagePath && !imageUrl) {
+      if ((analysisMode === 'remote' || analysisMode === 'auto') && accountId && user?.id && !imagePath && !imageUrl) {
         const preparedImage = await prepareScanImageForRemoteAnalysis({
+          accountId,
           imageUri: inputImageUri,
           testId,
           userId: user.id,
@@ -152,6 +153,7 @@ export function ResultsScreen({ navigation, route }: Props) {
       }
 
       const result = await analyzeStripImage({
+        accountId,
         brandId: inputBrandId,
         imagePath,
         imageUrl,
@@ -207,6 +209,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     route.params?.brandId,
     route.params?.imageUri,
     route.params?.poolId,
+    accountId,
     session.analysisResult,
     session.dosageResult,
     session.imagePath,

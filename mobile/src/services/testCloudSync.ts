@@ -4,16 +4,19 @@
 import type { User } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
 import type { Database, Json } from '../integrations/supabase/types';
+import type { ScanResultParameter } from '../domain/scanResults';
 import type { Pool } from '../domain/pool';
 import type { SavedHistoryRecord } from '../state/ResultsHistoryContext';
 import { getPublicScanImageUrl, uploadScanImage } from './scanImageStorage';
 
 type TestRow = Database['public']['Tables']['tests']['Row'];
 type TestUpsert = Database['public']['Tables']['tests']['Insert'];
+type TestReadingInsert = Database['public']['Tables']['test_readings']['Insert'];
+type TestRecommendationInsert = Database['public']['Tables']['test_recommendations']['Insert'];
 
 interface MobileTestResultsPayload {
   source: 'aquasense-mobile';
-  schemaVersion: 1;
+  schemaVersion: 2;
   record: SavedHistoryRecord;
   analysisResult: SavedHistoryRecord['analysisResult'];
   status: SavedHistoryRecord['status'];
@@ -25,15 +28,8 @@ interface MobileTestResultsPayload {
   poolName: string;
 }
 
-interface MobileTestRecommendationsPayload {
-  source: 'aquasense-mobile';
-  schemaVersion: 1;
-  dosageResult: SavedHistoryRecord['dosageResult'];
-  summary: string;
-}
-
-function isUuid(id: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(id);
+function isUuid(id?: string | null) {
+  return Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(id));
 }
 
 function newUuid() {
@@ -78,16 +74,13 @@ function getCloudPoolId(record: SavedHistoryRecord, pools: Pool[]) {
   if (!record.poolId) return undefined;
   const pool = pools.find((item) => item.id === record.poolId || item.cloudId === record.poolId);
   if (pool?.cloudId) return pool.cloudId;
-  if (pool && isUuid(pool.id)) return pool.id;
+  if (isUuid(pool?.id)) return pool?.id;
   return isUuid(record.poolId) ? record.poolId : undefined;
 }
 
-function getLocalPoolId(remotePoolId: string, pools: Pool[]) {
+function getLocalPoolId(remotePoolId: string | null, pools: Pool[]) {
+  if (!remotePoolId) return undefined;
   return pools.find((pool) => pool.cloudId === remotePoolId || pool.id === remotePoolId)?.id ?? remotePoolId;
-}
-
-function isStoragePath(value?: string | null) {
-  return Boolean(value && !/^https?:\/\//i.test(value) && !value.startsWith('file:') && !value.startsWith('blob:') && !value.startsWith('data:'));
 }
 
 function isMobileResultsPayload(value: unknown): value is MobileTestResultsPayload {
@@ -100,65 +93,57 @@ function isMobileResultsPayload(value: unknown): value is MobileTestResultsPaylo
   );
 }
 
-function isMobileRecommendationsPayload(value: unknown): value is MobileTestRecommendationsPayload {
-  return Boolean(
-    value &&
-      typeof value === 'object' &&
-      'source' in value &&
-      (value as { source?: unknown }).source === 'aquasense-mobile',
-  );
-}
-
 export function mapCloudTestToLocal(row: TestRow, pools: Pool[]): SavedHistoryRecord {
-  const testedAt = toMillis(row.tested_at) ?? toMillis(row.created_at) ?? Date.now();
-  const resultsPayload = row.results as unknown;
-  const recommendationsPayload = row.recommendations as unknown;
+  const testedAt = toMillis(row.analyzed_at) ?? toMillis(row.created_at) ?? Date.now();
+  const resultsPayload = row.raw_result as unknown;
   const baseRecord = isMobileResultsPayload(resultsPayload) ? resultsPayload.record : undefined;
-  const dosagePayload = isMobileRecommendationsPayload(recommendationsPayload) ? recommendationsPayload.dosageResult : undefined;
   const poolId = baseRecord?.poolId ?? getLocalPoolId(row.pool_id, pools);
   const pool = pools.find((item) => item.id === poolId || item.cloudId === row.pool_id);
-  const rowImageValue = row.image_url ?? undefined;
-  const imagePath = baseRecord?.imagePath ?? (isStoragePath(rowImageValue) ? rowImageValue : undefined);
-  const imageUrl = baseRecord?.imageUrl ?? (imagePath ? getPublicScanImageUrl(imagePath) : rowImageValue);
+  const imagePath = baseRecord?.imagePath ?? row.image_path ?? undefined;
+  const imageUrl = baseRecord?.imageUrl ?? row.image_url ?? (imagePath ? getPublicScanImageUrl(imagePath) : undefined);
 
   return {
     id: baseRecord?.id ?? row.id,
     testId: baseRecord?.testId ?? row.id,
     cloudId: row.id,
+    accountId: row.account_id,
     date: baseRecord?.date ?? formatDateTime(testedAt),
     poolId,
     poolName: baseRecord?.poolName ?? pool?.name ?? 'הבריכה שלי',
-    brandId: baseRecord?.brandId,
+    brandId: baseRecord?.brandId ?? row.strip_brand_id ?? undefined,
     brandName: baseRecord?.brandName,
-    imageUri: baseRecord?.imageUri ?? (!imagePath ? rowImageValue : undefined),
+    imageUri: baseRecord?.imageUri,
     imagePath,
     imageUrl,
-    imageUploadError: baseRecord?.imageUploadError,
-    resultSummary: baseRecord?.resultSummary ?? 'תוצאת בדיקה שמורה',
-    status: baseRecord?.status ?? 'המים מאוזנים',
-    tone: baseRecord?.tone ?? 'success',
+    imageUploadError: baseRecord?.imageUploadError ?? row.error_message ?? undefined,
+    resultSummary: baseRecord?.resultSummary ?? row.recommendation ?? 'תוצאת בדיקה שמורה',
+    status: baseRecord?.status ?? row.overall_status ?? 'המים מאוזנים',
+    tone: baseRecord?.tone ?? (row.overall_status === 'נדרש תיקון קל' ? 'warning' : 'success'),
     testedAt,
     createdAt: baseRecord?.createdAt ?? toMillis(row.created_at) ?? testedAt,
-    updatedAt: baseRecord?.updatedAt ?? testedAt,
-    analysisResult: baseRecord?.analysisResult ?? (isMobileResultsPayload(resultsPayload) ? resultsPayload.analysisResult : undefined),
-    dosageResult: baseRecord?.dosageResult ?? dosagePayload,
+    updatedAt: baseRecord?.updatedAt ?? toMillis(row.updated_at) ?? testedAt,
+    analysisResult: baseRecord?.analysisResult ?? undefined,
+    dosageResult: baseRecord?.dosageResult ?? baseRecord?.analysisResult?.dosage,
   };
 }
 
-export function mapLocalTestToCloud(record: SavedHistoryRecord, userId: string, pools: Pool[]): TestUpsert | undefined {
-  const poolId = getCloudPoolId(record, pools);
-  if (!poolId) return undefined;
-
+export function mapLocalTestToCloud(
+  record: SavedHistoryRecord,
+  userId: string,
+  accountId: string,
+  pools: Pool[],
+): TestUpsert {
   const cloudId = getTestCloudId(record);
   const normalizedRecord: SavedHistoryRecord = {
     ...record,
+    accountId,
     cloudId,
     updatedAt: record.updatedAt ?? record.createdAt ?? record.testedAt,
   };
 
   const resultsPayload: MobileTestResultsPayload = {
     source: 'aquasense-mobile',
-    schemaVersion: 1,
+    schemaVersion: 2,
     record: normalizedRecord,
     analysisResult: normalizedRecord.analysisResult,
     status: normalizedRecord.status,
@@ -170,44 +155,120 @@ export function mapLocalTestToCloud(record: SavedHistoryRecord, userId: string, 
     poolName: normalizedRecord.poolName,
   };
 
-  const recommendationsPayload: MobileTestRecommendationsPayload = {
-    source: 'aquasense-mobile',
-    schemaVersion: 1,
-    dosageResult: normalizedRecord.dosageResult,
-    summary: normalizedRecord.dosageResult?.summary ?? normalizedRecord.resultSummary,
-  };
-
   return {
     id: cloudId,
+    account_id: accountId,
     user_id: userId,
-    pool_id: poolId,
-    results: toJson(resultsPayload),
-    recommendations: toJson(recommendationsPayload),
-    image_url: normalizedRecord.imagePath ?? normalizedRecord.imageUrl ?? normalizedRecord.imageUri ?? null,
-    tested_at: new Date(normalizedRecord.testedAt).toISOString(),
+    pool_id: getCloudPoolId(normalizedRecord, pools) ?? null,
+    strip_brand_id: normalizedRecord.brandId ?? null,
+    image_path: normalizedRecord.imagePath ?? null,
+    image_url: normalizedRecord.imageUrl ?? null,
+    analysis_status: normalizedRecord.analysisResult ? 'completed' : 'pending',
+    source: normalizedRecord.analysisResult?.source ?? null,
+    provider: normalizedRecord.analysisResult?.provider ?? null,
+    model: normalizedRecord.analysisResult?.model ?? null,
+    confidence: normalizedRecord.analysisResult?.confidence ?? null,
+    low_confidence: normalizedRecord.analysisResult?.lowConfidence ?? false,
+    overall_status: normalizedRecord.status,
+    recommendation: normalizedRecord.dosageResult?.summary ?? normalizedRecord.resultSummary,
+    raw_result: toJson(resultsPayload),
+    error_message: normalizedRecord.imageUploadError ?? null,
+    is_billable: normalizedRecord.analysisResult?.source !== 'mock',
+    analyzed_at: new Date(normalizedRecord.testedAt).toISOString(),
     created_at: new Date(normalizedRecord.createdAt).toISOString(),
+    updated_at: new Date(normalizedRecord.updatedAt ?? normalizedRecord.createdAt).toISOString(),
   };
 }
 
-export async function fetchCloudTests(userId: string, pools: Pool[]): Promise<SavedHistoryRecord[]> {
+function mapParameterToReading(parameter: ScanResultParameter, testId: string, accountId: string): TestReadingInsert {
+  return {
+    account_id: accountId,
+    confidence: null,
+    label: parameter.name,
+    max_value: parameter.idealRange.max,
+    min_value: parameter.idealRange.min,
+    parameter_key: parameter.key,
+    raw: toJson(parameter),
+    status: parameter.status.kind,
+    test_id: testId,
+    unit: parameter.unit,
+    value: parameter.value,
+  };
+}
+
+async function upsertReadingsToCloud(record: SavedHistoryRecord, testId: string, accountId: string) {
+  const parameters = record.analysisResult?.parameters ?? [];
+  if (!parameters.length) return;
+
+  const { error } = await getSupabaseClient()
+    .from('test_readings')
+    .upsert(parameters.map((parameter) => mapParameterToReading(parameter, testId, accountId)), {
+      onConflict: 'test_id,parameter_key',
+    });
+
+  if (error) throw error;
+}
+
+async function upsertRecommendationsToCloud(record: SavedHistoryRecord, testId: string, accountId: string) {
+  await getSupabaseClient().from('test_recommendations').delete().eq('test_id', testId);
+
+  const recommendations = record.dosageResult?.recommendations ?? [];
+  const rows: TestRecommendationInsert[] = recommendations.length
+    ? recommendations.map((recommendation, index) => ({
+        account_id: accountId,
+        action_type: recommendation.status,
+        amount: recommendation.product?.amount ?? null,
+        description: recommendation.actionHe,
+        parameter_key: recommendation.paramKey,
+        priority: index,
+        product_type: recommendation.product?.key,
+        raw: toJson(recommendation),
+        safety_note: record.dosageResult?.safetyNote ?? null,
+        test_id: testId,
+        title: recommendation.labelHe,
+        unit: recommendation.product?.unit ?? recommendation.unit ?? null,
+      }))
+    : [
+        {
+          account_id: accountId,
+          action_type: 'summary',
+          description: record.dosageResult?.summary ?? record.resultSummary,
+          priority: 0,
+          raw: toJson(record.dosageResult ?? {}),
+          test_id: testId,
+          title: 'המלצה',
+        },
+      ];
+
+  const { error } = await getSupabaseClient().from('test_recommendations').insert(rows);
+  if (error) throw error;
+}
+
+export async function fetchCloudTests(accountId: string, pools: Pool[]): Promise<SavedHistoryRecord[]> {
   if (!isSupabaseConfigured) return [];
 
   const { data, error } = await getSupabaseClient()
     .from('tests')
     .select('*')
-    .eq('user_id', userId)
-    .order('tested_at', { ascending: false });
+    .eq('account_id', accountId)
+    .order('created_at', { ascending: false });
 
   if (error) throw error;
   return (data ?? []).map((row) => mapCloudTestToLocal(row, pools));
 }
 
-export async function upsertTestToCloud(record: SavedHistoryRecord, userId: string, pools: Pool[]): Promise<SavedHistoryRecord | undefined> {
+export async function upsertTestToCloud(
+  record: SavedHistoryRecord,
+  userId: string,
+  accountId: string,
+  pools: Pool[],
+): Promise<SavedHistoryRecord | undefined> {
   if (!isSupabaseConfigured) return record;
 
   const cloudId = getTestCloudId(record);
   let recordForCloud: SavedHistoryRecord = {
     ...record,
+    accountId,
     cloudId,
     updatedAt: record.updatedAt ?? record.createdAt ?? record.testedAt,
   };
@@ -215,6 +276,7 @@ export async function upsertTestToCloud(record: SavedHistoryRecord, userId: stri
   if (recordForCloud.imageUri && !recordForCloud.imagePath && !recordForCloud.imageUrl) {
     try {
       const uploadedImage = await uploadScanImage({
+        accountId,
         imageUri: recordForCloud.imageUri,
         testId: cloudId,
         userId,
@@ -239,11 +301,26 @@ export async function upsertTestToCloud(record: SavedHistoryRecord, userId: stri
     }
   }
 
-  const upsert = mapLocalTestToCloud(recordForCloud, userId, pools);
-  if (!upsert) return undefined;
+  const { data: existingTest } = await getSupabaseClient()
+    .from('tests')
+    .select('id')
+    .eq('id', cloudId)
+    .maybeSingle();
 
+  const upsert = mapLocalTestToCloud(recordForCloud, userId, accountId, pools);
   const { error } = await getSupabaseClient().from('tests').upsert(upsert);
   if (error) throw error;
+
+  await upsertReadingsToCloud(recordForCloud, cloudId, accountId);
+  await upsertRecommendationsToCloud(recordForCloud, cloudId, accountId);
+
+  if (!existingTest) {
+    await getSupabaseClient().rpc('register_scan_usage', {
+      p_account_id: accountId,
+      p_test_id: cloudId,
+      p_user_id: userId,
+    });
+  }
 
   return {
     ...recordForCloud,
@@ -262,21 +339,21 @@ export interface TestSyncResult {
   pulledCount: number;
 }
 
-// Simple conflict strategy for this first history-sync slice:
+// Simple conflict strategy for this history-sync slice:
 // keep local AsyncStorage visible immediately, fetch cloud tests after auth, and
-// prefer the record with the newest updatedAt/testedAt. Local scan images are
-// uploaded to the scan-images bucket before metadata upsert when possible; if
-// upload fails, the test is still saved with its local imageUri fallback.
+// prefer the record with the newest updatedAt/testedAt. Usage registration is
+// added only when a cloud test is first created to avoid duplicate counters.
 export async function syncTestsWithCloud(
   localRecords: SavedHistoryRecord[],
   user: User,
+  accountId: string,
   pools: Pool[],
 ): Promise<TestSyncResult> {
   if (!isSupabaseConfigured) {
     return { records: localRecords, pushedCount: 0, pulledCount: 0 };
   }
 
-  const remoteRecords = await fetchCloudTests(user.id, pools);
+  const remoteRecords = await fetchCloudTests(accountId, pools);
   const remoteByCloudId = new Map(remoteRecords.map((record) => [record.cloudId ?? record.testId, record]));
   const merged: SavedHistoryRecord[] = [];
   let pushedCount = 0;
@@ -287,7 +364,7 @@ export async function syncTestsWithCloud(
     const remoteRecord = cloudId ? remoteByCloudId.get(cloudId) : undefined;
 
     if (!remoteRecord) {
-      const pushed = await upsertTestToCloud(localRecord, user.id, pools);
+      const pushed = await upsertTestToCloud(localRecord, user.id, accountId, pools);
       if (pushed) {
         pushedCount += 1;
         merged.push(pushed);
@@ -303,7 +380,7 @@ export async function syncTestsWithCloud(
     const remoteUpdatedAt = remoteRecord.updatedAt ?? remoteRecord.testedAt ?? remoteRecord.createdAt;
 
     if (localUpdatedAt >= remoteUpdatedAt) {
-      const pushed = await upsertTestToCloud({ ...localRecord, cloudId: remoteRecord.cloudId ?? remoteRecord.testId }, user.id, pools);
+      const pushed = await upsertTestToCloud({ ...localRecord, cloudId: remoteRecord.cloudId ?? remoteRecord.testId }, user.id, accountId, pools);
       if (pushed) {
         pushedCount += 1;
         merged.push(pushed);

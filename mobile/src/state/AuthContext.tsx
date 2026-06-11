@@ -14,6 +14,7 @@ interface AuthResult {
 interface AuthContextValue {
   user: User | null;
   session: Session | null;
+  accountId?: string;
   loading: boolean;
   isAuthenticated: boolean;
   isConfigured: boolean;
@@ -82,7 +83,27 @@ async function setSessionFromOAuthUrl(url: string) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [accountId, setAccountId] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
+
+  async function hydrateSession(nextSession: Session | null) {
+    setSession(nextSession);
+    setUser(nextSession?.user ?? null);
+
+    if (!nextSession?.user) {
+      setAccountId(undefined);
+      return;
+    }
+
+    try {
+      const { data, error } = await getSupabaseClient().rpc('ensure_default_account');
+      if (error) throw error;
+      setAccountId(typeof data === 'string' ? data : undefined);
+    } catch (error) {
+      console.warn('Failed to ensure default account', error);
+      setAccountId(undefined);
+    }
+  }
 
   useEffect(() => {
     if (!supabase) {
@@ -91,19 +112,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      setUser(nextSession?.user ?? null);
+      hydrateSession(nextSession);
     });
 
     supabase.auth
       .getSession()
       .then(({ data }) => {
-        setSession(data.session);
-        setUser(data.session?.user ?? null);
+        return hydrateSession(data.session);
       })
       .catch(() => {
         setSession(null);
         setUser(null);
+        setAccountId(undefined);
       })
       .finally(() => setLoading(false));
 
@@ -114,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       user,
       session,
+      accountId,
       loading,
       isAuthenticated: Boolean(user),
       isConfigured: isSupabaseConfigured,
@@ -184,6 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isSupabaseConfigured) {
           setSession(null);
           setUser(null);
+          setAccountId(undefined);
           return;
         }
 
@@ -192,10 +214,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } finally {
           setSession(null);
           setUser(null);
+          setAccountId(undefined);
         }
       },
     }),
-    [loading, session, user],
+    [accountId, loading, session, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

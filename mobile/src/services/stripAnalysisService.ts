@@ -26,6 +26,7 @@ export type StripAnalysisMode = 'auto' | 'mock' | 'remote' | 'native';
 
 export interface StripAnalysisInput {
   imageUri: string;
+  accountId?: string;
   testId?: string;
   userId?: string;
   brandId?: string;
@@ -184,7 +185,7 @@ async function analyzeStripImageRemote(
   let imagePath = input.imagePath;
   let imageUrl = input.imageUrl ?? (/^https?:\/\//i.test(input.imageUri) ? input.imageUri : undefined);
   const hasDirectImageUri = isDirectRemoteImageCandidate(input.imageUri);
-  const canUploadLocalImage = Boolean(userId && isLocalUploadCandidate(input.imageUri));
+  const canUploadLocalImage = Boolean(input.accountId && userId && isLocalUploadCandidate(input.imageUri));
 
   if (options.requireImageReference && !imagePath && !imageUrl && !hasDirectImageUri && !canUploadLocalImage) {
     logAnalysisDebug('remote not attempted', {
@@ -202,6 +203,7 @@ async function analyzeStripImageRemote(
         testId,
       });
       const uploadedImage = await uploadScanImage({
+        accountId: input.accountId,
         imageUri: input.imageUri,
         testId,
         userId,
@@ -235,6 +237,7 @@ async function analyzeStripImageRemote(
   const { data, error } = await getSupabaseClient().functions.invoke(config.remoteFunctionName, {
     body: {
       testId,
+      accountId: input.accountId,
       userId,
       poolId: input.poolId,
       brandId: input.brandId ?? input.selectedBrand?.id,

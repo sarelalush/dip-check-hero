@@ -19,7 +19,9 @@
 //
 // Required secrets for AI mode:
 // - GEMINI_API_KEY for direct server-side Gemini API access.
-// - GEMINI_MODEL is optional; defaults to gemini-2.5-flash.
+// - STRIP_AI_PROVIDER=gemini is optional; Gemini is the only production provider.
+// - GEMINI_MODEL_PRIMARY is optional; defaults to gemini-2.5-flash-lite.
+// - GEMINI_MODEL_ESCALATION is reserved for later high-confidence escalation.
 // Mobile never receives the Gemini key. It only invokes this Edge Function.
 //
 // This is V1, not lab-grade analysis. Future versions should improve strip
@@ -46,6 +48,7 @@ type Rgb = [number, number, number];
 
 interface AnalyzeStripRequest {
   testId: string;
+  accountId?: string;
   userId?: string;
   poolId?: string;
   brandId?: string;
@@ -150,7 +153,7 @@ interface DecodedImage {
 }
 
 const SCAN_IMAGES_BUCKET = 'scan-images';
-const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash';
+const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
 const CONFIDENCE_WARN_THRESHOLD = 0.55;
 const CONFIDENCE_BLOCK_THRESHOLD = 0.4;
@@ -819,12 +822,15 @@ readings for the parameters listed above - leave the others as 0.`;
 }
 
 function getAiProviderConfig(): AiProviderConfig | null {
+  const configuredProvider = Deno.env.get('STRIP_AI_PROVIDER') ?? 'gemini';
+  if (configuredProvider !== 'gemini') return null;
+
   const geminiKey = Deno.env.get('GEMINI_API_KEY');
   if (geminiKey) {
     return {
       name: 'gemini',
       apiKey: geminiKey,
-      model: Deno.env.get('GEMINI_MODEL') || GEMINI_DEFAULT_MODEL,
+      model: Deno.env.get('GEMINI_MODEL_PRIMARY') || Deno.env.get('GEMINI_MODEL') || GEMINI_DEFAULT_MODEL,
     };
   }
 
@@ -1112,12 +1118,197 @@ async function loadImageBytes(body: AnalyzeStripRequest, request: Request) {
   throw new Error('No imagePath, imageUrl, or image data URL was provided for remote analysis.');
 }
 
+function getServiceHeaders(request?: Request) {
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const authorization = serviceRoleKey
+    ? `Bearer ${serviceRoleKey}`
+    : request?.headers.get('Authorization') ?? request?.headers.get('authorization') ?? '';
+
+  return {
+    apikey: serviceRoleKey ?? supabaseAnonKey,
+    Authorization: authorization,
+    'Content-Type': 'application/json',
+  };
+}
+
+async function getAuthenticatedUserId(request: Request) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  const authorization = request.headers.get('Authorization') ?? request.headers.get('authorization');
+
+  if (!supabaseUrl || !supabaseAnonKey || !authorization) return undefined;
+
+  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: authorization,
+    },
+  });
+
+  if (!response.ok) return undefined;
+  const user = await response.json();
+  return typeof user.id === 'string' ? user.id : undefined;
+}
+
+async function verifyAccountMembership(accountId: string, userId: string, request: Request) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  if (!supabaseUrl) return false;
+
+  const response = await fetch(
+    `${supabaseUrl}/rest/v1/account_members?select=id&account_id=eq.${encodeURIComponent(accountId)}&user_id=eq.${encodeURIComponent(userId)}&limit=1`,
+    {
+      headers: getServiceHeaders(request),
+    },
+  );
+
+  if (!response.ok) return false;
+  const rows = await response.json();
+  return Array.isArray(rows) && rows.length > 0;
+}
+
+async function canCreateScan(accountId: string, request: Request) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  if (!supabaseUrl) return true;
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/can_create_scan`, {
+    method: 'POST',
+    headers: getServiceHeaders(request),
+    body: JSON.stringify({ p_account_id: accountId }),
+  });
+
+  if (!response.ok) return true;
+  return Boolean(await response.json());
+}
+
+async function persistAnalysisResult(body: AnalyzeStripRequest, result: StripAnalysisResult, userId: string, request: Request) {
+  if (!body.accountId) return;
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  if (!supabaseUrl) return;
+
+  const headers = getServiceHeaders(request);
+  const existingResponse = await fetch(
+    `${supabaseUrl}/rest/v1/tests?select=id&id=eq.${encodeURIComponent(body.testId)}&limit=1`,
+    { headers },
+  );
+  const existingRows = existingResponse.ok ? await existingResponse.json() : [];
+  const alreadyExists = Array.isArray(existingRows) && existingRows.length > 0;
+
+  const testRow = {
+    account_id: body.accountId,
+    analyzed_at: new Date(result.analyzedAt).toISOString(),
+    analysis_status: 'completed',
+    confidence: result.confidence,
+    error_message: result.lowConfidence ? result.notes ?? null : null,
+    id: body.testId,
+    image_path: result.imagePath ?? body.imagePath ?? null,
+    image_url: result.imageUrl ?? body.imageUrl ?? null,
+    is_billable: result.source !== 'remote-mock',
+    low_confidence: result.lowConfidence ?? false,
+    model: result.model ?? null,
+    overall_status: result.overallStatus.label,
+    pool_id: body.poolId ?? null,
+    provider: result.provider ?? null,
+    raw_result: result,
+    recommendation: result.recommendation,
+    source: result.source,
+    strip_brand_id: result.brandId ?? body.brandId ?? null,
+    user_id: userId,
+  };
+
+  const testResponse = await fetch(`${supabaseUrl}/rest/v1/tests?on_conflict=id`, {
+    method: 'POST',
+    headers: {
+      ...headers,
+      Prefer: 'resolution=merge-duplicates',
+    },
+    body: JSON.stringify([testRow]),
+  });
+  if (!testResponse.ok) throw new Error(`Failed to persist test (${testResponse.status}).`);
+
+  const readingRows = result.parameters.map((parameter) => ({
+    account_id: body.accountId,
+    confidence: result.confidence,
+    label: parameter.name,
+    max_value: parameter.idealRange.max,
+    min_value: parameter.idealRange.min,
+    parameter_key: parameter.key,
+    raw: parameter,
+    status: parameter.status.kind,
+    test_id: body.testId,
+    unit: parameter.unit,
+    value: parameter.value,
+  }));
+
+  if (readingRows.length) {
+    await fetch(`${supabaseUrl}/rest/v1/test_readings?on_conflict=test_id,parameter_key`, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify(readingRows),
+    });
+  }
+
+  await fetch(`${supabaseUrl}/rest/v1/test_recommendations?test_id=eq.${encodeURIComponent(body.testId)}`, {
+    method: 'DELETE',
+    headers,
+  });
+  await fetch(`${supabaseUrl}/rest/v1/test_recommendations`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify([
+      {
+        account_id: body.accountId,
+        action_type: result.overallStatus.tone,
+        description: result.recommendation,
+        priority: 0,
+        raw: result,
+        test_id: body.testId,
+        title: 'המלצה',
+      },
+    ]),
+  });
+
+  if (!alreadyExists && result.source !== 'remote-mock') {
+    await fetch(`${supabaseUrl}/rest/v1/rpc/register_scan_usage`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        p_account_id: body.accountId,
+        p_test_id: body.testId,
+        p_user_id: userId,
+      }),
+    });
+  }
+}
+
 async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Request): Promise<StripAnalysisResult> {
   const brand = getBrand(body.brandId);
   let imageBytes: Uint8Array;
   let mimeType = 'image/jpeg';
   let image: DecodedImage;
   let dataUrl: string;
+  let authenticatedUserId = body.userId;
+
+  if (body.accountId) {
+    authenticatedUserId = await getAuthenticatedUserId(request);
+    if (!authenticatedUserId) {
+      return buildRemoteMockResult(body, 'נדרשת התחברות כדי לבצע ניתוח מרוחק.');
+    }
+
+    const isMember = await verifyAccountMembership(body.accountId, authenticatedUserId, request);
+    if (!isMember) {
+      return buildRemoteMockResult(body, 'המשתמש אינו משויך לחשבון שנשלח לניתוח.');
+    }
+
+    const quotaAvailable = await canCreateScan(body.accountId, request);
+    if (!quotaAvailable) {
+      return buildRemoteMockResult(body, 'מכסת הסריקות החודשית נוצלה. הניתוח המרוחק לא הופעל.');
+    }
+  }
 
   try {
     const loaded = await loadImageBytes(body, request);
@@ -1141,17 +1332,32 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
   );
   const aiResult = combineAiRuns(aiRuns, body, brand);
   if (aiResult && !aiResult.lowConfidence) {
+    if (authenticatedUserId) {
+      try {
+        await persistAnalysisResult(body, aiResult, authenticatedUserId, request);
+      } catch (error) {
+        console.warn('Persisting AI analysis failed', error);
+      }
+    }
     return aiResult;
   }
 
   try {
     const cv = analyzeCv(image, brand);
     if (cv) {
-      return buildResult(body, brand, cv.values, 'cv', cv.confidence, {
+      const cvResult = buildResult(body, brand, cv.values, 'cv', cv.confidence, {
         lowConfidence: true,
         notes: `Gemini consensus was unavailable or low-confidence. ${cv.notes ?? ''}`.trim(),
         shotsUsed: aiRuns.filter((run) => run.ok).length,
       });
+      if (authenticatedUserId) {
+        try {
+          await persistAnalysisResult(body, cvResult, authenticatedUserId, request);
+        } catch (error) {
+          console.warn('Persisting CV analysis failed', error);
+        }
+      }
+      return cvResult;
     }
   } catch (error) {
     console.warn('CV fallback failed', error);

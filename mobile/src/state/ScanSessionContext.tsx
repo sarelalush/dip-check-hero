@@ -72,8 +72,16 @@ const initialSession: ScanSessionState = {
 
 const ScanSessionContext = createContext<ScanSessionContextValue | null>(null);
 
-function createScanTestId(timestamp = Date.now()) {
-  return `test-${timestamp}-${Math.floor(Math.random() * 10000)}`;
+function createScanTestId() {
+  if (typeof globalThis.crypto?.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === 'x' ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
 }
 
 function withTimestamp(session: ScanSessionState, timestamp = Date.now()): ScanSessionState {
@@ -94,7 +102,7 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
       selectedBrandId: input.brandId,
       selectedBrand,
       selectedPoolId: input.poolId,
-      testId: createScanTestId(timestamp),
+      testId: createScanTestId(),
       currentStep: 'selectStrip',
       error: undefined,
       qualityNotes: [],

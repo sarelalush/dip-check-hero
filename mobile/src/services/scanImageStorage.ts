@@ -8,6 +8,7 @@ import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabas
 export const SCAN_IMAGES_BUCKET = 'scan-images';
 
 interface UploadScanImageInput {
+  accountId?: string;
   imageUri: string;
   testId: string;
   userId: string;
@@ -43,9 +44,9 @@ function contentTypeFromUri(uri: string) {
   return 'image/jpeg';
 }
 
-function buildScanImagePath(userId: string, testId: string, contentType: string) {
+function buildScanImagePath(accountId: string, userId: string, testId: string, contentType: string) {
   const ext = extensionFromContentType(contentType);
-  return `users/${userId}/tests/${testId}/scan.${ext}`;
+  return `accounts/${accountId}/users/${userId}/tests/${testId}/scan.${ext}`;
 }
 
 export function getPublicScanImageUrl(path?: string | null) {
@@ -65,8 +66,8 @@ export function isLocalUploadCandidate(uri?: string) {
   return uri.startsWith('file:') || uri.startsWith('content:') || uri.startsWith('blob:') || uri.startsWith('data:');
 }
 
-export async function uploadScanImage({ imageUri, testId, userId }: UploadScanImageInput): Promise<UploadedScanImage | undefined> {
-  if (!isSupabaseConfigured || !isLocalUploadCandidate(imageUri)) {
+export async function uploadScanImage({ accountId, imageUri, testId, userId }: UploadScanImageInput): Promise<UploadedScanImage | undefined> {
+  if (!isSupabaseConfigured || !accountId || !isLocalUploadCandidate(imageUri)) {
     return undefined;
   }
 
@@ -80,7 +81,7 @@ export async function uploadScanImage({ imageUri, testId, userId }: UploadScanIm
   const responseContentType = response.headers.get('content-type');
   const contentType = responseContentType?.startsWith('image/') ? responseContentType : fallbackContentType;
   const body = await response.arrayBuffer();
-  const path = buildScanImagePath(userId, testId, contentType);
+  const path = buildScanImagePath(accountId, userId, testId, contentType);
 
   const { error } = await getSupabaseClient().storage.from(SCAN_IMAGES_BUCKET).upload(path, body, {
     contentType,
@@ -100,16 +101,17 @@ export async function uploadScanImage({ imageUri, testId, userId }: UploadScanIm
 }
 
 export async function prepareScanImageForRemoteAnalysis({
+  accountId,
   imageUri,
   testId,
   userId,
 }: UploadScanImageInput): Promise<PreparedScanImageForAnalysis> {
-  if (!isSupabaseConfigured || !isLocalUploadCandidate(imageUri)) {
+  if (!isSupabaseConfigured || !accountId || !isLocalUploadCandidate(imageUri)) {
     return {};
   }
 
   try {
-    const uploadedImage = await uploadScanImage({ imageUri, testId, userId });
+    const uploadedImage = await uploadScanImage({ accountId, imageUri, testId, userId });
 
     return {
       imagePath: uploadedImage?.path,

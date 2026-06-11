@@ -13,6 +13,7 @@ export interface SavedHistoryRecord {
   id: string;
   testId: string;
   cloudId?: string;
+  accountId?: string;
   date: string;
   poolId?: string;
   poolName: string;
@@ -103,7 +104,7 @@ function normalizeHistoryRecord(record: SavedHistoryRecord): SavedHistoryRecord 
 }
 
 export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
-  const { user, loading: authLoading } = useAuth();
+  const { accountId, user, loading: authLoading } = useAuth();
   const { getPool, pools } = usePools();
   const [historyRecords, setHistoryRecords] = useState<SavedHistoryRecord[]>([]);
   const [hydrated, setHydrated] = useState(false);
@@ -154,10 +155,11 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
   }, [hydrated, historyRecords]);
 
   useEffect(() => {
-    if (!hydrated || authLoading || !user) return;
+    if (!hydrated || authLoading || !user || !accountId) return;
 
     let isMounted = true;
     const currentUser = user;
+    const currentAccountId = accountId;
     const currentPools = pools;
 
     async function syncAuthenticatedHistory() {
@@ -165,7 +167,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
       setSyncError(undefined);
 
       try {
-        const result = await syncTestsWithCloud(historyRecords, currentUser, currentPools);
+        const result = await syncTestsWithCloud(historyRecords, currentUser, currentAccountId, currentPools);
         if (!isMounted) return;
         setHistoryRecords(result.records.map(normalizeHistoryRecord));
       } catch (error) {
@@ -184,13 +186,13 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [authLoading, hydrated, user?.id, pools]);
+  }, [accountId, authLoading, hydrated, user?.id, pools]);
 
   async function syncRecordToCloud(record: SavedHistoryRecord) {
-    if (!user) return;
+    if (!user || !accountId) return;
 
     try {
-      const syncedRecord = await upsertTestToCloud(record, user.id, pools);
+      const syncedRecord = await upsertTestToCloud(record, user.id, accountId, pools);
       if (!syncedRecord) return;
 
       setHistoryRecords((current) =>
@@ -231,6 +233,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         const record: SavedHistoryRecord = {
           id: testId,
           testId,
+          accountId,
           date: formatDateTime(testedAt),
           poolId: analysisResult.poolId,
           poolName: pool?.name ?? FALLBACK_POOL_NAME,
@@ -254,7 +257,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         return record;
       },
     }),
-    [getPool, historyRecords, hydrated, pools, syncError, syncing, user],
+    [accountId, getPool, historyRecords, hydrated, pools, syncError, syncing, user],
   );
 
   return <ResultsHistoryContext.Provider value={value}>{children}</ResultsHistoryContext.Provider>;

@@ -27,7 +27,7 @@ const PoolsContext = createContext<PoolsContextValue | null>(null);
 const POOLS_STORAGE_KEY = '@aquasense/pools';
 
 export function PoolsProvider({ children }: { children: ReactNode }) {
-  const { user, loading: authLoading } = useAuth();
+  const { accountId, user, loading: authLoading } = useAuth();
   const [pools, setPools] = useState<Pool[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -77,17 +77,18 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
   }, [hydrated, pools]);
 
   useEffect(() => {
-    if (!hydrated || authLoading || !user) return;
+    if (!hydrated || authLoading || !user || !accountId) return;
 
     let isMounted = true;
     const currentUser = user;
+    const currentAccountId = accountId;
 
     async function syncAuthenticatedPools() {
       setSyncing(true);
       setSyncError(undefined);
 
       try {
-        const result = await syncPoolsWithCloud(pools, currentUser);
+        const result = await syncPoolsWithCloud(pools, currentUser, currentAccountId);
         if (!isMounted) return;
         setPools(result.pools);
       } catch (error) {
@@ -106,13 +107,13 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [authLoading, hydrated, user?.id]);
+  }, [accountId, authLoading, hydrated, user?.id]);
 
   async function syncPoolToCloud(pool: Pool) {
-    if (!user) return;
+    if (!user || !accountId) return;
 
     try {
-      const syncedPool = await upsertPoolToCloud(pool, user.id);
+      const syncedPool = await upsertPoolToCloud(pool, user.id, accountId);
       setPools((current) =>
         current.map((item) =>
           item.id === syncedPool.id ? normalizePool({ ...item, cloudId: syncedPool.cloudId }) : item,
@@ -171,7 +172,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
         return pools.find((pool) => pool.id === poolId);
       },
     }),
-    [hydrated, pools, syncError, syncing, user],
+    [accountId, hydrated, pools, syncError, syncing, user],
   );
 
   return <PoolsContext.Provider value={value}>{children}</PoolsContext.Provider>;
