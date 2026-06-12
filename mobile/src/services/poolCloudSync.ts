@@ -4,6 +4,7 @@ import type { User } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
 import type { Database, Json } from '../integrations/supabase/types';
 import { normalizePool, type Pool } from '../domain/pool';
+import { getSignedPoolImageUrl, isLocalPoolImageCandidate, removePoolImage, uploadPoolImage } from './poolImageStorage';
 
 type PoolRow = Database['public']['Tables']['pools']['Row'];
 type PoolUpsert = Database['public']['Tables']['pools']['Insert'];
@@ -68,6 +69,8 @@ export function mapCloudPoolToLocal(row: PoolRow): Pool {
     id: row.id,
     cloudId: row.id,
     name: row.name,
+    imagePath: row.image_path ?? undefined,
+    imageUrl: row.image_url ?? undefined,
     type: sanitizerType,
     sanitizerType,
     volumeLiters: Number(row.volume_liters ?? 0),
@@ -91,6 +94,15 @@ export function mapCloudPoolToLocal(row: PoolRow): Pool {
   });
 }
 
+async function mapCloudPoolToLocalWithSignedImage(row: PoolRow): Promise<Pool> {
+  const pool = mapCloudPoolToLocal(row);
+  if (!pool.imagePath || pool.imageUrl) return pool;
+  return normalizePool({
+    ...pool,
+    imageUrl: await getSignedPoolImageUrl(pool.imagePath),
+  });
+}
+
 export function mapLocalPoolToCloud(pool: Pool, userId: string, accountId: string): PoolUpsert {
   const cloudId = getPoolCloudId(pool);
   const now = new Date(pool.updatedAt ?? Date.now()).toISOString();
@@ -100,6 +112,8 @@ export function mapLocalPoolToCloud(pool: Pool, userId: string, accountId: strin
     account_id: accountId,
     owner_user_id: userId,
     name: pool.name,
+    image_path: pool.imagePath ?? null,
+    image_url: pool.imagePath ? null : (pool.imageUrl ?? null),
     pool_type: pool.type,
     sanitizer_type: pool.sanitizerType ?? pool.type,
     volume_liters: pool.volumeLiters,
@@ -140,14 +154,38 @@ export async function fetchCloudPools(accountId: string): Promise<Pool[]> {
     .order('updated_at', { ascending: false });
 
   if (error) throw error;
-  return (data ?? []).map(mapCloudPoolToLocal);
+  return Promise.all((data ?? []).map(mapCloudPoolToLocalWithSignedImage));
 }
 
 export async function upsertPoolToCloud(pool: Pool, userId: string, accountId: string): Promise<Pool> {
   const cloudId = getPoolCloudId(pool);
-  const localPool = normalizePool({ ...pool, cloudId, updatedAt: pool.updatedAt ?? Date.now() });
+  let localPool = normalizePool({ ...pool, cloudId, updatedAt: pool.updatedAt ?? Date.now() });
 
   if (!isSupabaseConfigured) return localPool;
+
+  if (localPool.imageUri && !localPool.imagePath && !localPool.imageUrl && isLocalPoolImageCandidate(localPool.imageUri)) {
+    try {
+      const uploadedImage = await uploadPoolImage({
+        accountId,
+        imageUri: localPool.imageUri,
+        poolId: cloudId,
+        userId,
+      });
+
+      localPool = normalizePool({
+        ...localPool,
+        imagePath: uploadedImage?.path,
+        imageUrl: uploadedImage?.signedUrl,
+        imageUploadError: undefined,
+      });
+    } catch (error) {
+      console.warn('Failed to upload pool cover image', error);
+      localPool = normalizePool({
+        ...localPool,
+        imageUploadError: 'העלאת תמונת הבריכה לענן נכשלה. התמונה נשמרה מקומית.',
+      });
+    }
+  }
 
   const { error } = await getSupabaseClient()
     .from('pools')
@@ -165,6 +203,7 @@ export async function deletePoolFromCloud(pool: Pool, _userId: string): Promise<
 
   const { error } = await getSupabaseClient().from('pools').update({ is_archived: true }).eq('id', cloudId);
   if (error) throw error;
+  await removePoolImage(pool.imagePath);
 }
 
 function poolSyncKey(pool: Pool) {

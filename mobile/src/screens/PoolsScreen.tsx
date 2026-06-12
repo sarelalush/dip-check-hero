@@ -33,6 +33,8 @@ export function PoolsScreen({ navigation }: Props) {
               status="המים מאוזנים"
               tone="success"
               variant={index % 2 === 0 ? 'villa' : 'city'}
+              imageUri={pool.imageUri}
+              imageUrl={pool.imageUrl}
               onPress={() => navigation.navigate('PoolDetails', { poolId: pool.id })}
             />
           ))
@@ -40,6 +42,9 @@ export function PoolsScreen({ navigation }: Props) {
           <Card compact style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>עדיין אין בריכות</Text>
             <Text style={styles.emptyText}>הוסיפו בריכה כדי להתחיל סריקה ולשמור היסטוריית בדיקות אמיתית.</Text>
+            <View style={styles.emptyAction}>
+              <PrimaryButton label="הוספת בריכה ראשונה" icon="plus" onPress={() => navigation.navigate('AddPool')} />
+            </View>
           </Card>
         )}
       </View>
@@ -70,6 +75,7 @@ const styles = StyleSheet.create({
   },
   emptyCard: {
     alignItems: 'center',
+    gap: 6,
   },
   emptyTitle: {
     color: colors.text,
@@ -86,5 +92,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 18,
     ...rtl.textCenter,
+  },
+  emptyAction: {
+    marginTop: 8,
+    width: '100%',
   },
 });

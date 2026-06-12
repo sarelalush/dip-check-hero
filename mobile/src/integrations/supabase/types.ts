@@ -118,6 +118,8 @@ export type Database = {
         created_at: string;
         dimensions: Json;
         id: string;
+        image_path: string | null;
+        image_url: string | null;
         is_archived: boolean;
         name: string;
         notes: string | null;

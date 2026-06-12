@@ -116,7 +116,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
       const syncedPool = await upsertPoolToCloud(pool, user.id, accountId);
       setPools((current) =>
         current.map((item) =>
-          item.id === syncedPool.id ? normalizePool({ ...item, cloudId: syncedPool.cloudId }) : item,
+          item.id === syncedPool.id ? normalizePool({ ...item, ...syncedPool, id: item.id }) : item,
         ),
       );
       setSyncError(undefined);

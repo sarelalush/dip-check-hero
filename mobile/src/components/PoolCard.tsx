@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, rtl, shadows, typography } from '../theme';
 import { StatusBadge, type StatusTone } from './StatusBadge';
 import { LineIcon } from './LineIcon';
@@ -11,13 +11,17 @@ interface PoolCardProps {
   tone?: StatusTone;
   onPress?: () => void;
   variant?: 'villa' | 'city';
+  imageUri?: string;
+  imageUrl?: string;
 }
 
-export function PoolCard({ name, volume, status, tone = 'success', onPress, variant = 'villa' }: PoolCardProps) {
+export function PoolCard({ imageUri, imageUrl, name, volume, status, tone = 'success', onPress, variant = 'villa' }: PoolCardProps) {
+  const coverUri = imageUri ?? imageUrl;
+
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.card, pressed && styles.pressed]}>
       <View style={styles.visual}>
-        <PoolPhoto variant={variant} />
+        {coverUri ? <Image source={{ uri: coverUri }} style={styles.coverImage} resizeMode="cover" /> : <PoolPhoto variant={variant} />}
       </View>
       <View style={styles.body}>
         <View style={styles.row}>
@@ -48,6 +52,10 @@ const styles = StyleSheet.create({
     height: 118,
     backgroundColor: colors.waterDeep,
     overflow: 'hidden',
+  },
+  coverImage: {
+    width: '100%',
+    height: '100%',
   },
   body: {
     padding: 13,

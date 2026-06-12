@@ -57,6 +57,10 @@ export interface Pool {
   volumeEntryMethod: PoolVolumeEntryMethod;
   volumeUnit?: PoolVolumeUnit;
   shape?: PoolShape;
+  imageUri?: string;
+  imagePath?: string;
+  imageUrl?: string;
+  imageUploadError?: string;
   lengthMeters?: number;
   widthMeters?: number;
   diameterMeters?: number;
@@ -136,6 +140,10 @@ export function normalizePool(pool: Partial<Pool> & { id?: string; name?: string
     volumeEntryMethod: pool.volumeEntryMethod ?? 'dimensions',
     volumeUnit: pool.volumeUnit ?? 'liters',
     shape,
+    imageUri: pool.imageUri,
+    imagePath: pool.imagePath,
+    imageUrl: pool.imageUrl,
+    imageUploadError: pool.imageUploadError,
     lengthMeters: pool.lengthMeters,
     widthMeters: pool.widthMeters,
     diameterMeters: pool.diameterMeters,

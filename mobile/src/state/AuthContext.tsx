@@ -21,6 +21,7 @@ interface AuthContextValue {
   signInWithEmail: (email: string, password: string) => Promise<AuthResult>;
   signUpWithEmail: (email: string, password: string, displayName?: string, phone?: string) => Promise<AuthResult>;
   signInWithGoogle: () => Promise<AuthResult>;
+  updateDisplayName: (displayName: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
 }
 
@@ -196,6 +197,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           await setSessionFromOAuthUrl(result.url);
 
+          return {};
+        } catch (error) {
+          return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };
+        }
+      },
+      async updateDisplayName(displayName) {
+        if (!isSupabaseConfigured || !user) return { error: supabaseConfigMessage };
+
+        const fullName = displayName.trim();
+        if (!fullName) return { error: 'יש להזין שם תצוגה.' };
+
+        try {
+          const { data, error } = await getSupabaseClient().auth.updateUser({
+            data: {
+              display_name: fullName,
+              full_name: fullName,
+            },
+          });
+
+          if (error) return { error: toHebrewAuthError(error.message) };
+
+          const { error: profileError } = await getSupabaseClient()
+            .from('profiles')
+            .update({ full_name: fullName, updated_at: new Date().toISOString() })
+            .eq('id', user.id);
+
+          if (profileError) return { error: toHebrewAuthError(profileError.message) };
+          setUser(data.user ?? user);
           return {};
         } catch (error) {
           return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };

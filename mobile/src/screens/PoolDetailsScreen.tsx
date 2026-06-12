@@ -1,4 +1,4 @@
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
 import { Card } from '../components/Card';
@@ -28,6 +28,7 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
   const typeLabel = pool ? getPoolTypeLabel(pool.type) : 'כלור רגיל';
   const shapeLabel = pool?.volumeEntryMethod === 'manual' ? 'נפח ידני' : getPoolShapeLabel(pool?.shape);
   const tabletsLabel = pool?.tabletsActive ? `${pool.tabletsCount ?? 1} טבליות · ${pool.tabletWeightGrams ?? 200} גרם` : 'אין טבליות פעילות';
+  const coverUri = pool?.imageUri ?? pool?.imageUrl;
 
   function handleDelete() {
     if (!pool) return;
@@ -57,7 +58,7 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
       </View>
 
       <View style={styles.photo}>
-        <PoolPhoto variant="villa" />
+        {coverUri ? <Image source={{ uri: coverUri }} style={styles.coverImage} resizeMode="cover" /> : <PoolPhoto variant="villa" />}
       </View>
 
       <Card style={styles.card}>
@@ -78,6 +79,7 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
           <DetailPill label="טבליות" value={tabletsLabel} />
         </View>
         {pool?.notes ? <Text style={styles.notes}>{pool.notes}</Text> : null}
+        {pool?.imageUploadError ? <Text style={styles.warningText}>{pool.imageUploadError}</Text> : null}
         <Text style={styles.description}>בחר סטיק בדיקה כדי להתחיל סריקה עבור הבריכה הזו.</Text>
       </Card>
 
@@ -176,6 +178,10 @@ const styles = StyleSheet.create({
     marginTop: 18,
     overflow: 'hidden',
   },
+  coverImage: {
+    width: '100%',
+    height: '100%',
+  },
   card: {
     marginTop: 16,
     gap: 8,
@@ -241,6 +247,14 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     fontWeight: '700',
+    ...rtl.text,
+  },
+  warningText: {
+    color: colors.warning,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '800',
     ...rtl.text,
   },
   description: {

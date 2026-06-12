@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { getRecommendedBrand } from '../config/stripBrands';
 import {
@@ -41,7 +42,9 @@ export function AddPoolScreen({ navigation }: Props) {
   const [pumpHoursPerDay, setPumpHoursPerDay] = useState('8');
   const [retestHours, setRetestHours] = useState('6');
   const [notes, setNotes] = useState('');
+  const [imageUri, setImageUri] = useState<string | undefined>();
   const [error, setError] = useState('');
+  const [imageBusy, setImageBusy] = useState(false);
 
   const lengthMeters = parseNumber(length);
   const widthMeters = parseNumber(width);
@@ -58,6 +61,35 @@ export function AddPoolScreen({ navigation }: Props) {
     }
     return calculatePoolVolume({ shape, length: lengthMeters, width: widthMeters, depth: averageDepthMeters });
   }, [averageDepthMeters, diameterMeters, lengthMeters, manualVolumeValue, method, shape, unit, widthMeters]);
+
+  async function pickPoolImage() {
+    setImageBusy(true);
+    setError('');
+
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setError('יש לאפשר גישה לתמונות כדי להוסיף תמונת בריכה.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        aspect: [16, 9],
+        mediaTypes: ['images'],
+        quality: 0.86,
+      });
+
+      if (result.canceled) return;
+      const uri = result.assets[0]?.uri;
+      if (uri) setImageUri(uri);
+    } catch (pickerError) {
+      console.warn('Failed to pick pool image', pickerError);
+      setError('בחירת תמונת הבריכה נכשלה. אפשר לנסות שוב או לשמור בלי תמונה.');
+    } finally {
+      setImageBusy(false);
+    }
+  }
 
   function save() {
     if (!name.trim()) return setError('יש להזין שם לבריכה.');
@@ -83,6 +115,7 @@ export function AddPoolScreen({ navigation }: Props) {
       tabletWeightGrams: tabletsActive ? Math.max(1, Math.round(parseNumber(tabletWeight)) || 200) : 200,
       pumpHoursPerDay: Math.max(0, parseNumber(pumpHoursPerDay) || 8),
       retestHours: Math.max(1, parseNumber(retestHours) || 6),
+      imageUri,
     });
 
     setError('');
@@ -101,6 +134,9 @@ export function AddPoolScreen({ navigation }: Props) {
         </View>
 
         <View style={styles.card}>
+          <SectionLabel label="תמונת בריכה" />
+          <PoolImagePicker imageBusy={imageBusy} imageUri={imageUri} onPick={pickPoolImage} onRemove={() => setImageUri(undefined)} />
+
           <Field label="שם הבריכה" value={name} onChangeText={setName} placeholder="למשל: הבריכה בבית" />
 
           <SectionLabel label="סוג בריכה" />
@@ -231,6 +267,44 @@ function SectionLabel({ label }: { label: string }) {
   return <Text style={styles.sectionLabel}>{label}</Text>;
 }
 
+function PoolImagePicker({
+  imageBusy,
+  imageUri,
+  onPick,
+  onRemove,
+}: {
+  imageBusy: boolean;
+  imageUri?: string;
+  onPick: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <View style={styles.imagePickerWrap}>
+      <Pressable onPress={onPick} disabled={imageBusy} style={({ pressed }) => [styles.imagePicker, pressed && styles.pressed, imageBusy && styles.disabled]}>
+        {imageUri ? (
+          <Image source={{ uri: imageUri }} style={styles.imagePreview} resizeMode="cover" />
+        ) : (
+          <View style={styles.imagePlaceholder}>
+            <Text style={styles.imageIcon}>+</Text>
+            <Text style={styles.imageTitle}>{imageBusy ? 'פותח תמונות...' : 'הוסף תמונת בריכה'}</Text>
+            <Text style={styles.imageHint}>תמונה עוזרת לזהות את הבריכה מהר יותר</Text>
+          </View>
+        )}
+      </Pressable>
+      {imageUri ? (
+        <View style={styles.imageActions}>
+          <Pressable onPress={onPick} style={styles.imageActionButton}>
+            <Text style={styles.imageActionText}>החלפת תמונה</Text>
+          </Pressable>
+          <Pressable onPress={onRemove} style={styles.imageRemoveButton}>
+            <Text style={styles.imageRemoveText}>הסרה</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function ToggleGroup({
   onChange,
   options,
@@ -315,10 +389,37 @@ const styles = StyleSheet.create({
   infoValue: { color: colors.text, fontSize: 13, fontWeight: '900', fontFamily: typography.fontFamilyBold, ...rtl.text },
   infoLabel: { marginTop: 3, color: colors.muted, fontSize: 11, fontWeight: '800', fontFamily: typography.fontFamilyRegular, ...rtl.text },
   error: { color: colors.danger, fontSize: 13, fontWeight: '800', ...rtl.text, fontFamily: typography.fontFamily },
+  imagePickerWrap: { gap: 9 },
+  imagePicker: {
+    height: 154,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSoft,
+  },
+  imagePreview: { width: '100%', height: '100%' },
+  imagePlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: '#ECFEFF',
+  },
+  imageIcon: { color: colors.primaryDark, fontSize: 28, fontWeight: '900', fontFamily: typography.fontFamily },
+  imageTitle: { color: colors.text, fontSize: 14, fontWeight: '900', fontFamily: typography.fontFamilyBold, ...rtl.textCenter },
+  imageHint: { color: colors.muted, fontSize: 11, fontWeight: '800', fontFamily: typography.fontFamilyRegular, ...rtl.textCenter },
+  imageActions: { flexDirection: 'row-reverse', gap: 8 },
+  imageActionButton: { flex: 1, borderRadius: 999, backgroundColor: colors.primarySoft, paddingVertical: 10, alignItems: 'center' },
+  imageActionText: { color: colors.primaryDark, fontSize: 12, fontWeight: '900', fontFamily: typography.fontFamilySemiBold },
+  imageRemoveButton: { borderRadius: 999, backgroundColor: colors.dangerSoft, paddingHorizontal: 16, paddingVertical: 10, alignItems: 'center' },
+  imageRemoveText: { color: colors.danger, fontSize: 12, fontWeight: '900', fontFamily: typography.fontFamilySemiBold },
   primaryBtn: { marginTop: 18, backgroundColor: colors.primary, borderRadius: 999, paddingVertical: 16, alignItems: 'center', ...shadows.button },
   primaryBtnLabel: { color: colors.white, fontSize: 16, fontWeight: '900', fontFamily: typography.fontFamily },
   secondaryBtn: { marginTop: 8, paddingVertical: 12, alignItems: 'center' },
   secondaryBtnLabel: { color: colors.muted, fontSize: 14, fontWeight: '800', fontFamily: typography.fontFamily },
+  pressed: { opacity: 0.9 },
+  disabled: { opacity: 0.62 },
 });
 
 const fieldStyles = StyleSheet.create({
