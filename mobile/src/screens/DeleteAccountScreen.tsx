@@ -1,0 +1,93 @@
+import { useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { Card } from '../components/Card';
+import { LineIcon } from '../components/LineIcon';
+import { useAuth } from '../state/AuthContext';
+import { colors, radius, rtl, shadows, typography } from '../theme';
+import type { RootStackParamList } from '../../App';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'DeleteAccount'>;
+
+export function DeleteAccountScreen({ navigation }: Props) {
+  const { user } = useAuth();
+  const [confirmation, setConfirmation] = useState('');
+  const [message, setMessage] = useState('');
+  const canRequestDeletion = confirmation.trim() === 'מחיקה';
+
+  function requestDeletion() {
+    if (!canRequestDeletion) {
+      setMessage('כדי להמשיך יש להקליד את המילה מחיקה.');
+      return;
+    }
+
+    setMessage('מחיקת חשבון מלאה עדיין דורשת טיפול מאובטח בצד השרת. פנה לתמיכה למחיקת חשבון: support@dipcheck.app');
+  }
+
+  return (
+    <View style={styles.root}>
+      <View style={styles.content}>
+        <View style={styles.topBar}>
+          <Pressable onPress={() => navigation.navigate('Settings')} style={styles.iconButton}>
+            <LineIcon name="chevronLeft" color={colors.primaryDark} size={18} />
+          </Pressable>
+          <View style={styles.headerCopy}>
+            <Text style={styles.title}>מחיקת חשבון</Text>
+            <Text style={styles.subtitle}>{user?.email ?? 'חשבון משתמש'}</Text>
+          </View>
+        </View>
+
+        <Card style={styles.warningCard}>
+          <View style={styles.warningIcon}>
+            <LineIcon name="help" color={colors.danger} size={22} />
+          </View>
+          <Text style={styles.warningTitle}>פעולה רגישה</Text>
+          <Text style={styles.warningText}>
+            מחיקת חשבון תמחק את הבריכות, הבדיקות והתמונות שלך. פעולה זו אינה הפיכה.
+          </Text>
+          <Text style={styles.explainText}>
+            מטעמי אבטחה, מחיקה מלאה חייבת להתבצע דרך backend מאובטח ולא ישירות מתוך האפליקציה.
+          </Text>
+        </Card>
+
+        <Card compact style={styles.formCard}>
+          <Text style={styles.fieldLabel}>להמשך הקלד: מחיקה</Text>
+          <TextInput
+            style={styles.input}
+            value={confirmation}
+            onChangeText={setConfirmation}
+            placeholder="מחיקה"
+            placeholderTextColor={colors.muted}
+          />
+          {message ? <Text style={styles.message}>{message}</Text> : null}
+          <Pressable onPress={requestDeletion} style={({ pressed }) => [styles.dangerButton, !canRequestDeletion && styles.disabled, pressed && styles.pressed]}>
+            <Text style={styles.dangerButtonText}>בקשת מחיקת חשבון</Text>
+          </Pressable>
+        </Card>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.background },
+  content: { flex: 1, paddingHorizontal: 20, paddingTop: 44 },
+  topBar: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
+  iconButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+  headerCopy: { flex: 1 },
+  title: { color: colors.text, fontFamily: typography.fontFamilyBold, fontSize: 22, fontWeight: '900', ...rtl.text },
+  subtitle: { marginTop: 4, color: colors.textSoft, fontFamily: typography.fontFamilyRegular, fontSize: 12, fontWeight: '800', ...rtl.text },
+  warningCard: { marginTop: 20, alignItems: 'center', gap: 9 },
+  warningIcon: { width: 58, height: 58, borderRadius: 25, backgroundColor: colors.dangerSoft, alignItems: 'center', justifyContent: 'center' },
+  warningTitle: { color: colors.text, fontFamily: typography.fontFamilyBold, fontSize: 18, fontWeight: '900', ...rtl.textCenter },
+  warningText: { color: colors.danger, fontFamily: typography.fontFamilyBold, fontSize: 13, fontWeight: '900', lineHeight: 20, ...rtl.textCenter },
+  explainText: { color: colors.textSoft, fontFamily: typography.fontFamilyRegular, fontSize: 12, fontWeight: '800', lineHeight: 19, ...rtl.textCenter },
+  formCard: { marginTop: 14, gap: 10 },
+  fieldLabel: { color: colors.text, fontFamily: typography.fontFamilySemiBold, fontSize: 13, fontWeight: '900', ...rtl.text },
+  input: { backgroundColor: '#F5FAFD', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border, textAlign: 'right', writingDirection: 'rtl', fontFamily: typography.fontFamily },
+  message: { color: colors.warning, fontFamily: typography.fontFamilyRegular, fontSize: 12, fontWeight: '800', lineHeight: 18, ...rtl.text },
+  dangerButton: { borderRadius: radius.round, backgroundColor: colors.danger, paddingVertical: 13, alignItems: 'center', ...shadows.soft },
+  dangerButtonText: { color: colors.white, fontFamily: typography.fontFamilyBold, fontSize: 14, fontWeight: '900' },
+  disabled: { opacity: 0.55 },
+  pressed: { opacity: 0.9, transform: [{ scale: 0.99 }] },
+});

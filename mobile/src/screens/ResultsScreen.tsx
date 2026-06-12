@@ -14,6 +14,7 @@ import { calculateDosage } from '../domain/dosage';
 import type { ScanResultParameter, StripAnalysisResult } from '../domain/scanResults';
 import { analyzeStripImage, getStripAnalysisConfig } from '../services/stripAnalysisService';
 import { prepareScanImageForRemoteAnalysis } from '../services/scanImageStorage';
+import { useAppPreferences } from '../state/AppPreferencesContext';
 import { useAuth } from '../state/AuthContext';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory } from '../state/ResultsHistoryContext';
@@ -78,7 +79,34 @@ function SafetyCard({ text }: { text?: string }) {
   );
 }
 
+function getAnalysisSourceLabel(result: StripAnalysisResult) {
+  if (result.source === 'ai') return 'ניתוח AI';
+  if (result.source === 'cv' || result.source === 'remote-v1') return 'ניתוח פיקסלים';
+  if (result.source === 'mock' || result.source === 'remote-mock') return 'ערכי דמו';
+  return 'ניתוח אוטומטי';
+}
+
+function AnalysisDebugCard({ result }: { result: StripAnalysisResult }) {
+  const confidence = typeof result.confidence === 'number' ? `${Math.round(result.confidence * 100)}%` : 'לא זמין';
+  const details = [result.provider, result.model, result.shotsUsed ? `${result.shotsUsed} ריצות` : undefined].filter(Boolean).join(' · ');
+
+  return (
+    <Card compact style={styles.debugCard}>
+      <View style={styles.debugHeader}>
+        <View style={styles.debugIcon}>
+          <LineIcon name="settings" color={colors.primaryDark} size={14} />
+        </View>
+        <Text style={styles.debugTitle}>{getAnalysisSourceLabel(result)}</Text>
+      </View>
+      <Text style={styles.debugText}>ביטחון: {confidence}</Text>
+      {details ? <Text style={styles.debugText}>{details}</Text> : null}
+      {result.notes ? <Text style={styles.debugNote}>{result.notes}</Text> : null}
+    </Card>
+  );
+}
+
 export function ResultsScreen({ navigation, route }: Props) {
+  const { showTechnicalAnalysisDetails } = useAppPreferences();
   const { accountId, user } = useAuth();
   const { getHistoryRecord, isHydrated, saveAnalysisResult } = useResultsHistory();
   const { getPool } = usePools();
@@ -92,7 +120,9 @@ export function ResultsScreen({ navigation, route }: Props) {
     setScanImageUpload,
   } = useScanSession();
   const [analysisResult, setAnalysisResult] = useState<StripAnalysisResult | null>(null);
+  const [analysisError, setAnalysisError] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(true);
+  const [retryKey, setRetryKey] = useState(0);
   const savedTestId = route.params?.testId;
   const savedRecord = savedTestId ? getHistoryRecord(savedTestId) : undefined;
   const inputBrandId = savedTestId ? route.params?.brandId : session.selectedBrandId ?? route.params?.brandId;
@@ -108,102 +138,114 @@ export function ResultsScreen({ navigation, route }: Props) {
     let isMounted = true;
 
     async function analyzeImage() {
-      if (savedTestId) {
-        if (!isHydrated) {
-          setIsAnalyzing(true);
+      try {
+        setAnalysisError('');
+        if (savedTestId) {
+          if (!isHydrated) {
+            setIsAnalyzing(true);
+            return;
+          }
+
+          if (savedRecord?.analysisResult) {
+            setAnalysisResult({
+              ...savedRecord.analysisResult,
+              dosage: savedRecord.dosageResult ?? savedRecord.analysisResult.dosage,
+            });
+          } else {
+            setAnalysisResult(null);
+          }
+          setIsAnalyzing(false);
           return;
         }
 
-        if (savedRecord?.analysisResult) {
+        if (session.analysisResult) {
           setAnalysisResult({
-            ...savedRecord.analysisResult,
-            dosage: savedRecord.dosageResult ?? savedRecord.analysisResult.dosage,
+            ...session.analysisResult,
+            dosage: session.dosageResult ?? session.analysisResult.dosage,
           });
-        } else {
-          setAnalysisResult(null);
+          setIsAnalyzing(false);
+          return;
         }
-        setIsAnalyzing(false);
-        return;
-      }
 
-      if (session.analysisResult) {
-        setAnalysisResult({
-          ...session.analysisResult,
-          dosage: session.dosageResult ?? session.analysisResult.dosage,
-        });
-        setIsAnalyzing(false);
-        return;
-      }
+        if (!inputImageUri) {
+          setScanError({
+            code: 'missingImage',
+            message: 'בחרו או אשרו תמונת סטיק לפני הצגת תוצאות.',
+          });
+          setAnalysisResult(null);
+          setIsAnalyzing(false);
+          return;
+        }
 
-      if (!inputImageUri) {
-        setScanError({
-          code: 'missingImage',
-          message: 'בחרו או אשרו תמונת סטיק לפני הצגת תוצאות.',
-        });
-        setAnalysisResult(null);
-        setIsAnalyzing(false);
-        return;
-      }
+        setCurrentStep('analyzing');
+        setIsAnalyzing(true);
+        const testId = session.testId ?? ensureTestId();
+        let imagePath = inputImagePath;
+        let imageUrl = inputImageUrl;
+        let imageUploadError: string | undefined;
+        const analysisMode = getStripAnalysisConfig().mode;
 
-      setCurrentStep('analyzing');
-      setIsAnalyzing(true);
-      const testId = session.testId ?? ensureTestId();
-      let imagePath = inputImagePath;
-      let imageUrl = inputImageUrl;
-      let imageUploadError: string | undefined;
-      const analysisMode = getStripAnalysisConfig().mode;
+        if ((analysisMode === 'remote' || analysisMode === 'auto') && accountId && user?.id && !imagePath && !imageUrl) {
+          const preparedImage = await prepareScanImageForRemoteAnalysis({
+            accountId,
+            imageUri: inputImageUri,
+            testId,
+            userId: user.id,
+          });
 
-      if ((analysisMode === 'remote' || analysisMode === 'auto') && accountId && user?.id && !imagePath && !imageUrl) {
-        const preparedImage = await prepareScanImageForRemoteAnalysis({
+          imagePath = preparedImage.imagePath;
+          imageUrl = preparedImage.imageUrl;
+          imageUploadError = preparedImage.uploadError;
+        }
+
+        const result = await analyzeStripImage({
           accountId,
+          brandId: inputBrandId,
+          imagePath,
+          imageUrl,
           imageUri: inputImageUri,
+          poolId,
+          qualityNotes: session.qualityNotes,
+          scanSession: session,
+          selectedBrand: session.selectedBrand,
+          skipImageUpload: Boolean(imagePath || imageUrl),
           testId,
-          userId: user.id,
+          userId: user?.id,
         });
+        const dosage = calculateDosage(result, pool);
+        const enrichedResult: StripAnalysisResult = {
+          ...result,
+          id: testId,
+          dosage,
+          imagePath: result.imagePath ?? imagePath,
+          imageUrl: result.imageUrl ?? imageUrl,
+          overallStatus: {
+            label: dosage.primaryRecommendation ? 'נדרש תיקון קל' : 'המים מאוזנים',
+            tone: dosage.primaryRecommendation ? 'warning' : 'success',
+          },
+          recommendation: dosage.summary,
+        };
 
-        imagePath = preparedImage.imagePath;
-        imageUrl = preparedImage.imageUrl;
-        imageUploadError = preparedImage.uploadError;
-      }
-
-      const result = await analyzeStripImage({
-        accountId,
-        brandId: inputBrandId,
-        imagePath,
-        imageUrl,
-        imageUri: inputImageUri,
-        poolId,
-        qualityNotes: session.qualityNotes,
-        scanSession: session,
-        selectedBrand: session.selectedBrand,
-        skipImageUpload: Boolean(imagePath || imageUrl),
-        testId,
-        userId: user?.id,
-      });
-      const dosage = calculateDosage(result, pool);
-      const enrichedResult: StripAnalysisResult = {
-        ...result,
-        id: testId,
-        dosage,
-        imagePath: result.imagePath ?? imagePath,
-        imageUrl: result.imageUrl ?? imageUrl,
-        overallStatus: {
-          label: dosage.primaryRecommendation ? 'נדרש תיקון קל' : 'המים מאוזנים',
-          tone: dosage.primaryRecommendation ? 'warning' : 'success',
-        },
-        recommendation: dosage.summary,
-      };
-
-      if (isMounted) {
-        setAnalysisResult(enrichedResult);
-        setSessionAnalysisResult(enrichedResult);
-        setScanImageUpload({
-          imagePath: enrichedResult.imagePath,
-          imageUrl: enrichedResult.imageUrl,
-          imageUploadError,
-          testId,
-        });
-        setIsAnalyzing(false);
+        if (isMounted) {
+          setAnalysisResult(enrichedResult);
+          setSessionAnalysisResult(enrichedResult);
+          setScanImageUpload({
+            imagePath: enrichedResult.imagePath,
+            imageUrl: enrichedResult.imageUrl,
+            imageUploadError,
+            testId,
+          });
+          setIsAnalyzing(false);
+        }
+      } catch (error) {
+        console.warn('Failed to prepare results', error);
+        if (isMounted) {
+          const message = 'לא הצלחנו להשלים את ניתוח הבדיקה כרגע. אפשר לנסות שוב או לחזור לסריקה.';
+          setScanError({ code: 'analysisFailed', message });
+          setAnalysisError(message);
+          setAnalysisResult(null);
+          setIsAnalyzing(false);
+        }
       }
     }
 
@@ -222,6 +264,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     isHydrated,
     pool,
     poolId,
+    retryKey,
     savedRecord,
     savedTestId,
     session.analysisResult,
@@ -290,6 +333,28 @@ export function ResultsScreen({ navigation, route }: Props) {
     );
   }
 
+  if (analysisError && !analysisResult) {
+    return (
+      <AppShell activeTab="scan" navigation={navigation}>
+        <View style={styles.emptyHeader}>
+          <Text style={styles.title}>תוצאות הבדיקה</Text>
+          <Text style={styles.subtitle}>הניתוח לא הושלם</Text>
+        </View>
+        <Card compact style={styles.messageCard}>
+          <Text style={styles.messageTitle}>משהו השתבש בדרך</Text>
+          <Text style={styles.messageText}>{analysisError}</Text>
+        </Card>
+        <View style={styles.actions}>
+          <PrimaryButton label="נסה שוב" icon="scan" onPress={() => setRetryKey((current) => current + 1)} />
+          <Pressable style={styles.secondaryButton} onPress={() => navigation.replace('Scan', poolId ? { poolId, brandId: inputBrandId } : undefined)}>
+            <LineIcon name="camera" color={colors.primaryDark} size={16} />
+            <Text style={styles.secondaryText}>חזרה לסריקה</Text>
+          </Pressable>
+        </View>
+      </AppShell>
+    );
+  }
+
   if (isAnalyzing || !analysisResult) {
     return (
       <AppShell activeTab={isSavedResult ? 'history' : 'scan'} navigation={navigation}>
@@ -323,6 +388,15 @@ export function ResultsScreen({ navigation, route }: Props) {
       </View>
 
       {analysisResult.lowConfidence ? <LowConfidenceWarning /> : null}
+
+      {session.imageUploadError && !isSavedResult ? (
+        <Card compact style={styles.warningCard}>
+          <Text style={styles.warningTitle}>התמונה נשמרה מקומית</Text>
+          <Text style={styles.warningText}>{session.imageUploadError}</Text>
+        </Card>
+      ) : null}
+
+      {showTechnicalAnalysisDetails ? <AnalysisDebugCard result={analysisResult} /> : null}
 
       <View style={styles.section}>
         <ParameterArcs recs={resultCards} />
@@ -446,6 +520,68 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'flex-start',
     gap: 10,
+  },
+  warningCard: {
+    marginTop: 12,
+    borderColor: 'rgba(240,165,41,0.28)',
+    backgroundColor: colors.warningSoft,
+  },
+  warningTitle: {
+    color: colors.warning,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 13,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  warningText: {
+    marginTop: 5,
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 18,
+    ...rtl.text,
+  },
+  debugCard: {
+    marginTop: 12,
+    gap: 5,
+    backgroundColor: colors.surfaceSoft,
+  },
+  debugHeader: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 8,
+  },
+  debugIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  debugTitle: {
+    color: colors.primaryDeep,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 12,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  debugText: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 11,
+    fontWeight: '800',
+    ...rtl.text,
+  },
+  debugNote: {
+    marginTop: 2,
+    color: colors.muted,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 16,
+    ...rtl.text,
   },
   safetyIcon: {
     width: 34,

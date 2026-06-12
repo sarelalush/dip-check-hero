@@ -6,6 +6,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { LineIcon, type LineIconName } from '../components/LineIcon';
 import { getRecommendedBrand } from '../config/stripBrands';
+import { useAppPreferences } from '../state/AppPreferencesContext';
 import { useAuth } from '../state/AuthContext';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
@@ -15,26 +16,8 @@ type UnitsPreference = 'liters' | 'cubic';
 
 const UNITS_KEY = '@aquasense/preferences/volume-units';
 
-const FAQ_ITEMS = [
-  {
-    title: 'איך לצלם סטיק נכון',
-    text: 'צלמו על רקע בהיר, בלי צל חזק, כשהסטיק חד וכל ריבועי הצבע נראים.',
-  },
-  {
-    title: 'למה צריך נפח בריכה',
-    text: 'נפח הבריכה מאפשר לחשב המלצות טיפול ומינונים בצורה מותאמת יותר.',
-  },
-  {
-    title: 'מה עושים כשהצילום לא ברור',
-    text: 'צלמו מחדש באור יום טבעי, על רקע לבן, כשהסטיק שטוח וכל ריבועי הצבע נראים.',
-  },
-  {
-    title: 'מתי לבצע בדיקה חוזרת',
-    text: 'אחרי טיפול במים מומלץ להמתין לפי ההנחיה במסך התוצאות ואז לבדוק שוב.',
-  },
-];
-
 export function SettingsScreen({ navigation }: Props) {
+  const { showTechnicalAnalysisDetails, setShowTechnicalAnalysisDetails } = useAppPreferences();
   const { user, signOut, updateDisplayName } = useAuth();
   const [busy, setBusy] = useState(false);
   const [savingName, setSavingName] = useState(false);
@@ -65,7 +48,6 @@ export function SettingsScreen({ navigation }: Props) {
     async function restorePreferences() {
       try {
         const storedUnits = await AsyncStorage.getItem(UNITS_KEY);
-
         if (!mounted) return;
         setUnitsPreference(storedUnits === 'cubic' ? 'cubic' : 'liters');
       } catch (error) {
@@ -81,9 +63,15 @@ export function SettingsScreen({ navigation }: Props) {
   }, []);
 
   async function handleSaveName() {
+    const trimmedName = nameInput.trim();
+    if (!trimmedName) {
+      setMessage('יש להזין שם תצוגה.');
+      return;
+    }
+
     setSavingName(true);
     setMessage('');
-    const result = await updateDisplayName(nameInput);
+    const result = await updateDisplayName(trimmedName);
     setSavingName(false);
     setMessage(result.error ?? 'שם התצוגה נשמר.');
   }
@@ -109,7 +97,7 @@ export function SettingsScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Text style={styles.kicker}>התאמה אישית</Text>
         <Text style={styles.title}>הגדרות</Text>
-        <Text style={styles.subtitle}>ניהול חשבון, העדפות סריקה ותמיכה באפליקציה.</Text>
+        <Text style={styles.subtitle}>ניהול חשבון, מנוי, העדפות סריקה ותמיכה באפליקציה.</Text>
 
         <Section title="פרטי חשבון">
           <View style={styles.profileCard}>
@@ -137,6 +125,13 @@ export function SettingsScreen({ navigation }: Props) {
               <Text style={styles.smallDangerText}>{busy ? 'יוצא...' : 'יציאה מהחשבון'}</Text>
             </Pressable>
           </View>
+          <SettingsRow
+            danger
+            icon="help"
+            label="מחיקת חשבון"
+            value="בקשת מחיקה מאובטחת דרך תמיכה"
+            onPress={() => navigation.navigate('DeleteAccount')}
+          />
         </Section>
 
         <Section title="מנוי ושימוש">
@@ -155,7 +150,14 @@ export function SettingsScreen({ navigation }: Props) {
             value="הגדרה לפי בריכה במסך פרטי הבריכה"
             onPress={() => navigation.navigate('Pools')}
           />
-          <InfoRow icon="scan" label="העדפות סריקה" value={recommendedBrand.nameHe} />
+          <InfoRow icon="scan" label="סטיק ברירת מחדל" value={recommendedBrand.nameHe} />
+          <ToggleRow
+            enabled={showTechnicalAnalysisDetails}
+            icon="settings"
+            label="הצגת פרטים טכניים בתוצאות"
+            value="מציג מקור ניתוח וביטחון רק כשהאפשרות פעילה"
+            onToggle={() => setShowTechnicalAnalysisDetails(!showTechnicalAnalysisDetails)}
+          />
           <View style={styles.preferenceRow}>
             <View style={styles.preferenceCopy}>
               <Text style={styles.preferenceLabel}>יחידות נפח</Text>
@@ -169,17 +171,19 @@ export function SettingsScreen({ navigation }: Props) {
           <InfoRow icon="help" label="שפה" value="עברית · בקרוב אפשרויות נוספות" muted />
         </Section>
 
-        <Section title="עזרה ותמיכה">
-          {FAQ_ITEMS.map((item) => (
-            <View key={item.title} style={styles.faqCard}>
-              <Text style={styles.faqTitle}>{item.title}</Text>
-              <Text style={styles.faqText}>{item.text}</Text>
-            </View>
-          ))}
-          <View style={styles.supportCard}>
-            <Text style={styles.supportTitle}>צריך עזרה?</Text>
-            <Text style={styles.supportText}>שלחו לנו הודעה: support@dipcheck.app</Text>
-          </View>
+        <Section title="עזרה ומשפטי">
+          <SettingsRow icon="help" label="עזרה ותמיכה" value="שאלות נפוצות ויצירת קשר" onPress={() => navigation.navigate('Support')} />
+          <SettingsRow icon="results" label="מדיניות פרטיות" value="איזה מידע נשמר ואיך משתמשים בו" onPress={() => navigation.navigate('PrivacyPolicy')} />
+          <SettingsRow icon="history" label="תנאי שימוש" value="המלצות, אחריות ושימוש בטוח" onPress={() => navigation.navigate('Terms')} />
+        </Section>
+
+        <Section title="מוכנות לפרסום">
+          <SettingsRow
+            icon="check"
+            label="בדיקות לפני פרסום"
+            value="רשימת מצב פנימית לפני App Store"
+            onPress={() => navigation.navigate('ReleaseChecklist')}
+          />
         </Section>
       </ScrollView>
       <BottomTabBar active="settings" navigation={navigation} />
@@ -212,9 +216,36 @@ function InfoRow({ icon, label, muted, value }: { icon: LineIconName; label: str
   );
 }
 
-function SettingsRow({ icon, label, onPress, value }: { icon: LineIconName; label: string; onPress: () => void; value: string }) {
+function SettingsRow({ danger, icon, label, onPress, value }: { danger?: boolean; icon: LineIconName; label: string; onPress: () => void; value: string }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.infoRow, pressed && styles.pressed]}>
+      <View style={[styles.infoIcon, danger && styles.dangerIcon]}>
+        <LineIcon name={icon} color={danger ? colors.danger : colors.primaryDark} size={18} />
+      </View>
+      <View style={styles.preferenceCopy}>
+        <Text style={[styles.preferenceLabel, danger && styles.dangerText]}>{label}</Text>
+        <Text style={styles.preferenceValue} numberOfLines={2}>{value}</Text>
+      </View>
+      <LineIcon name="chevronLeft" color={colors.muted} size={16} />
+    </Pressable>
+  );
+}
+
+function ToggleRow({
+  enabled,
+  icon,
+  label,
+  onToggle,
+  value,
+}: {
+  enabled: boolean;
+  icon: LineIconName;
+  label: string;
+  onToggle: () => void;
+  value: string;
+}) {
+  return (
+    <Pressable onPress={onToggle} style={({ pressed }) => [styles.infoRow, pressed && styles.pressed]}>
       <View style={styles.infoIcon}>
         <LineIcon name={icon} color={colors.primaryDark} size={18} />
       </View>
@@ -222,7 +253,9 @@ function SettingsRow({ icon, label, onPress, value }: { icon: LineIconName; labe
         <Text style={styles.preferenceLabel}>{label}</Text>
         <Text style={styles.preferenceValue} numberOfLines={2}>{value}</Text>
       </View>
-      <LineIcon name="chevronLeft" color={colors.muted} size={16} />
+      <View style={[styles.switch, enabled && styles.switchOn]}>
+        <View style={[styles.switchKnob, enabled && styles.switchKnobOn]} />
+      </View>
     </Pressable>
   );
 }
@@ -274,6 +307,8 @@ const styles = StyleSheet.create({
   errorMessage: { color: colors.danger },
   infoRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10, borderRadius: 16, backgroundColor: colors.surfaceSoft, padding: 12, borderWidth: 1, borderColor: colors.borderSoft },
   infoIcon: { width: 38, height: 38, borderRadius: 15, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  dangerIcon: { backgroundColor: colors.dangerSoft },
+  dangerText: { color: colors.danger },
   preferenceRow: { gap: 10, borderRadius: 16, backgroundColor: colors.surfaceSoft, padding: 12, borderWidth: 1, borderColor: colors.borderSoft },
   preferenceCopy: { flex: 1 },
   preferenceLabel: { color: colors.muted, fontSize: 11, fontWeight: '900', fontFamily: typography.fontFamilyRegular, ...rtl.text },
@@ -284,17 +319,10 @@ const styles = StyleSheet.create({
   segmentButtonSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   segmentText: { color: colors.textSoft, fontSize: 12, fontWeight: '900', fontFamily: typography.fontFamilySemiBold },
   segmentTextSelected: { color: colors.white },
-  toggleRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12, borderRadius: 16, backgroundColor: colors.surfaceSoft, padding: 12, borderWidth: 1, borderColor: colors.borderSoft },
   switch: { width: 48, height: 28, borderRadius: 14, padding: 3, backgroundColor: colors.borderStrong, justifyContent: 'center' },
   switchOn: { backgroundColor: colors.primary },
   switchKnob: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.white, alignSelf: 'flex-start' },
   switchKnobOn: { alignSelf: 'flex-end' },
-  faqCard: { borderRadius: 16, backgroundColor: colors.surfaceSoft, padding: 13, borderWidth: 1, borderColor: colors.borderSoft },
-  faqTitle: { color: colors.text, fontSize: 13, fontWeight: '900', fontFamily: typography.fontFamilyBold, ...rtl.text },
-  faqText: { marginTop: 5, color: colors.textSoft, fontSize: 12, lineHeight: 18, fontWeight: '700', fontFamily: typography.fontFamilyRegular, ...rtl.text },
-  supportCard: { borderRadius: 16, backgroundColor: colors.primarySoft, padding: 13, borderWidth: 1, borderColor: colors.borderStrong },
-  supportTitle: { color: colors.primaryDark, fontSize: 13, fontWeight: '900', fontFamily: typography.fontFamilyBold, ...rtl.text },
-  supportText: { marginTop: 5, color: colors.primaryDeep, fontSize: 12, fontWeight: '800', fontFamily: typography.fontFamilyRegular, ...rtl.text },
   pressed: { opacity: 0.9, transform: [{ scale: 0.99 }] },
   disabled: { opacity: 0.62 },
 });
