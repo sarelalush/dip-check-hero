@@ -1,14 +1,18 @@
-import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
-import { useEffect, useState } from 'react';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
+import { AnalysisSourceBadge } from '../components/AnalysisSourceBadge';
 import { Card } from '../components/Card';
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ResultRow } from '../components/ResultRow';
 import { LineIcon } from '../components/LineIcon';
-import { colors, rtl, typography } from '../theme';
-import type { StripAnalysisResult } from '../domain/scanResults';
+import { LowConfidenceWarning } from '../components/LowConfidenceWarning';
+import { ParameterArcs } from '../components/ParameterArcs';
+import { PrimaryButton } from '../components/PrimaryButton';
+import { ResultCard } from '../components/ResultCard';
+import { colors, radius, rtl, shadows, typography } from '../theme';
+import type { DosageRecommendation } from '../domain/dosage';
 import { calculateDosage } from '../domain/dosage';
+import type { ScanResultParameter, StripAnalysisResult } from '../domain/scanResults';
 import { analyzeStripImage, getStripAnalysisConfig } from '../services/stripAnalysisService';
 import { prepareScanImageForRemoteAnalysis } from '../services/scanImageStorage';
 import { useAuth } from '../state/AuthContext';
@@ -26,40 +30,64 @@ function formatAnalysisDate(timestamp: number) {
     hour: '2-digit',
     minute: '2-digit',
     month: 'long',
+    year: 'numeric',
   }).format(new Date(timestamp));
 }
 
-function formatDisplayValue(value: number) {
-  return Number.isInteger(value) ? `${value}` : `${value.toFixed(1)}`;
+function formatVolume(volumeLiters?: number) {
+  if (!volumeLiters || volumeLiters <= 0) return undefined;
+  return `${Math.round(volumeLiters).toLocaleString('he-IL')} ליטר`;
 }
 
-function formatRangeLabel(analysisResult: StripAnalysisResult, parameterIndex: number) {
-  const parameter = analysisResult.parameters[parameterIndex];
-  return parameter.unit ? `${parameter.idealRange.label} ${parameter.unit}` : parameter.idealRange.label;
+function targetForParameter(parameter: ScanResultParameter) {
+  return Number(((parameter.idealRange.min + parameter.idealRange.max) / 2).toFixed(parameter.key === 'ph' ? 1 : 0));
 }
 
-function formatAnalysisSource(analysisResult: StripAnalysisResult) {
-  const confidence = typeof analysisResult.confidence === 'number' ? ` · ביטחון ${Math.round(analysisResult.confidence * 100)}%` : '';
-  const provider = analysisResult.provider ? ` · ${analysisResult.provider}` : '';
-  const model = analysisResult.model ? ` · ${analysisResult.model}` : '';
+function mapParameterToRecommendation(parameter: ScanResultParameter): DosageRecommendation {
+  return {
+    actionHe: parameter.recommendation,
+    blocked: parameter.status.kind !== 'ok',
+    exactAmountAvailable: false,
+    labelHe: parameter.name,
+    measured: parameter.value,
+    paramKey: parameter.key,
+    status: parameter.status.kind,
+    target: targetForParameter(parameter),
+    unit: parameter.unit,
+  };
+}
 
-  if (analysisResult.source === 'ai') {
-    return `מקור ניתוח: AI${provider}${model}${confidence}`;
+function getResultCards(result: StripAnalysisResult): DosageRecommendation[] {
+  if (result.dosage?.recommendations?.length) {
+    return result.dosage.recommendations;
   }
 
-  if (analysisResult.source === 'cv') {
-    return `מקור ניתוח: CV fallback${confidence}`;
-  }
+  return result.parameters.map(mapParameterToRecommendation);
+}
 
-  if (analysisResult.source === 'remote-v1') {
-    return `מקור ניתוח: remote-v1${confidence}`;
-  }
+function NotesCard({ notes }: { notes?: string }) {
+  if (!notes) return null;
 
-  if (analysisResult.source === 'remote-mock') {
-    return `מקור ניתוח: remote-mock${confidence}`;
-  }
+  return (
+    <View style={styles.notesCard}>
+      <LineIcon name="help" color={colors.primaryDark} size={14} />
+      <Text style={styles.notesText}>{notes}</Text>
+    </View>
+  );
+}
 
-  return `מקור ניתוח: mock${confidence}`;
+function SafetyCard({ text }: { text?: string }) {
+  return (
+    <View style={styles.safetyCard}>
+      <View style={styles.safetyIcon}>
+        <LineIcon name="help" color={colors.warning} size={15} />
+      </View>
+      <Text style={styles.safetyText}>
+        {text ||
+          'החישוב הוא הערכה לפי נתוני הבריכה ותוצאת הסטיק. יש לפעול לפי הוראות יצרן חומרי הבריכה, להוסיף חומרים בהדרגה, לבדוק שוב, ולא לערבב חומרים שונים ישירות.'}
+      </Text>
+    </View>
+  );
 }
 
 export function ResultsScreen({ navigation, route }: Props) {
@@ -72,8 +100,8 @@ export function ResultsScreen({ navigation, route }: Props) {
     session,
     setAnalysisResult: setSessionAnalysisResult,
     setCurrentStep,
-    setScanImageUpload,
     setScanError,
+    setScanImageUpload,
   } = useScanSession();
   const [analysisResult, setAnalysisResult] = useState<StripAnalysisResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(true);
@@ -86,8 +114,6 @@ export function ResultsScreen({ navigation, route }: Props) {
   const poolId = savedRecord?.poolId ?? (savedTestId ? route.params?.poolId : session.selectedPoolId ?? route.params?.poolId);
   const pool = poolId ? getPool(poolId) : undefined;
   const poolName = savedRecord?.poolName ?? pool?.name ?? FALLBACK_POOL_NAME;
-  const imageDisplayUri = savedRecord?.imageUrl ?? savedRecord?.imageUri ?? inputImageUri;
-  const hasImage = Boolean(imageDisplayUri);
   const isSavedResult = Boolean(savedTestId);
 
   useEffect(() => {
@@ -199,59 +225,60 @@ export function ResultsScreen({ navigation, route }: Props) {
       isMounted = false;
     };
   }, [
-    isHydrated,
+    accountId,
+    ensureTestId,
     inputBrandId,
     inputImagePath,
     inputImageUri,
     inputImageUrl,
+    isHydrated,
     pool,
     poolId,
-    route.params?.brandId,
-    route.params?.imageUri,
-    route.params?.poolId,
-    accountId,
-    session.analysisResult,
-    session.dosageResult,
-    session.imagePath,
-    session.imageUrl,
-    session.testId,
     savedRecord,
     savedTestId,
-    ensureTestId,
+    session.analysisResult,
+    session.confirmedImageUri,
+    session.dosageResult,
+    session.imagePath,
+    session.imageUri,
+    session.imageUrl,
+    session.qualityNotes,
+    session.selectedBrand,
+    session.selectedBrandId,
+    session.selectedPoolId,
+    session.testId,
     setCurrentStep,
-    setScanImageUpload,
     setScanError,
+    setScanImageUpload,
     setSessionAnalysisResult,
     user?.id,
   ]);
 
-  function handleSave() {
-    if (!analysisResult) {
-      return;
-    }
+  const resultCards = useMemo(() => (analysisResult ? getResultCards(analysisResult) : []), [analysisResult]);
+  const volumeLabel = formatVolume(pool?.volumeLiters);
 
+  function handleSave() {
+    if (!analysisResult) return;
     saveAnalysisResult(analysisResult);
     resetScanSession();
     navigation.navigate('History');
   }
 
+  function handleNewScan() {
+    resetScanSession();
+    navigation.navigate('SelectStrip', poolId ? { poolId } : undefined);
+  }
+
   if (savedTestId && isHydrated && !analysisResult) {
     return (
       <AppShell activeTab="history" navigation={navigation}>
-        <View style={styles.header}>
+        <View style={styles.emptyHeader}>
           <Text style={styles.title}>תוצאות הבדיקה</Text>
-          <Text style={styles.poolName}>בדיקה לא נמצאה</Text>
-          <Text style={styles.subtitle}>ייתכן שהרשומה נמחקה או שעדיין לא נשמרה מקומית.</Text>
+          <Text style={styles.subtitle}>בדיקה לא נמצאה</Text>
         </View>
-
-        <Card compact style={styles.analyzingCard}>
-          <View style={styles.analyzingIcon}>
-            <LineIcon name="history" color={colors.primaryDark} size={16} />
-          </View>
-          <View style={styles.analyzingCopy}>
-            <Text style={styles.analyzingTitle}>אין תוצאה שמורה</Text>
-            <Text style={styles.analyzingText}>חזרו להיסטוריה או התחילו סריקה חדשה עבור הבריכה.</Text>
-          </View>
+        <Card compact style={styles.messageCard}>
+          <Text style={styles.messageTitle}>אין תוצאה שמורה</Text>
+          <Text style={styles.messageText}>ייתכן שהרשומה נמחקה או שעדיין לא נשמרה מקומית.</Text>
         </Card>
       </AppShell>
     );
@@ -260,23 +287,15 @@ export function ResultsScreen({ navigation, route }: Props) {
   if (!savedTestId && !inputImageUri && !analysisResult) {
     return (
       <AppShell activeTab="scan" navigation={navigation}>
-        <View style={styles.header}>
+        <View style={styles.emptyHeader}>
           <Text style={styles.title}>תוצאות הבדיקה</Text>
-          <Text style={styles.poolName}>אין תמונה לניתוח</Text>
-          <Text style={styles.subtitle}>בחרו או אשרו תמונת סטיק לפני שמציגים תוצאות.</Text>
+          <Text style={styles.subtitle}>אין תמונה לניתוח</Text>
         </View>
-
-        <Card compact style={styles.analyzingCard}>
-          <View style={styles.analyzingIcon}>
-            <LineIcon name="image" color={colors.primaryDark} size={16} />
-          </View>
-          <View style={styles.analyzingCopy}>
-            <Text style={styles.analyzingTitle}>חסר צילום סטיק</Text>
-            <Text style={styles.analyzingText}>חזרו למסך הסריקה ובחרו תמונה ברורה של הסטיק.</Text>
-          </View>
+        <Card compact style={styles.messageCard}>
+          <Text style={styles.messageTitle}>חסר צילום סטיק</Text>
+          <Text style={styles.messageText}>חזרו למסך הסריקה ובחרו תמונה ברורה של הסטיק.</Text>
         </Card>
-
-        <View style={styles.saveButton}>
+        <View style={styles.primaryAction}>
           <PrimaryButton label="חזרה לסריקה" icon="scan" onPress={() => navigation.replace('Scan')} />
         </View>
       </AppShell>
@@ -286,19 +305,17 @@ export function ResultsScreen({ navigation, route }: Props) {
   if (isAnalyzing || !analysisResult) {
     return (
       <AppShell activeTab={isSavedResult ? 'history' : 'scan'} navigation={navigation}>
-        <View style={styles.header}>
+        <View style={styles.emptyHeader}>
           <Text style={styles.title}>תוצאות הבדיקה</Text>
-          <Text style={styles.poolName}>{poolName}</Text>
           <Text style={styles.subtitle}>מנתח את תמונת הסטיק...</Text>
         </View>
-
         <Card compact style={styles.analyzingCard}>
           <View style={styles.analyzingIcon}>
             <ActivityIndicator color={colors.primaryDark} size="small" />
           </View>
           <View style={styles.analyzingCopy}>
-            <Text style={styles.analyzingTitle}>ניתוח בדיקה בפעולה</Text>
-            <Text style={styles.analyzingText}>אנחנו מנתחים את תמונת הסטיק ומכינים את תוצאות הבדיקה.</Text>
+            <Text style={styles.messageTitle}>ניתוח בדיקה בפעולה</Text>
+            <Text style={styles.messageText}>אנחנו מנתחים את תמונת הסטיק ומכינים את תוצאות הבדיקה.</Text>
           </View>
         </Card>
       </AppShell>
@@ -307,70 +324,54 @@ export function ResultsScreen({ navigation, route }: Props) {
 
   return (
     <AppShell activeTab={isSavedResult ? 'history' : 'scan'} navigation={navigation}>
-      <View style={styles.header}>
-        <Text style={styles.title}>תוצאות הבדיקה</Text>
-        <Text style={styles.poolName}>{poolName}</Text>
-        <Text style={styles.subtitle}>{formatAnalysisDate(analysisResult.analyzedAt)}</Text>
+      <View style={styles.heroCard}>
+        <View pointerEvents="none" style={styles.heroGlowLeft} />
+        <View pointerEvents="none" style={styles.heroGlowRight} />
+        <Text style={styles.heroKicker}>תוצאות הבדיקה</Text>
+        <Text style={styles.heroTitle}>{poolName}</Text>
+        <Text style={styles.heroMeta}>
+          {[volumeLabel, formatAnalysisDate(analysisResult.analyzedAt)].filter(Boolean).join(' · ')}
+        </Text>
       </View>
 
-      <View style={styles.resultsList}>
-        {isSavedResult && imageDisplayUri ? (
-          <Card compact style={styles.savedImageCard}>
-            <Image source={{ uri: imageDisplayUri }} style={styles.savedImage} resizeMode="cover" />
-            <View style={styles.savedImageCopy}>
-              <Text style={styles.savedImageTitle}>תמונת הסטיק</Text>
-              <Text style={styles.savedImageText}>
-                {savedRecord?.imageUrl ? 'נטענה מהענן' : 'מוצגת מהשמירה המקומית'}
-              </Text>
-            </View>
-          </Card>
-        ) : null}
+      <AnalysisSourceBadge result={analysisResult} />
+      {analysisResult.lowConfidence ? <LowConfidenceWarning notes={analysisResult.notes} /> : <NotesCard notes={analysisResult.notes} />}
 
-        {hasImage ? (
-          <View style={styles.imageReceived}>
-            <View style={styles.imageReceivedIcon}>
-              <LineIcon name="image" color={colors.primaryDark} size={15} />
-            </View>
-            <Text style={styles.imageReceivedText}>{formatAnalysisSource(analysisResult)}</Text>
-          </View>
-        ) : null}
+      <View style={styles.section}>
+        <ParameterArcs recs={resultCards} />
+      </View>
 
-        {analysisResult.parameters.map((parameter, index) => (
-          <ResultRow
-            key={parameter.key}
-            label={parameter.name}
-            progress={parameter.progress}
-            range={formatRangeLabel(analysisResult, index)}
-            status={parameter.status.label}
-            tone={parameter.status.tone}
-            value={formatDisplayValue(parameter.value)}
-          />
+      <View style={styles.cardsList}>
+        {resultCards.map((rec) => (
+          <ResultCard key={rec.paramKey} rec={rec} />
         ))}
       </View>
 
-      <Card compact style={styles.recommendation}>
-        <View style={styles.recommendationIcon}>
-          <LineIcon name="drop" color={colors.primaryDark} size={15} />
-        </View>
-        <View style={styles.recommendationCopy}>
-          <Text style={styles.recommendationTitle}>המלצה</Text>
-          <Text style={styles.recommendationText}>{analysisResult.recommendation}</Text>
-          {analysisResult.dosage?.retestNote ? <Text style={styles.noteText}>{analysisResult.dosage.retestNote}</Text> : null}
-          {analysisResult.dosage?.safetyNote ? <Text style={styles.safetyText}>{analysisResult.dosage.safetyNote}</Text> : null}
-        </View>
-      </Card>
+      <SafetyCard text={analysisResult.dosage?.safetyNote} />
 
-      {isSavedResult ? null : (
-        <View style={styles.saveButton}>
-        <PrimaryButton label="סיום ושמירה" icon="history" onPress={handleSave} />
-        </View>
-      )}
+      <View style={styles.actions}>
+        {isSavedResult ? (
+          <>
+            <PrimaryButton label="בדיקה חדשה" icon="camera" onPress={handleNewScan} />
+            <Pressable style={styles.secondaryButton} onPress={() => navigation.navigate('History')}>
+              <LineIcon name="history" color={colors.primaryDark} size={16} />
+              <Text style={styles.secondaryText}>חזור להיסטוריה</Text>
+            </Pressable>
+            <Pressable style={styles.secondaryButton} onPress={() => navigation.navigate('Pools')}>
+              <LineIcon name="pools" color={colors.primaryDark} size={16} />
+              <Text style={styles.secondaryText}>חזור לבריכות שלי</Text>
+            </Pressable>
+          </>
+        ) : (
+          <PrimaryButton label="סיום ושמירה" icon="history" onPress={handleSave} />
+        )}
+      </View>
     </AppShell>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
+  emptyHeader: {
     marginTop: 18,
     alignItems: 'center',
   },
@@ -381,21 +382,149 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     ...rtl.textCenter,
   },
-  poolName: {
-    marginTop: 10,
-    color: colors.text,
-    fontFamily: typography.fontFamilySemiBold,
+  subtitle: {
+    marginTop: 8,
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
     fontSize: 12,
-    fontWeight: '900',
+    fontWeight: '800',
     ...rtl.textCenter,
   },
-  subtitle: {
-    marginTop: 7,
-    color: colors.muted,
+  heroCard: {
+    marginTop: 14,
+    minHeight: 134,
+    borderRadius: 26,
+    overflow: 'hidden',
+    backgroundColor: colors.primary,
+    padding: 20,
+    justifyContent: 'center',
+    ...shadows.hero,
+  },
+  heroGlowLeft: {
+    position: 'absolute',
+    left: -34,
+    bottom: -42,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  heroGlowRight: {
+    position: 'absolute',
+    right: -24,
+    top: -28,
+    width: 106,
+    height: 106,
+    borderRadius: 53,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+  },
+  heroKicker: {
+    color: colors.whiteMuted,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0,
+    ...rtl.text,
+  },
+  heroTitle: {
+    marginTop: 5,
+    color: colors.white,
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 25,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  heroMeta: {
+    marginTop: 5,
+    color: colors.whiteMuted,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    fontWeight: '800',
+    ...rtl.text,
+  },
+  notesCard: {
+    marginTop: 10,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 12,
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    gap: 8,
+    ...shadows.soft,
+  },
+  notesText: {
+    flex: 1,
+    color: colors.textSoft,
     fontFamily: typography.fontFamilyRegular,
     fontSize: 11,
     fontWeight: '800',
+    lineHeight: 17,
+    ...rtl.text,
+  },
+  section: {
+    marginTop: 16,
+  },
+  cardsList: {
+    marginTop: 14,
+    gap: 11,
+  },
+  safetyCard: {
+    marginTop: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(240,165,41,0.28)',
+    backgroundColor: colors.warningSoft,
+    padding: 14,
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  safetyIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  safetyText: {
+    flex: 1,
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 18,
+    ...rtl.text,
+  },
+  actions: {
+    marginTop: 18,
+    gap: 9,
+  },
+  primaryAction: {
+    marginTop: 16,
+  },
+  secondaryButton: {
+    minHeight: 46,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  secondaryText: {
+    color: colors.primaryDeep,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 13,
+    fontWeight: '900',
     ...rtl.textCenter,
+  },
+  messageCard: {
+    marginTop: 20,
   },
   analyzingCard: {
     marginTop: 22,
@@ -414,136 +543,20 @@ const styles = StyleSheet.create({
   analyzingCopy: {
     flex: 1,
   },
-  analyzingTitle: {
+  messageTitle: {
     color: colors.primaryDeep,
     fontFamily: typography.fontFamilyBold,
     fontSize: 15,
     fontWeight: '900',
     ...rtl.text,
   },
-  analyzingText: {
-    marginTop: 4,
-    color: colors.textSoft,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 12,
-    fontWeight: '800',
-    lineHeight: 18,
-    ...rtl.text,
-  },
-  resultsList: {
-    marginTop: 18,
-    gap: 11,
-  },
-  savedImageCard: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 12,
-  },
-  savedImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 18,
-    backgroundColor: colors.primarySoft,
-  },
-  savedImageCopy: {
-    flex: 1,
-  },
-  savedImageTitle: {
-    color: colors.primaryDeep,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 14,
-    fontWeight: '900',
-    ...rtl.text,
-  },
-  savedImageText: {
-    marginTop: 4,
-    color: colors.textSoft,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 12,
-    fontWeight: '800',
-    ...rtl.text,
-  },
-  imageReceived: {
-    minHeight: 42,
-    borderRadius: 18,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 14,
-  },
-  imageReceivedIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  imageReceivedText: {
-    flex: 1,
-    color: colors.primaryDeep,
-    fontFamily: typography.fontFamilySemiBold,
-    fontSize: 12,
-    fontWeight: '900',
-    ...rtl.text,
-  },
-  recommendation: {
-    marginTop: 12,
-    flexDirection: 'row-reverse',
-    alignItems: 'flex-start',
-    gap: 12,
-    backgroundColor: colors.surface,
-    borderColor: colors.borderSoft,
-  },
-  recommendationIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recommendationCopy: {
-    flex: 1,
-  },
-  recommendationTitle: {
-    color: colors.primaryDark,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 15,
-    fontWeight: '900',
-    ...rtl.text,
-  },
-  recommendationText: {
+  messageText: {
     marginTop: 5,
     color: colors.textSoft,
     fontFamily: typography.fontFamilyRegular,
     fontSize: 12,
     fontWeight: '800',
-    lineHeight: 19,
-    ...rtl.text,
-  },
-  noteText: {
-    marginTop: 8,
-    color: colors.primaryDark,
-    fontFamily: typography.fontFamilySemiBold,
-    fontSize: 12,
-    fontWeight: '900',
     lineHeight: 18,
     ...rtl.text,
-  },
-  safetyText: {
-    marginTop: 6,
-    color: colors.muted,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 11,
-    fontWeight: '700',
-    lineHeight: 17,
-    ...rtl.text,
-  },
-  saveButton: {
-    marginTop: 16,
   },
 });
