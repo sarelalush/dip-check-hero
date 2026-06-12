@@ -3,7 +3,7 @@ import type { StripBrand } from '../domain/strip';
 import type { ScanSessionState } from '../state/ScanSessionContext';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
 import { analyzeStripImageMock } from './mockAnalysisService';
-import { isLocalUploadCandidate, uploadScanImage } from './scanImageStorage';
+import { isLocalUploadCandidate, readLocalImageAsDataUrl, uploadScanImage } from './scanImageStorage';
 
 // Parity sources:
 // - src/utils/analyzeStripImage.ts
@@ -184,6 +184,7 @@ async function analyzeStripImageRemote(
   const testId = input.testId ?? `remote-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
   let imagePath = input.imagePath;
   let imageUrl = input.imageUrl ?? (/^https?:\/\//i.test(input.imageUri) ? input.imageUri : undefined);
+  let imageUriForRemote = input.imageUri;
   const hasDirectImageUri = isDirectRemoteImageCandidate(input.imageUri);
   const canUploadLocalImage = Boolean(input.accountId && userId && isLocalUploadCandidate(input.imageUri));
 
@@ -219,7 +220,26 @@ async function analyzeStripImageRemote(
     }
   }
 
-  if (options.requireImageReference && !imagePath && !imageUrl && !hasDirectImageUri) {
+  if (!imagePath && !imageUrl && !isDirectRemoteImageCandidate(imageUriForRemote) && isLocalUploadCandidate(input.imageUri)) {
+    try {
+      logAnalysisDebug('encoding local image as data URL for remote analysis', {
+        testId,
+      });
+      const localDataUrl = await readLocalImageAsDataUrl(input.imageUri);
+      if (localDataUrl?.dataUrl) {
+        imageUriForRemote = localDataUrl.dataUrl;
+      }
+    } catch (error) {
+      console.warn('Remote strip analysis data-url fallback failed', error);
+      logAnalysisDebug('remote data-url fallback failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const hasRemoteReadableImageUri = isDirectRemoteImageCandidate(imageUriForRemote);
+
+  if (options.requireImageReference && !imagePath && !imageUrl && !hasRemoteReadableImageUri) {
     logAnalysisDebug('remote not attempted', {
       reason: 'image-upload-did-not-produce-path-or-url',
     });
@@ -230,7 +250,7 @@ async function analyzeStripImageRemote(
     functionName: config.remoteFunctionName,
     hasImagePath: Boolean(imagePath),
     hasImageUrl: Boolean(imageUrl),
-    hasDirectImageUri,
+    hasDirectImageUri: hasRemoteReadableImageUri,
     testId,
   });
 
@@ -243,7 +263,7 @@ async function analyzeStripImageRemote(
       brandId: input.brandId ?? input.selectedBrand?.id,
       imagePath,
       imageUrl,
-      imageUri: input.imageUri,
+      imageUri: imageUriForRemote,
       qualityNotes: input.qualityNotes,
       metadata: {
         scanSession: input.scanSession,

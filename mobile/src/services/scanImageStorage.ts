@@ -27,6 +27,11 @@ export interface UploadedScanImage {
   publicUrl?: string;
 }
 
+export interface LocalImageDataUrl {
+  dataUrl: string;
+  contentType: string;
+}
+
 function isRemoteOrStorageValue(uri: string) {
   return /^https?:\/\//i.test(uri);
 }
@@ -64,6 +69,54 @@ export function isLocalUploadCandidate(uri?: string) {
   if (!uri) return false;
   if (isRemoteOrStorageValue(uri)) return false;
   return uri.startsWith('file:') || uri.startsWith('content:') || uri.startsWith('blob:') || uri.startsWith('data:');
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let output = '';
+  let index = 0;
+
+  while (index < bytes.length) {
+    const byte1 = bytes[index++] ?? 0;
+    const byte2 = index < bytes.length ? bytes[index++] : Number.NaN;
+    const byte3 = index < bytes.length ? bytes[index++] : Number.NaN;
+    const enc1 = byte1 >> 2;
+    const enc2 = ((byte1 & 3) << 4) | ((byte2 || 0) >> 4);
+    const enc3 = Number.isNaN(byte2) ? 64 : (((byte2 & 15) << 2) | ((byte3 || 0) >> 6));
+    const enc4 = Number.isNaN(byte3) ? 64 : byte3 & 63;
+
+    output += chars.charAt(enc1);
+    output += chars.charAt(enc2);
+    output += enc3 === 64 ? '=' : chars.charAt(enc3);
+    output += enc4 === 64 ? '=' : chars.charAt(enc4);
+  }
+
+  return output;
+}
+
+export async function readLocalImageAsDataUrl(imageUri: string): Promise<LocalImageDataUrl | undefined> {
+  if (!isLocalUploadCandidate(imageUri)) return undefined;
+  if (imageUri.startsWith('data:image/')) {
+    const contentType = /^data:([^;]+);base64,/.exec(imageUri)?.[1] ?? contentTypeFromUri(imageUri);
+    return { contentType, dataUrl: imageUri };
+  }
+
+  const fallbackContentType = contentTypeFromUri(imageUri);
+  const response = await fetch(imageUri);
+
+  if (!response.ok) {
+    throw new Error(`Failed to read scan image for remote analysis: ${response.status}`);
+  }
+
+  const responseContentType = response.headers.get('content-type');
+  const contentType = responseContentType?.startsWith('image/') ? responseContentType : fallbackContentType;
+  const body = await response.arrayBuffer();
+
+  return {
+    contentType,
+    dataUrl: `data:${contentType};base64,${arrayBufferToBase64(body)}`,
+  };
 }
 
 export async function uploadScanImage({ accountId, imageUri, testId, userId }: UploadScanImageInput): Promise<UploadedScanImage | undefined> {

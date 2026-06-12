@@ -685,6 +685,11 @@ function bytesToBase64(bytes: Uint8Array) {
   return btoa(binary);
 }
 
+function imageBytesToDataUrl(bytes: Uint8Array, mimeType: string) {
+  const safeMimeType = mimeType.startsWith('image/') ? mimeType : 'image/jpeg';
+  return `data:${safeMimeType};base64,${bytesToBase64(bytes)}`;
+}
+
 function sampleAverageRgb(image: DecodedImage, x: number, y: number, width: number, height: number): Rgb {
   const startX = clamp(Math.floor(x), 0, image.width - 1);
   const endX = clamp(Math.ceil(x + width), startX + 1, image.width);
@@ -1289,7 +1294,7 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
   const brand = getBrand(body.brandId);
   let imageBytes: Uint8Array;
   let mimeType = 'image/jpeg';
-  let image: DecodedImage;
+  let image: DecodedImage | undefined;
   let dataUrl: string;
   let authenticatedUserId = body.userId;
 
@@ -1319,19 +1324,33 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     return buildRemoteMockResult(body, 'הורדת תמונת הסטיק נכשלה. הוחזרו ערכי דמו כדי לא לעצור את הזרימה.');
   }
 
+  dataUrl = imageBytesToDataUrl(imageBytes, mimeType);
+
   try {
     image = (await ImageScript.decode(imageBytes)) as DecodedImage;
     dataUrl = await applyWhiteBalance(image, imageBytes, mimeType);
   } catch (error) {
-    console.warn('remote image decode or white balance failed', error);
-    return buildRemoteMockResult(body, 'פענוח תמונת הסטיק נכשל. הוחזרו ערכי דמו כדי לא לעצור את הזרימה.');
+    console.warn('remote image decode or white balance failed; continuing with raw image data for AI', error);
   }
+
+  console.log('Starting Gemini strip analysis', {
+    brandId: brand.id,
+    hasDecodedImageForCv: Boolean(image),
+    model: Deno.env.get('GEMINI_MODEL_PRIMARY') || Deno.env.get('GEMINI_MODEL') || GEMINI_DEFAULT_MODEL,
+    testId: body.testId,
+  });
 
   const aiRuns = await Promise.all(
     Array.from({ length: MULTI_SHOT_RUNS }, () => analyzeWithAiProvider(dataUrl, brand)),
   );
   const aiResult = combineAiRuns(aiRuns, body, brand);
   if (aiResult && !aiResult.lowConfidence) {
+    console.log('Gemini strip analysis selected', {
+      confidence: aiResult.confidence,
+      model: aiResult.model,
+      source: aiResult.source,
+      testId: body.testId,
+    });
     if (authenticatedUserId) {
       try {
         await persistAnalysisResult(body, aiResult, authenticatedUserId, request);
@@ -1342,25 +1361,29 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     return aiResult;
   }
 
-  try {
-    const cv = analyzeCv(image, brand);
-    if (cv) {
-      const cvResult = buildResult(body, brand, cv.values, 'cv', cv.confidence, {
-        lowConfidence: true,
-        notes: `Gemini consensus was unavailable or low-confidence. ${cv.notes ?? ''}`.trim(),
-        shotsUsed: aiRuns.filter((run) => run.ok).length,
-      });
-      if (authenticatedUserId) {
-        try {
-          await persistAnalysisResult(body, cvResult, authenticatedUserId, request);
-        } catch (error) {
-          console.warn('Persisting CV analysis failed', error);
+  if (image) {
+    try {
+      const cv = analyzeCv(image, brand);
+      if (cv) {
+        const cvResult = buildResult(body, brand, cv.values, 'cv', cv.confidence, {
+          lowConfidence: true,
+          notes: `Gemini consensus was unavailable or low-confidence. ${cv.notes ?? ''}`.trim(),
+          shotsUsed: aiRuns.filter((run) => run.ok).length,
+        });
+        if (authenticatedUserId) {
+          try {
+            await persistAnalysisResult(body, cvResult, authenticatedUserId, request);
+          } catch (error) {
+            console.warn('Persisting CV analysis failed', error);
+          }
         }
+        return cvResult;
       }
-      return cvResult;
+    } catch (error) {
+      console.warn('CV fallback failed', error);
     }
-  } catch (error) {
-    console.warn('CV fallback failed', error);
+  } else {
+    console.warn('CV fallback skipped because image decoding failed before pixel sampling.');
   }
 
   const aiError = aiRuns.find((run): run is Extract<AiRunResponse, { ok: false }> => !run.ok);
