@@ -171,9 +171,16 @@ export async function prepareScanImageForRemoteAnalysis({
       imageUrl: uploadedImage?.publicUrl,
     };
   } catch (error) {
-    console.warn('Failed to prepare scan image for remote analysis', error);
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn('Failed to prepare scan image for remote analysis', {
+      accountIdExists: Boolean(accountId),
+      imageUriType: imageUri.startsWith('file:') ? 'file' : imageUri.startsWith('content:') ? 'content' : imageUri.startsWith('data:') ? 'data' : imageUri.startsWith('blob:') ? 'blob' : 'other',
+      reason,
+      testId,
+      userIdExists: Boolean(userId),
+    });
     return {
-      uploadError: 'העלאת תמונת הסטיק לפני הניתוח נכשלה. נמשיך עם fallback מקומי.',
+      uploadError: `העלאת תמונת הסטיק לפני הניתוח נכשלה: ${reason}. נמשיך עם fallback מקומי.`,
     };
   }
 }
