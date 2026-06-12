@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -13,6 +13,8 @@ import {
 } from '../domain/pool';
 import { colors, rtl, shadows, typography } from '../theme';
 import { usePools } from '../state/PoolsContext';
+import { useAuth } from '../state/AuthContext';
+import { canCreatePool } from '../services/usageService';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddPool'>;
@@ -25,6 +27,7 @@ function parseNumber(value: string) {
 
 export function AddPoolScreen({ navigation }: Props) {
   const { addPool } = usePools();
+  const { accountId } = useAuth();
   const recommendedBrand = getRecommendedBrand();
   const [name, setName] = useState('');
   const [type, setType] = useState<PoolType>('chlorine');
@@ -45,6 +48,8 @@ export function AddPoolScreen({ navigation }: Props) {
   const [imageUri, setImageUri] = useState<string | undefined>();
   const [error, setError] = useState('');
   const [imageBusy, setImageBusy] = useState(false);
+  const [quotaChecking, setQuotaChecking] = useState(true);
+  const [quotaExceeded, setQuotaExceeded] = useState(false);
 
   const lengthMeters = parseNumber(length);
   const widthMeters = parseNumber(width);
@@ -61,6 +66,24 @@ export function AddPoolScreen({ navigation }: Props) {
     }
     return calculatePoolVolume({ shape, length: lengthMeters, width: widthMeters, depth: averageDepthMeters });
   }, [averageDepthMeters, diameterMeters, lengthMeters, manualVolumeValue, method, shape, unit, widthMeters]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function checkPoolQuota() {
+      setQuotaChecking(true);
+      const allowed = await canCreatePool(accountId);
+      if (!mounted) return;
+      setQuotaExceeded(!allowed);
+      setQuotaChecking(false);
+    }
+
+    checkPoolQuota();
+
+    return () => {
+      mounted = false;
+    };
+  }, [accountId]);
 
   async function pickPoolImage() {
     setImageBusy(true);
@@ -91,7 +114,13 @@ export function AddPoolScreen({ navigation }: Props) {
     }
   }
 
-  function save() {
+  async function save() {
+    const allowed = await canCreatePool(accountId);
+    if (!allowed) {
+      setQuotaExceeded(true);
+      return;
+    }
+
     if (!name.trim()) return setError('יש להזין שם לבריכה.');
     if (volumeLiters <= 0) return setError('יש להזין נפח ידני או מידות תקינות לחישוב נפח.');
 
@@ -120,6 +149,28 @@ export function AddPoolScreen({ navigation }: Props) {
 
     setError('');
     navigation.navigate('PoolDetails', { poolId: pool.id });
+  }
+
+  if (!quotaChecking && quotaExceeded) {
+    return (
+      <View style={styles.root}>
+        <View style={styles.quotaContent}>
+          <View style={styles.quotaCard}>
+            <View style={styles.quotaIcon}>
+              <Text style={styles.imageIcon}>+</Text>
+            </View>
+            <Text style={styles.quotaTitle}>המנוי הנוכחי כולל בריכה פעילה אחת</Text>
+            <Text style={styles.quotaText}>כדי להוסיף בריכה נוספת ניתן יהיה לשדרג או להוסיף חבילת בריכה בקרוב.</Text>
+            <Pressable onPress={() => navigation.navigate('PlanUsage', { reason: 'poolQuota' })} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnLabel}>צפה באפשרויות שדרוג</Text>
+            </Pressable>
+            <Pressable onPress={() => navigation.navigate('Pools')} style={styles.secondaryBtn}>
+              <Text style={styles.secondaryBtnLabel}>חזרה לבריכות</Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    );
   }
 
   return (
@@ -351,6 +402,11 @@ function Field({ label, value, onChangeText, placeholder, numeric, multiline }: 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: 20, paddingTop: 50, paddingBottom: 40 },
+  quotaContent: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
+  quotaCard: { backgroundColor: colors.card, borderRadius: 28, padding: 20, gap: 14, alignItems: 'center', ...shadows.card },
+  quotaIcon: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  quotaTitle: { color: colors.text, fontSize: 18, fontWeight: '900', fontFamily: typography.fontFamilyBold, ...rtl.textCenter },
+  quotaText: { color: colors.textSoft, fontSize: 13, lineHeight: 20, fontWeight: '800', fontFamily: typography.fontFamilyRegular, ...rtl.textCenter },
   topBar: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', ...shadows.card },
   iconGlyph: { fontSize: 24, color: colors.text, fontWeight: '900' },

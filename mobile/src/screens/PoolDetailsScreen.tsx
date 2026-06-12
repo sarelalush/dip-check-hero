@@ -12,6 +12,7 @@ import { colors, rtl, typography } from '../theme';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory, type SavedHistoryRecord } from '../state/ResultsHistoryContext';
 import { useScanSession } from '../state/ScanSessionContext';
+import { useReminders, type ReminderFrequency } from '../state/ReminderContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PoolDetails'>;
@@ -20,6 +21,7 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
   const { deletePool, getPool } = usePools();
   const { getPoolHistoryRecords } = useResultsHistory();
   const { startScanSession } = useScanSession();
+  const { getReminder, setReminder } = useReminders();
   const pool = getPool(route.params.poolId);
   const recentTests = pool ? getPoolHistoryRecords(pool.id, 3) : [];
   const poolName = pool?.name ?? 'בריכה ללא שם';
@@ -29,6 +31,7 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
   const shapeLabel = pool?.volumeEntryMethod === 'manual' ? 'נפח ידני' : getPoolShapeLabel(pool?.shape);
   const tabletsLabel = pool?.tabletsActive ? `${pool.tabletsCount ?? 1} טבליות · ${pool.tabletWeightGrams ?? 200} גרם` : 'אין טבליות פעילות';
   const coverUri = pool?.imageUri ?? pool?.imageUrl;
+  const reminder = pool ? getReminder(pool.id) : 'off';
 
   function handleDelete() {
     if (!pool) return;
@@ -91,6 +94,27 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
         />
       </View>
 
+      {pool ? (
+        <Card compact style={styles.reminderCard}>
+          <View style={styles.recentHeader}>
+            <Text style={styles.recentTitle}>תזכורת לבדיקה חוזרת</Text>
+            <LineIcon name="history" color={colors.primaryDark} size={16} />
+          </View>
+          <View style={styles.reminderOptions}>
+            {REMINDER_OPTIONS.map((option) => (
+              <Pressable
+                key={option.value}
+                onPress={() => setReminder(pool.id, option.value)}
+                style={[styles.reminderOption, reminder === option.value && styles.reminderOptionSelected]}
+              >
+                <Text style={[styles.reminderOptionText, reminder === option.value && styles.reminderOptionTextSelected]}>{option.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text style={styles.reminderHint}>התזכורת נשמרת מקומית. התראות אמיתיות יתווספו בשלב הבא.</Text>
+        </Card>
+      ) : null}
+
       <Card compact style={styles.recentCard}>
         <View style={styles.recentHeader}>
           <Text style={styles.recentTitle}>בדיקות אחרונות</Text>
@@ -124,6 +148,13 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
     </AppShell>
   );
 }
+
+const REMINDER_OPTIONS: { label: string; value: ReminderFrequency }[] = [
+  { label: 'כבוי', value: 'off' },
+  { label: 'כל שבוע', value: 'weekly' },
+  { label: 'כל שבועיים', value: 'biweekly' },
+  { label: 'כל חודש', value: 'monthly' },
+];
 
 function DetailPill({ label, value }: { label: string; value: string }) {
   return (
@@ -271,6 +302,48 @@ const styles = StyleSheet.create({
   recentCard: {
     marginTop: 16,
     gap: 10,
+  },
+  reminderCard: {
+    marginTop: 16,
+    gap: 10,
+  },
+  reminderOptions: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  reminderOption: {
+    minWidth: '46%',
+    flexGrow: 1,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceSoft,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+  },
+  reminderOptionSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  reminderOptionText: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
+    ...rtl.textCenter,
+  },
+  reminderOptionTextSelected: {
+    color: colors.white,
+  },
+  reminderHint: {
+    color: colors.muted,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 16,
+    ...rtl.text,
   },
   recentHeader: {
     flexDirection: 'row-reverse',

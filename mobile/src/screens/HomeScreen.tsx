@@ -9,11 +9,44 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { PoolPhoto } from '../components/WaterVisuals';
 import { colors, rtl, typography } from '../theme';
 import { homeMetrics } from '../data/mockAppData';
+import { usePools } from '../state/PoolsContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 export function HomeScreen({ navigation }: Props) {
+  const { pools } = usePools();
+  const hasPools = pools.length > 0;
+
+  if (!hasPools) {
+    return (
+      <AppShell activeTab="home" navigation={navigation}>
+        <AppHeader />
+
+        <View style={styles.greeting}>
+          <Text style={styles.hello}>ברוכים הבאים ל־AquaSense</Text>
+          <Text style={styles.subtitle}>כדי להתחיל, הוסף את הבריכה הראשונה שלך</Text>
+        </View>
+
+        <View style={styles.hero}>
+          <PoolPhoto variant="home" />
+        </View>
+
+        <Card style={styles.emptyCard}>
+          <View style={styles.emptyIcon}>
+            <LineIcon name="pools" color={colors.primaryDark} size={28} />
+          </View>
+          <Text style={styles.statusTitle}>הבריכה שלך מתחילה כאן</Text>
+          <Text style={styles.emptyText}>לאחר מכן תוכל לצלם סטיק ולקבל המלצה מותאמת לפי נפח וסוג הבריכה.</Text>
+        </Card>
+
+        <View style={styles.ctaWrap}>
+          <PrimaryButton label="הוסף בריכה" icon="plus" onPress={() => navigation.navigate('AddPool')} />
+        </View>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell activeTab="home" navigation={navigation}>
       <AppHeader />
@@ -93,6 +126,33 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 16,
     borderRadius: 20,
+  },
+  emptyCard: {
+    width: '84%',
+    alignSelf: 'center',
+    marginTop: -112,
+    alignItems: 'center',
+    gap: 11,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 18,
+    borderRadius: 20,
+  },
+  emptyIcon: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '800',
+    ...rtl.textCenter,
   },
   cardKicker: {
     color: colors.text,

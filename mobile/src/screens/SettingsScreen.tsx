@@ -111,7 +111,7 @@ export function SettingsScreen({ navigation }: Props) {
         <Text style={styles.title}>הגדרות</Text>
         <Text style={styles.subtitle}>ניהול חשבון, העדפות סריקה ותמיכה באפליקציה.</Text>
 
-        <Section title="חשבון">
+        <Section title="פרטי חשבון">
           <View style={styles.profileCard}>
             <View style={styles.avatar}>
               <Text style={styles.avatarText}>{initial}</Text>
@@ -134,13 +134,28 @@ export function SettingsScreen({ navigation }: Props) {
               <Text style={styles.smallPrimaryText}>{savingName ? 'שומר...' : 'שמירת שם'}</Text>
             </Pressable>
             <Pressable disabled={busy} onPress={handleSignOut} style={({ pressed }) => [styles.smallDangerButton, pressed && styles.pressed, busy && styles.disabled]}>
-              <Text style={styles.smallDangerText}>{busy ? 'יוצא...' : 'יציאה'}</Text>
+              <Text style={styles.smallDangerText}>{busy ? 'יוצא...' : 'יציאה מהחשבון'}</Text>
             </Pressable>
           </View>
         </Section>
 
+        <Section title="מנוי ושימוש">
+          <SettingsRow
+            icon="results"
+            label="מנוי ושימוש"
+            value="תוכנית, מכסות חודשיות ותוספות"
+            onPress={() => navigation.navigate('PlanUsage')}
+          />
+        </Section>
+
         <Section title="העדפות אפליקציה">
-          <InfoRow icon="scan" label="סטיק ברירת מחדל" value={recommendedBrand.nameHe} />
+          <SettingsRow
+            icon="history"
+            label="תזכורות"
+            value="הגדרה לפי בריכה במסך פרטי הבריכה"
+            onPress={() => navigation.navigate('Pools')}
+          />
+          <InfoRow icon="scan" label="העדפות סריקה" value={recommendedBrand.nameHe} />
           <View style={styles.preferenceRow}>
             <View style={styles.preferenceCopy}>
               <Text style={styles.preferenceLabel}>יחידות נפח</Text>
@@ -194,6 +209,21 @@ function InfoRow({ icon, label, muted, value }: { icon: LineIconName; label: str
         </Text>
       </View>
     </View>
+  );
+}
+
+function SettingsRow({ icon, label, onPress, value }: { icon: LineIconName; label: string; onPress: () => void; value: string }) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.infoRow, pressed && styles.pressed]}>
+      <View style={styles.infoIcon}>
+        <LineIcon name={icon} color={colors.primaryDark} size={18} />
+      </View>
+      <View style={styles.preferenceCopy}>
+        <Text style={styles.preferenceLabel}>{label}</Text>
+        <Text style={styles.preferenceValue} numberOfLines={2}>{value}</Text>
+      </View>
+      <LineIcon name="chevronLeft" color={colors.muted} size={16} />
+    </Pressable>
   );
 }
 

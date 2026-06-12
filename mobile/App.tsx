@@ -10,6 +10,8 @@ import {
 } from '@expo-google-fonts/heebo';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useEffect, useState } from 'react';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { PoolsScreen } from './src/screens/PoolsScreen';
@@ -24,14 +26,18 @@ import { LandingScreen } from './src/screens/LandingScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { SignupScreen } from './src/screens/SignupScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { OnboardingScreen, ONBOARDING_COMPLETE_KEY } from './src/screens/OnboardingScreen';
+import { PlanUsageScreen } from './src/screens/PlanUsageScreen';
 import { colors } from './src/theme';
 import { AuthProvider, useAuth } from './src/state/AuthContext';
-import { PoolsProvider } from './src/state/PoolsContext';
+import { PoolsProvider, usePools } from './src/state/PoolsContext';
 import { ResultsHistoryProvider } from './src/state/ResultsHistoryContext';
 import { ScanSessionProvider } from './src/state/ScanSessionContext';
+import { ReminderProvider } from './src/state/ReminderContext';
 
 export type RootStackParamList = {
   Home: undefined;
+  Onboarding: undefined;
   Pools: undefined;
   PoolDetails: { poolId: string };
   EditPool: { poolId: string };
@@ -40,6 +46,7 @@ export type RootStackParamList = {
   ConfirmScan: { brandId?: string; poolId?: string; imageUri: string };
   Results: { brandId?: string; poolId?: string; imageUri?: string; imagePath?: string; imageUrl?: string; testId?: string } | undefined;
   History: undefined;
+  PlanUsage: { reason?: 'poolQuota' | 'scanQuota' } | undefined;
 
   Welcome: undefined;
   Login: undefined;
@@ -72,11 +79,13 @@ export default function App() {
   return (
     <AuthProvider>
       <PoolsProvider>
-        <ScanSessionProvider>
-          <ResultsHistoryProvider>
-            <AppNavigator />
-          </ResultsHistoryProvider>
-        </ScanSessionProvider>
+        <ReminderProvider>
+          <ScanSessionProvider>
+            <ResultsHistoryProvider>
+              <AppNavigator />
+            </ResultsHistoryProvider>
+          </ScanSessionProvider>
+        </ReminderProvider>
       </PoolsProvider>
     </AuthProvider>
   );
@@ -84,8 +93,48 @@ export default function App() {
 
 function AppNavigator() {
   const { loading, isAuthenticated } = useAuth();
+  const { hydrated: poolsHydrated, pools } = usePools();
+  const [onboardingLoaded, setOnboardingLoaded] = useState(false);
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
 
-  if (loading) {
+  useEffect(() => {
+    let mounted = true;
+
+    async function restoreOnboarding() {
+      try {
+        const stored = await AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY);
+        if (!mounted) return;
+        setOnboardingComplete(stored === 'true');
+      } catch (error) {
+        console.warn('Failed to restore onboarding state', error);
+      } finally {
+        if (mounted) setOnboardingLoaded(true);
+      }
+    }
+
+    restoreOnboarding();
+
+    return () => {
+      mounted = false;
+    };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !poolsHydrated || pools.length === 0 || onboardingComplete) return;
+
+    async function markCompleteAfterFirstPool() {
+      try {
+        await AsyncStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
+      } catch (error) {
+        console.warn('Failed to persist onboarding completion', error);
+      }
+      setOnboardingComplete(true);
+    }
+
+    markCompleteAfterFirstPool();
+  }, [isAuthenticated, onboardingComplete, pools.length, poolsHydrated]);
+
+  if (loading || (isAuthenticated && (!poolsHydrated || !onboardingLoaded))) {
     return (
       <View style={styles.loadingScreen}>
         <ActivityIndicator color={colors.primary} size="large" />
@@ -96,11 +145,12 @@ function AppNavigator() {
   return (
     <NavigationContainer key={isAuthenticated ? 'app' : 'auth'}>
       <Stack.Navigator
-        initialRouteName={isAuthenticated ? 'Home' : 'Welcome'}
+        initialRouteName={isAuthenticated ? (pools.length === 0 && !onboardingComplete ? 'Onboarding' : 'Home') : 'Welcome'}
         screenOptions={{ headerShown: false }}
       >
         {isAuthenticated ? (
           <>
+            <Stack.Screen name="Onboarding" component={OnboardingScreen} />
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="Pools" component={PoolsScreen} />
             <Stack.Screen name="PoolDetails" component={PoolDetailsScreen} />
@@ -111,6 +161,7 @@ function AppNavigator() {
             <Stack.Screen name="ConfirmScan" component={ConfirmScanScreen} />
             <Stack.Screen name="Results" component={ResultsScreen} />
             <Stack.Screen name="History" component={HistoryScreen} />
+            <Stack.Screen name="PlanUsage" component={PlanUsageScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
           </>
         ) : (

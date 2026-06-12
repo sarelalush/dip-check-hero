@@ -10,7 +10,9 @@ import { getBrand, getRecommendedBrand, stripBrands } from '../config/stripBrand
 import { getBrandSwatches } from '../config/brandSwatches';
 import { PARAM_LABEL_HE, type StripBrand } from '../domain/strip';
 import { usePools } from '../state/PoolsContext';
+import { useAuth } from '../state/AuthContext';
 import { useScanSession } from '../state/ScanSessionContext';
+import { canCreateScan } from '../services/usageService';
 import { colors, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
@@ -18,6 +20,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'SelectStrip'>;
 
 export function SelectStripScreen({ navigation, route }: Props) {
   const { getPool } = usePools();
+  const { accountId } = useAuth();
   const { session, setSelectedBrand, startScanSession } = useScanSession();
   const didStartSession = useRef(false);
   const selectedPoolId = route.params?.poolId ?? session.selectedPoolId;
@@ -32,6 +35,7 @@ export function SelectStripScreen({ navigation, route }: Props) {
     [pool?.stripBrandId, session.selectedBrandId],
   );
   const [selectedBrandId, setSelectedBrandId] = useState(initialBrand.id);
+  const [checkingQuota, setCheckingQuota] = useState(false);
   const selectedBrand = stripBrands.find((brand) => brand.id === selectedBrandId) ?? initialBrand;
 
   useEffect(() => {
@@ -45,8 +49,16 @@ export function SelectStripScreen({ navigation, route }: Props) {
     setSelectedBrand(brandId);
   }
 
-  function handleContinue() {
+  async function handleContinue() {
     if (!selectedBrand.supported) return;
+    setCheckingQuota(true);
+    const allowed = await canCreateScan(accountId);
+    setCheckingQuota(false);
+    if (!allowed) {
+      navigation.navigate('PlanUsage', { reason: 'scanQuota' });
+      return;
+    }
+
     setSelectedBrand(selectedBrand.id);
     navigation.navigate('Scan', { brandId: selectedBrand.id, poolId: selectedPoolId });
   }
@@ -86,8 +98,8 @@ export function SelectStripScreen({ navigation, route }: Props) {
 
       <View style={styles.cta}>
         <PrimaryButton
-          disabled={!selectedBrand.supported}
-          label={selectedBrand.supported ? 'המשך לסריקה' : 'מותג זה ייתמך בקרוב'}
+          disabled={!selectedBrand.supported || checkingQuota}
+          label={checkingQuota ? 'בודק זמינות סריקה...' : selectedBrand.supported ? 'המשך לסריקה' : 'מותג זה ייתמך בקרוב'}
           icon="scan"
           onPress={handleContinue}
         />
