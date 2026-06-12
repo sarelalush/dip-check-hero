@@ -2,22 +2,17 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors, rtl, typography } from '../theme';
 import { LineIcon } from './LineIcon';
 
-interface LowConfidenceWarningProps {
-  notes?: string;
-}
-
-export function LowConfidenceWarning({ notes }: LowConfidenceWarningProps) {
+export function LowConfidenceWarning() {
   return (
     <View style={styles.card}>
       <View style={styles.icon}>
         <LineIcon name="help" color={colors.warning} size={15} />
       </View>
       <View style={styles.copy}>
-        <Text style={styles.title}>ביטחון נמוך בתוצאה</Text>
+        <Text style={styles.title}>כדאי לבדוק את איכות הצילום</Text>
         <Text style={styles.text}>
-          שני צילומים של אותו סטיק עלולים לתת ערכים שונים. לצילום מדויק יותר כדאי לצלם באור יום טבעי, על רקע לבן, כשהסטיק שטוח וקרוב.
+          לצילום מדויק יותר כדאי לצלם באור יום טבעי, על רקע לבן, כשהסטיק שטוח, חד וכל ריבועי הצבע נראים.
         </Text>
-        {notes ? <Text style={styles.notes}>{notes}</Text> : null}
       </View>
     </View>
   );
@@ -59,15 +54,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamilyRegular,
     fontSize: 11,
     fontWeight: '800',
-    lineHeight: 17,
-    ...rtl.text,
-  },
-  notes: {
-    marginTop: 7,
-    color: colors.warning,
-    fontFamily: typography.fontFamilySemiBold,
-    fontSize: 11,
-    fontWeight: '900',
     lineHeight: 17,
     ...rtl.text,
   },

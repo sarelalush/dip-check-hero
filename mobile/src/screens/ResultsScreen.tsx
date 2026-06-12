@@ -2,7 +2,6 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { useEffect, useMemo, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
-import { AnalysisSourceBadge } from '../components/AnalysisSourceBadge';
 import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
 import { LowConfidenceWarning } from '../components/LowConfidenceWarning';
@@ -63,17 +62,6 @@ function getResultCards(result: StripAnalysisResult): DosageRecommendation[] {
   }
 
   return result.parameters.map(mapParameterToRecommendation);
-}
-
-function NotesCard({ notes }: { notes?: string }) {
-  if (!notes) return null;
-
-  return (
-    <View style={styles.notesCard}>
-      <LineIcon name="help" color={colors.primaryDark} size={14} />
-      <Text style={styles.notesText}>{notes}</Text>
-    </View>
-  );
 }
 
 function SafetyCard({ text }: { text?: string }) {
@@ -334,8 +322,7 @@ export function ResultsScreen({ navigation, route }: Props) {
         </Text>
       </View>
 
-      <AnalysisSourceBadge result={analysisResult} />
-      {analysisResult.lowConfidence ? <LowConfidenceWarning notes={analysisResult.notes} /> : <NotesCard notes={analysisResult.notes} />}
+      {analysisResult.lowConfidence ? <LowConfidenceWarning /> : null}
 
       <View style={styles.section}>
         <ParameterArcs recs={resultCards} />
@@ -440,27 +427,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamilyRegular,
     fontSize: 12,
     fontWeight: '800',
-    ...rtl.text,
-  },
-  notesCard: {
-    marginTop: 10,
-    borderRadius: 16,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    padding: 12,
-    flexDirection: 'row-reverse',
-    alignItems: 'flex-start',
-    gap: 8,
-    ...shadows.soft,
-  },
-  notesText: {
-    flex: 1,
-    color: colors.textSoft,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 11,
-    fontWeight: '800',
-    lineHeight: 17,
     ...rtl.text,
   },
   section: {

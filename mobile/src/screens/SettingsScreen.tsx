@@ -6,16 +6,13 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { LineIcon, type LineIconName } from '../components/LineIcon';
 import { getRecommendedBrand } from '../config/stripBrands';
-import { getStripAnalysisConfig } from '../services/stripAnalysisService';
 import { useAuth } from '../state/AuthContext';
-import { useResultsHistory } from '../state/ResultsHistoryContext';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 type UnitsPreference = 'liters' | 'cubic';
 
-const TECH_DETAILS_KEY = '@aquasense/preferences/show-technical-analysis';
 const UNITS_KEY = '@aquasense/preferences/volume-units';
 
 const FAQ_ITEMS = [
@@ -28,8 +25,8 @@ const FAQ_ITEMS = [
     text: 'נפח הבריכה מאפשר לחשב המלצות טיפול ומינונים בצורה מותאמת יותר.',
   },
   {
-    title: 'מה אומר ביטחון נמוך',
-    text: 'המערכת הצליחה לקרוא את התמונה, אבל איכות הצילום או התאורה פחות אידאליות.',
+    title: 'מה עושים כשהצילום לא ברור',
+    text: 'צלמו מחדש באור יום טבעי, על רקע לבן, כשהסטיק שטוח וכל ריבועי הצבע נראים.',
   },
   {
     title: 'מתי לבצע בדיקה חוזרת',
@@ -39,11 +36,9 @@ const FAQ_ITEMS = [
 
 export function SettingsScreen({ navigation }: Props) {
   const { user, signOut, updateDisplayName } = useAuth();
-  const { historyRecords } = useResultsHistory();
   const [busy, setBusy] = useState(false);
   const [savingName, setSavingName] = useState(false);
   const [message, setMessage] = useState('');
-  const [showTechnicalDetails, setShowTechnicalDetails] = useState(true);
   const [unitsPreference, setUnitsPreference] = useState<UnitsPreference>('liters');
 
   const displayName = useMemo(() => {
@@ -58,12 +53,7 @@ export function SettingsScreen({ navigation }: Props) {
   const [nameInput, setNameInput] = useState(displayName);
   const email = user?.email ?? 'לא מחובר';
   const initial = displayName.trim().charAt(0).toUpperCase() || 'ד';
-  const analysisConfig = getStripAnalysisConfig();
   const recommendedBrand = getRecommendedBrand();
-  const latestResult = historyRecords[0]?.analysisResult;
-  const latestSource = latestResult?.source ?? 'אין עדיין תוצאה';
-  const latestProvider = latestResult?.provider ?? 'לא זמין';
-  const latestModel = latestResult?.model ?? 'לא זמין';
 
   useEffect(() => {
     setNameInput(displayName);
@@ -74,13 +64,9 @@ export function SettingsScreen({ navigation }: Props) {
 
     async function restorePreferences() {
       try {
-        const [storedTechnical, storedUnits] = await Promise.all([
-          AsyncStorage.getItem(TECH_DETAILS_KEY),
-          AsyncStorage.getItem(UNITS_KEY),
-        ]);
+        const storedUnits = await AsyncStorage.getItem(UNITS_KEY);
 
         if (!mounted) return;
-        setShowTechnicalDetails(storedTechnical === null ? true : storedTechnical === 'true');
         setUnitsPreference(storedUnits === 'cubic' ? 'cubic' : 'liters');
       } catch (error) {
         console.warn('Failed to restore settings preferences', error);
@@ -106,16 +92,6 @@ export function SettingsScreen({ navigation }: Props) {
     setBusy(true);
     await signOut();
     setBusy(false);
-  }
-
-  async function toggleTechnicalDetails() {
-    const nextValue = !showTechnicalDetails;
-    setShowTechnicalDetails(nextValue);
-    try {
-      await AsyncStorage.setItem(TECH_DETAILS_KEY, String(nextValue));
-    } catch (error) {
-      console.warn('Failed to save technical details preference', error);
-    }
   }
 
   async function setUnits(nextUnits: UnitsPreference) {
@@ -164,7 +140,6 @@ export function SettingsScreen({ navigation }: Props) {
         </Section>
 
         <Section title="העדפות אפליקציה">
-          <InfoRow icon="settings" label="מצב ניתוח" value={analysisConfig.mode} />
           <InfoRow icon="scan" label="סטיק ברירת מחדל" value={recommendedBrand.nameHe} />
           <View style={styles.preferenceRow}>
             <View style={styles.preferenceCopy}>
@@ -177,20 +152,6 @@ export function SettingsScreen({ navigation }: Props) {
             </View>
           </View>
           <InfoRow icon="help" label="שפה" value="עברית · בקרוב אפשרויות נוספות" muted />
-        </Section>
-
-        <Section title="העדפות סריקה">
-          <InfoRow icon="results" label="מקור ניתוח אחרון" value={latestSource} />
-          <InfoRow icon="flash" label="Provider / Model" value={`${latestProvider} · ${latestModel}`} />
-          <Pressable onPress={toggleTechnicalDetails} style={({ pressed }) => [styles.toggleRow, pressed && styles.pressed]}>
-            <View style={[styles.switch, showTechnicalDetails && styles.switchOn]}>
-              <View style={[styles.switchKnob, showTechnicalDetails && styles.switchKnobOn]} />
-            </View>
-            <View style={styles.preferenceCopy}>
-              <Text style={styles.preferenceLabel}>הצגת פרטי ניתוח טכניים</Text>
-              <Text style={styles.preferenceValue}>{showTechnicalDetails ? 'מופעל' : 'כבוי'}</Text>
-            </View>
-          </Pressable>
         </Section>
 
         <Section title="עזרה ותמיכה">
