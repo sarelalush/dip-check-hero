@@ -2,6 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   calculateRectangularVolumeLiters,
+  dedupePools,
+  getPoolFingerprint,
   type NewPoolInput,
   normalizePool,
   type Pool,
@@ -43,7 +45,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
         if (storedPools) {
           const parsedPools = JSON.parse(storedPools) as Pool[];
           if (Array.isArray(parsedPools)) {
-            setPools(parsedPools.map((pool) => normalizePool(pool)));
+            setPools(dedupePools(parsedPools.map((pool) => normalizePool(pool))));
           }
         }
       } catch (error) {
@@ -67,7 +69,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
 
     async function persistPools() {
       try {
-        await AsyncStorage.setItem(POOLS_STORAGE_KEY, JSON.stringify(pools));
+        await AsyncStorage.setItem(POOLS_STORAGE_KEY, JSON.stringify(dedupePools(pools)));
       } catch (error) {
         console.warn('Failed to persist pools to storage', error);
       }
@@ -90,7 +92,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
       try {
         const result = await syncPoolsWithCloud(pools, currentUser, currentAccountId);
         if (!isMounted) return;
-        setPools(result.pools);
+        setPools(dedupePools(result.pools));
       } catch (error) {
         if (!isMounted) return;
         console.warn('Failed to sync pools with cloud', error);
@@ -115,9 +117,9 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
     try {
       const syncedPool = await upsertPoolToCloud(pool, user.id, accountId);
       setPools((current) =>
-        current.map((item) =>
+        dedupePools(current.map((item) =>
           item.id === syncedPool.id ? normalizePool({ ...item, ...syncedPool, id: item.id }) : item,
-        ),
+        )),
       );
       setSyncError(undefined);
     } catch (error) {
@@ -140,18 +142,20 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
           createdAt: input.createdAt ?? now,
           updatedAt: now,
         });
-        setPools((current) => [pool, ...current]);
+        const duplicatePool = pools.find((item) => getPoolFingerprint(item) === getPoolFingerprint(pool));
+        if (duplicatePool) return duplicatePool;
+        setPools((current) => dedupePools([pool, ...current]));
         syncPoolToCloud(pool);
         return pool;
       },
       updatePool(poolId, updates) {
         let updatedPool: Pool | undefined;
         setPools((current) =>
-          current.map((pool) => {
+          dedupePools(current.map((pool) => {
             if (pool.id !== poolId) return pool;
             updatedPool = normalizePool({ ...pool, ...updates, id: pool.id, createdAt: pool.createdAt, updatedAt: Date.now() });
             return updatedPool;
-          }),
+          })),
         );
         if (updatedPool) {
           syncPoolToCloud(updatedPool);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -50,6 +50,8 @@ export function AddPoolScreen({ navigation }: Props) {
   const [imageBusy, setImageBusy] = useState(false);
   const [quotaChecking, setQuotaChecking] = useState(true);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const lengthMeters = parseNumber(length);
   const widthMeters = parseNumber(width);
@@ -115,40 +117,49 @@ export function AddPoolScreen({ navigation }: Props) {
   }
 
   async function save() {
-    const allowed = await canCreatePool(accountId);
-    if (!allowed) {
-      setQuotaExceeded(true);
-      return;
-    }
+    if (savingRef.current) return;
 
     if (!name.trim()) return setError('יש להזין שם לבריכה.');
     if (volumeLiters <= 0) return setError('יש להזין נפח ידני או מידות תקינות לחישוב נפח.');
 
-    const tabletsActive = tabletsChoice === 'yes';
-    const pool = addPool({
-      name: name.trim(),
-      type,
-      sanitizerType: type,
-      volumeLiters,
-      volumeEntryMethod: method,
-      volumeUnit: method === 'manual' ? unit : undefined,
-      shape: method === 'dimensions' ? shape : undefined,
-      lengthMeters: method === 'dimensions' && shape !== 'round' ? lengthMeters : undefined,
-      widthMeters: method === 'dimensions' && shape !== 'round' ? widthMeters : undefined,
-      diameterMeters: method === 'dimensions' && shape === 'round' ? diameterMeters : undefined,
-      averageDepthMeters: method === 'dimensions' ? averageDepthMeters : undefined,
-      stripBrandId: recommendedBrand.id,
-      notes: notes.trim() || undefined,
-      tabletsActive,
-      tabletsCount: tabletsActive ? Math.max(1, Math.round(parseNumber(tabletsCount)) || 1) : 1,
-      tabletWeightGrams: tabletsActive ? Math.max(1, Math.round(parseNumber(tabletWeight)) || 200) : 200,
-      pumpHoursPerDay: Math.max(0, parseNumber(pumpHoursPerDay) || 8),
-      retestHours: Math.max(1, parseNumber(retestHours) || 6),
-      imageUri,
-    });
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const allowed = await canCreatePool(accountId);
+      if (!allowed) {
+        setQuotaExceeded(true);
+        return;
+      }
 
-    setError('');
-    navigation.navigate('PoolDetails', { poolId: pool.id });
+      const tabletsActive = tabletsChoice === 'yes';
+      const pool = addPool({
+        name: name.trim(),
+        type,
+        sanitizerType: type,
+        volumeLiters,
+        volumeEntryMethod: method,
+        volumeUnit: method === 'manual' ? unit : undefined,
+        shape: method === 'dimensions' ? shape : undefined,
+        lengthMeters: method === 'dimensions' && shape !== 'round' ? lengthMeters : undefined,
+        widthMeters: method === 'dimensions' && shape !== 'round' ? widthMeters : undefined,
+        diameterMeters: method === 'dimensions' && shape === 'round' ? diameterMeters : undefined,
+        averageDepthMeters: method === 'dimensions' ? averageDepthMeters : undefined,
+        stripBrandId: recommendedBrand.id,
+        notes: notes.trim() || undefined,
+        tabletsActive,
+        tabletsCount: tabletsActive ? Math.max(1, Math.round(parseNumber(tabletsCount)) || 1) : 1,
+        tabletWeightGrams: tabletsActive ? Math.max(1, Math.round(parseNumber(tabletWeight)) || 200) : 200,
+        pumpHoursPerDay: Math.max(0, parseNumber(pumpHoursPerDay) || 8),
+        retestHours: Math.max(1, parseNumber(retestHours) || 6),
+        imageUri,
+      });
+
+      setError('');
+      navigation.navigate('PoolDetails', { poolId: pool.id });
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   }
 
   if (!quotaChecking && quotaExceeded) {
@@ -303,8 +314,8 @@ export function AddPoolScreen({ navigation }: Props) {
           {error ? <Text style={styles.error}>{error}</Text> : null}
         </View>
 
-        <Pressable onPress={save} style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }]}>
-          <Text style={styles.primaryBtnLabel}>שמירת בריכה</Text>
+        <Pressable disabled={saving || quotaChecking} onPress={save} style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }, (saving || quotaChecking) && styles.disabled]}>
+          <Text style={styles.primaryBtnLabel}>{saving ? 'שומר בריכה...' : 'שמירת בריכה'}</Text>
         </Pressable>
         <Pressable onPress={() => navigation.navigate('Pools')} style={styles.secondaryBtn}>
           <Text style={styles.secondaryBtnLabel}>ביטול</Text>

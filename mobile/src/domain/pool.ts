@@ -161,6 +161,61 @@ export function normalizePool(pool: Partial<Pool> & { id?: string; name?: string
   };
 }
 
+function normalizeFingerprintValue(value: unknown) {
+  if (typeof value === 'string') return value.trim().toLowerCase();
+  if (typeof value === 'number') return Number.isFinite(value) ? Math.round(value * 1000) / 1000 : '';
+  if (typeof value === 'boolean') return value ? '1' : '0';
+  return value ?? '';
+}
+
+export function getPoolFingerprint(pool: Pool) {
+  return [
+    normalizeFingerprintValue(pool.name),
+    normalizeFingerprintValue(pool.type),
+    normalizeFingerprintValue(pool.sanitizerType),
+    normalizeFingerprintValue(pool.volumeLiters),
+    normalizeFingerprintValue(pool.volumeEntryMethod),
+    normalizeFingerprintValue(pool.volumeUnit),
+    normalizeFingerprintValue(pool.shape),
+    normalizeFingerprintValue(pool.lengthMeters),
+    normalizeFingerprintValue(pool.widthMeters),
+    normalizeFingerprintValue(pool.diameterMeters),
+    normalizeFingerprintValue(pool.averageDepthMeters),
+    normalizeFingerprintValue(pool.stripBrandId),
+    normalizeFingerprintValue(pool.notes),
+  ].join('|');
+}
+
+function mergeDuplicatePools(existing: Pool, incoming: Pool): Pool {
+  const existingTime = existing.updatedAt ?? existing.createdAt;
+  const incomingTime = incoming.updatedAt ?? incoming.createdAt;
+  const newer = incomingTime >= existingTime ? incoming : existing;
+  const older = newer === incoming ? existing : incoming;
+
+  return normalizePool({
+    ...older,
+    ...newer,
+    id: older.id.startsWith('pool-') ? older.id : newer.id,
+    cloudId: newer.cloudId ?? older.cloudId,
+    imageUri: newer.imageUri ?? older.imageUri,
+    imagePath: newer.imagePath ?? older.imagePath,
+    imageUrl: newer.imageUrl ?? older.imageUrl,
+    imageUploadError: newer.imageUploadError ?? older.imageUploadError,
+  });
+}
+
+export function dedupePools(pools: Pool[]) {
+  const byFingerprint = new Map<string, Pool>();
+
+  for (const pool of pools.map((item) => normalizePool(item))) {
+    const key = getPoolFingerprint(pool);
+    const existing = byFingerprint.get(key);
+    byFingerprint.set(key, existing ? mergeDuplicatePools(existing, pool) : pool);
+  }
+
+  return Array.from(byFingerprint.values()).sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt));
+}
+
 export function calculateRectangularVolumeLiters(
   lengthMeters: number,
   widthMeters: number,

@@ -3,7 +3,7 @@
 import type { User } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
 import type { Database, Json } from '../integrations/supabase/types';
-import { normalizePool, type Pool } from '../domain/pool';
+import { dedupePools, normalizePool, type Pool } from '../domain/pool';
 import { getSignedPoolImageUrl, isLocalPoolImageCandidate, removePoolImage, uploadPoolImage } from './poolImageStorage';
 
 type PoolRow = Database['public']['Tables']['pools']['Row'];
@@ -277,6 +277,6 @@ export async function syncPoolsWithCloud(localPools: Pool[], user: User, account
     unique.set(key, normalizePool(pool));
   }
 
-  const pools = Array.from(unique.values()).sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt));
+  const pools = dedupePools(Array.from(unique.values())).sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt));
   return { pools, pushedCount, pulledCount };
 }
