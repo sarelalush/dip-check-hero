@@ -17,6 +17,7 @@ export type LineIconName =
   | 'flash'
   | 'camera'
   | 'image'
+  | 'user'
   | 'close'
   | 'check'
   | 'drop'
@@ -40,6 +41,7 @@ const iconMap: Record<LineIconName, { source: IconSource; name: string }> = {
   flash: { source: 'ionicons', name: 'flash-outline' },
   camera: { source: 'feather', name: 'camera' },
   image: { source: 'feather', name: 'image' },
+  user: { source: 'feather', name: 'user' },
   close: { source: 'feather', name: 'x' },
   check: { source: 'feather', name: 'check' },
   drop: { source: 'ionicons', name: 'water-outline' },
