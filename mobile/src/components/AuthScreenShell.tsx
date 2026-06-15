@@ -124,6 +124,10 @@ export function AuthField({ compact, icon, keyboardType, label, onChangeText, pl
   );
 }
 
+export function AuthFieldRow({ children }: { children: ReactNode }) {
+  return <View style={styles.fieldRow}>{children}</View>;
+}
+
 export function AuthPrimaryButton({ busy, compact, disabled, label, onPress }: { busy?: boolean; compact?: boolean; disabled?: boolean; label: string; onPress: () => void }) {
   return (
     <Pressable disabled={disabled || busy} onPress={onPress} style={({ pressed }) => [styles.primaryButton, compact && styles.primaryButtonCompact, (disabled || busy) && styles.disabled, pressed && !disabled && styles.pressed]}>
@@ -269,6 +273,7 @@ const styles = StyleSheet.create({
   },
   formCardCompact: { marginTop: 10, borderRadius: 20, paddingHorizontal: 15, paddingTop: 12, paddingBottom: 10, gap: 7 },
   fieldWrap: { gap: 8 },
+  fieldRow: { flexDirection: 'row-reverse', gap: 8 },
   fieldWrapCompact: { gap: 4 },
   fieldLabel: { color: '#202938', fontFamily: typography.fontFamilyRegular, fontSize: 18, fontWeight: '700', ...rtl.text },
   fieldLabelCompact: { fontSize: 14 },

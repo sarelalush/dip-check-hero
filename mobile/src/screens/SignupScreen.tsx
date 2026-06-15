@@ -4,6 +4,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AuthDivider,
   AuthField,
+  AuthFieldRow,
   AuthMessage,
   AuthPrimaryButton,
   AuthScreenShell,
@@ -18,6 +19,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
 
 export function SignupScreen({ navigation }: Props) {
   const { signUpWithEmail, signInWithGoogle } = useAuth();
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -26,13 +29,18 @@ export function SignupScreen({ navigation }: Props) {
   const [googleBusy, setGoogleBusy] = useState(false);
 
   async function submit() {
+    const phoneClean = phone.trim().replace(/\s+/g, '');
+
+    if (!name.trim()) return setError('יש להזין שם מלא כדי ליצור חשבון.');
     if (!email.trim()) return setError('יש להזין אימייל כדי ליצור חשבון.');
+    if (!phoneClean) return setError('יש להזין מספר טלפון כדי ליצור חשבון.');
+    if (!/^0\d{1,2}-?\d{7}$|^\+?\d{9,15}$/.test(phoneClean)) return setError('יש להזין מספר טלפון תקין.');
     if (password.length < 6) return setError('הסיסמה חייבת להכיל לפחות 6 תווים.');
 
     setBusy(true);
     setError('');
     setSuccess('');
-    const result = await signUpWithEmail(email, password);
+    const result = await signUpWithEmail(email, password, name, phoneClean);
     setBusy(false);
 
     if (result.error) {
@@ -76,6 +84,14 @@ export function SignupScreen({ navigation }: Props) {
         </>
       }
     >
+      <AuthFieldRow>
+        <View style={styles.halfField}>
+          <AuthField compact icon="user" label="שם מלא" onChangeText={setName} placeholder="שם" value={name} />
+        </View>
+        <View style={styles.halfField}>
+          <AuthField compact icon="user" keyboardType="phone-pad" label="טלפון" onChangeText={setPhone} placeholder="050..." value={phone} />
+        </View>
+      </AuthFieldRow>
       <AuthField compact icon="mail" keyboardType="email-address" label="אימייל" onChangeText={setEmail} placeholder="הכנס כתובת אימייל" value={email} />
       <AuthField compact icon="lock" label="סיסמה" onChangeText={setPassword} placeholder="בחר סיסמה" secure sideIcon="eye" value={password} />
 
@@ -91,6 +107,7 @@ export function SignupScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
+  halfField: { flex: 1 },
   accountRow: { marginTop: -1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4 },
   accountText: { color: '#1D2530', fontFamily: typography.fontFamilyRegular, fontSize: 13, fontWeight: '700' },
   accountLink: { color: colors.primary, fontFamily: typography.fontFamilySemiBold, fontSize: 13, fontWeight: '900', ...rtl.text },
