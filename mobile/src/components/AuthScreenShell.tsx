@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
   topShade: { position: 'absolute', top: 0, left: 0, right: 0, height: 260, backgroundColor: 'rgba(232,249,255,0.04)' },
   whiteWash: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 642, backgroundColor: 'rgba(255,255,255,0.78)' },
   content: { minHeight: 812, paddingHorizontal: 30, paddingTop: 262, paddingBottom: 28 },
-  fixedContent: { flex: 1, paddingHorizontal: 30, paddingTop: 108, paddingBottom: 10 },
+  fixedContent: { flex: 1, paddingHorizontal: 30, paddingTop: 74, paddingBottom: 10 },
   heroSpacer: { height: 0 },
   brandWrap: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 12 },
   brandRow: { flexDirection: 'row', alignItems: 'center' },
