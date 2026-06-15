@@ -52,6 +52,7 @@ export function LoginScreen({ navigation }: Props) {
   return (
     <AuthScreenShell
       activeMode="login"
+      noScroll
       onLoginTab={() => undefined}
       onSignupTab={() => navigation.navigate('Signup')}
       title="ברוך הבא"

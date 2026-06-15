@@ -12,6 +12,7 @@ interface AuthScreenShellProps {
   activeMode: AuthMode;
   children: ReactNode;
   footer: ReactNode;
+  noScroll?: boolean;
   onLoginTab: () => void;
   onSignupTab: () => void;
   subtitle: string;
@@ -40,37 +41,48 @@ export function AuthScreenShell({
   activeMode,
   children,
   footer,
+  noScroll = false,
   onLoginTab,
   onSignupTab,
   subtitle,
   title,
 }: AuthScreenShellProps) {
+  const body = (
+    <>
+      <View style={styles.heroSpacer} />
+      <BrandMark />
+
+      <View style={styles.welcomeCopy}>
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.subtitle}>{subtitle}</Text>
+      </View>
+
+      <View style={styles.segmented}>
+        <Pressable onPress={onLoginTab} style={[styles.segment, activeMode === 'login' && styles.segmentActive]}>
+          <Text style={[styles.segmentText, activeMode === 'login' && styles.segmentTextActive]}>התחברות</Text>
+        </Pressable>
+        <Pressable onPress={onSignupTab} style={[styles.segment, activeMode === 'signup' && styles.segmentActive]}>
+          <Text style={[styles.segmentText, activeMode === 'signup' && styles.segmentTextActive]}>הרשמה</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.formCard}>{children}{footer}</View>
+    </>
+  );
+
   const screen = (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
       <StatusBar barStyle="dark-content" />
       <ImageBackground source={authPool} resizeMode="cover" style={styles.background} imageStyle={styles.backgroundImage}>
         <View pointerEvents="none" style={styles.topShade} />
         <View pointerEvents="none" style={styles.whiteWash} />
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bounces={false}>
-          <View style={styles.heroSpacer} />
-          <BrandMark />
-
-          <View style={styles.welcomeCopy}>
-            <Text style={styles.title}>{title}</Text>
-            <Text style={styles.subtitle}>{subtitle}</Text>
-          </View>
-
-          <View style={styles.segmented}>
-            <Pressable onPress={onLoginTab} style={[styles.segment, activeMode === 'login' && styles.segmentActive]}>
-              <Text style={[styles.segmentText, activeMode === 'login' && styles.segmentTextActive]}>התחברות</Text>
-            </Pressable>
-            <Pressable onPress={onSignupTab} style={[styles.segment, activeMode === 'signup' && styles.segmentActive]}>
-              <Text style={[styles.segmentText, activeMode === 'signup' && styles.segmentTextActive]}>הרשמה</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.formCard}>{children}{footer}</View>
-        </ScrollView>
+        {noScroll ? (
+          <View style={styles.fixedContent}>{body}</View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" bounces={false}>
+            {body}
+          </ScrollView>
+        )}
       </ImageBackground>
     </KeyboardAvoidingView>
   );
@@ -202,6 +214,7 @@ const styles = StyleSheet.create({
   topShade: { position: 'absolute', top: 0, left: 0, right: 0, height: 260, backgroundColor: 'rgba(232,249,255,0.04)' },
   whiteWash: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 642, backgroundColor: 'rgba(255,255,255,0.78)' },
   content: { minHeight: 812, paddingHorizontal: 30, paddingTop: 262, paddingBottom: 28 },
+  fixedContent: { flex: 1, paddingHorizontal: 30, paddingTop: 258, paddingBottom: 18 },
   heroSpacer: { height: 0 },
   brandWrap: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 12 },
   brandRow: { flexDirection: 'row', alignItems: 'center' },
