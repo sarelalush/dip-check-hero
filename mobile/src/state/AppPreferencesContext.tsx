@@ -12,7 +12,7 @@ const TECHNICAL_DETAILS_KEY = '@aquasense/preferences/show-technical-analysis';
 
 export function AppPreferencesProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
-  const [showTechnicalAnalysisDetails, setShowTechnicalAnalysisDetailsState] = useState(true);
+  const [showTechnicalAnalysisDetails, setShowTechnicalAnalysisDetailsState] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -21,7 +21,7 @@ export function AppPreferencesProvider({ children }: { children: ReactNode }) {
       try {
         const stored = await AsyncStorage.getItem(TECHNICAL_DETAILS_KEY);
         if (!mounted) return;
-        setShowTechnicalAnalysisDetailsState(stored === null ? true : stored === 'true');
+        setShowTechnicalAnalysisDetailsState(stored === null ? false : stored === 'true');
       } catch (error) {
         console.warn('Failed to restore app preferences', error);
       } finally {

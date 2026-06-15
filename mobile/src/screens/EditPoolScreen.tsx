@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { WebPhoneFrame } from '../components/WebPhoneFrame';
 import { getBrand } from '../config/stripBrands';
 import {
   calculateManualVolumeLiters,
@@ -181,6 +182,7 @@ export function EditPoolScreen({ navigation, route }: Props) {
 
   if (!pool) {
     return (
+      <WebPhoneFrame>
       <View style={styles.root}>
         <View style={styles.missingCard}>
           <Text style={styles.heading}>בריכה לא נמצאה</Text>
@@ -189,10 +191,12 @@ export function EditPoolScreen({ navigation, route }: Props) {
           </Pressable>
         </View>
       </View>
+      </WebPhoneFrame>
     );
   }
 
   return (
+    <WebPhoneFrame>
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.topBar}>
@@ -330,6 +334,7 @@ export function EditPoolScreen({ navigation, route }: Props) {
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
+    </WebPhoneFrame>
   );
 }
 

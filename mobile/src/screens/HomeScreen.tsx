@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppHeader } from '../components/AppHeader';
@@ -8,15 +9,45 @@ import { MetricCard } from '../components/MetricCard';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { PoolPhoto } from '../components/WaterVisuals';
 import { colors, rtl, typography } from '../theme';
-import { homeMetrics } from '../data/mockAppData';
+import type { ScanResultParameter } from '../domain/scanResults';
 import { usePools } from '../state/PoolsContext';
+import { useResultsHistory } from '../state/ResultsHistoryContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
+function formatMetricValue(parameter?: ScanResultParameter) {
+  if (!parameter) return '-';
+  return parameter.key === 'ph' ? parameter.value.toFixed(1) : Math.round(parameter.value).toLocaleString('he-IL');
+}
+
+function metricFromResult(parameters: ScanResultParameter[], keys: ScanResultParameter['key'][], fallbackLabel: string) {
+  const parameter = parameters.find((item) => keys.includes(item.key));
+  return {
+    label: parameter?.name ?? fallbackLabel,
+    status: parameter?.status.label ?? 'אין נתון',
+    tone: parameter?.status.tone ?? ('warning' as const),
+    value: formatMetricValue(parameter),
+  };
+}
+
 export function HomeScreen({ navigation }: Props) {
   const { pools } = usePools();
+  const { historyRecords } = useResultsHistory();
   const hasPools = pools.length > 0;
+  const latestRecord = useMemo(
+    () => [...historyRecords].sort((a, b) => b.testedAt - a.testedAt)[0],
+    [historyRecords],
+  );
+  const latestResult = latestRecord?.analysisResult;
+  const latestMetrics = latestResult
+    ? [
+        metricFromResult(latestResult.parameters, ['ph'], 'pH'),
+        metricFromResult(latestResult.parameters, ['freeChlorine', 'totalChlorine'], 'כלור'),
+        metricFromResult(latestResult.parameters, ['alkalinity'], 'אלקליניות'),
+      ]
+    : [];
+  const latestTone = latestRecord?.tone ?? latestResult?.overallStatus.tone ?? 'warning';
 
   if (!hasPools) {
     return (
@@ -52,7 +83,7 @@ export function HomeScreen({ navigation }: Props) {
       <AppHeader />
 
       <View style={styles.greeting}>
-        <Text style={styles.hello}>שלום דן!</Text>
+        <Text style={styles.hello}>שלום!</Text>
         <Text style={styles.subtitle}>כיף לראות אותך שוב</Text>
       </View>
 
@@ -60,26 +91,30 @@ export function HomeScreen({ navigation }: Props) {
         <PoolPhoto variant="home" />
       </View>
 
-      <Card style={styles.statusCard}>
-        <Text style={styles.cardKicker}>מצב המים</Text>
-        <View style={styles.checkCircle}>
-          <LineIcon name="check" color={colors.success} size={32} />
-        </View>
-        <Text style={styles.statusTitle}>רוב הערכים תקינים</Text>
-        <Text style={styles.statusSubtitle}>המים שלך נקיים ובריאים</Text>
+      {latestRecord && latestResult ? (
+        <Card style={styles.statusCard}>
+          <Text style={styles.cardKicker}>מצב המים</Text>
+          <View style={[styles.checkCircle, latestTone === 'success' ? styles.checkCircleOk : styles.checkCircleWarning]}>
+            <LineIcon name={latestTone === 'success' ? 'check' : 'help'} color={latestTone === 'success' ? colors.success : colors.warning} size={32} />
+          </View>
+          <Text style={styles.statusTitle}>{latestRecord.status}</Text>
+          <Text style={styles.statusSubtitle}>{latestRecord.poolName} · {latestRecord.date}</Text>
 
-        <View style={styles.metrics}>
-          {homeMetrics.map((metric) => (
-            <MetricCard
-              key={metric.label}
-              label={metric.label}
-              status={metric.status}
-              tone={metric.tone}
-              value={metric.value}
-            />
-          ))}
-        </View>
-      </Card>
+          <View style={styles.metrics}>
+            {latestMetrics.map((metric) => (
+              <MetricCard key={metric.label} label={metric.label} status={metric.status} tone={metric.tone} value={metric.value} />
+            ))}
+          </View>
+        </Card>
+      ) : (
+        <Card style={styles.emptyCard}>
+          <View style={styles.emptyIcon}>
+            <LineIcon name="scan" color={colors.primaryDark} size={28} />
+          </View>
+          <Text style={styles.statusTitle}>עדיין אין בדיקה אחרונה</Text>
+          <Text style={styles.emptyText}>בצע סריקה ראשונה כדי שמצב המים במסך הבית יתעדכן לפי התוצאה האמיתית האחרונה.</Text>
+        </Card>
+      )}
 
       <View style={styles.ctaWrap}>
         <PrimaryButton label="התחל סריקה" icon="scan" onPress={() => navigation.navigate('SelectStrip')} />
@@ -165,11 +200,17 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#CFF6D6',
     borderWidth: 1,
-    borderColor: '#9EE8AD',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  checkCircleOk: {
+    backgroundColor: '#CFF6D6',
+    borderColor: '#9EE8AD',
+  },
+  checkCircleWarning: {
+    backgroundColor: colors.warningSoft,
+    borderColor: 'rgba(240,165,41,0.35)',
   },
   statusTitle: {
     color: colors.text,

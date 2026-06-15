@@ -7,7 +7,6 @@ import { BottomTabBar } from '../components/BottomTabBar';
 import { LineIcon, type LineIconName } from '../components/LineIcon';
 import { WebPhoneFrame } from '../components/WebPhoneFrame';
 import { getRecommendedBrand } from '../config/stripBrands';
-import { useAppPreferences } from '../state/AppPreferencesContext';
 import { useAuth } from '../state/AuthContext';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
@@ -18,7 +17,6 @@ type UnitsPreference = 'liters' | 'cubic';
 const UNITS_KEY = '@aquasense/preferences/volume-units';
 
 export function SettingsScreen({ navigation }: Props) {
-  const { showTechnicalAnalysisDetails, setShowTechnicalAnalysisDetails } = useAppPreferences();
   const { user, signOut, updateDisplayName } = useAuth();
   const [busy, setBusy] = useState(false);
   const [savingName, setSavingName] = useState(false);
@@ -153,13 +151,6 @@ export function SettingsScreen({ navigation }: Props) {
             onPress={() => navigation.navigate('Pools')}
           />
           <InfoRow icon="scan" label="סטיק ברירת מחדל" value={recommendedBrand.nameHe} />
-          <ToggleRow
-            enabled={showTechnicalAnalysisDetails}
-            icon="settings"
-            label="הצגת פרטים טכניים בתוצאות"
-            value="מציג מקור ניתוח וביטחון רק כשהאפשרות פעילה"
-            onToggle={() => setShowTechnicalAnalysisDetails(!showTechnicalAnalysisDetails)}
-          />
           <View style={styles.preferenceRow}>
             <View style={styles.preferenceCopy}>
               <Text style={styles.preferenceLabel}>יחידות נפח</Text>

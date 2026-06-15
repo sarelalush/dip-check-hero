@@ -14,7 +14,6 @@ import { calculateDosage } from '../domain/dosage';
 import type { ScanResultParameter, StripAnalysisResult } from '../domain/scanResults';
 import { analyzeStripImage, getStripAnalysisConfig } from '../services/stripAnalysisService';
 import { prepareScanImageForRemoteAnalysis } from '../services/scanImageStorage';
-import { useAppPreferences } from '../state/AppPreferencesContext';
 import { useAuth } from '../state/AuthContext';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory } from '../state/ResultsHistoryContext';
@@ -79,34 +78,7 @@ function SafetyCard({ text }: { text?: string }) {
   );
 }
 
-function getAnalysisSourceLabel(result: StripAnalysisResult) {
-  if (result.source === 'ai') return 'ניתוח AI';
-  if (result.source === 'cv' || result.source === 'remote-v1') return 'ניתוח פיקסלים';
-  if (result.source === 'mock' || result.source === 'remote-mock') return 'ערכי דמו';
-  return 'ניתוח אוטומטי';
-}
-
-function AnalysisDebugCard({ result }: { result: StripAnalysisResult }) {
-  const confidence = typeof result.confidence === 'number' ? `${Math.round(result.confidence * 100)}%` : 'לא זמין';
-  const details = [result.provider, result.model, result.shotsUsed ? `${result.shotsUsed} ריצות` : undefined].filter(Boolean).join(' · ');
-
-  return (
-    <Card compact style={styles.debugCard}>
-      <View style={styles.debugHeader}>
-        <View style={styles.debugIcon}>
-          <LineIcon name="settings" color={colors.primaryDark} size={14} />
-        </View>
-        <Text style={styles.debugTitle}>{getAnalysisSourceLabel(result)}</Text>
-      </View>
-      <Text style={styles.debugText}>ביטחון: {confidence}</Text>
-      {details ? <Text style={styles.debugText}>{details}</Text> : null}
-      {result.notes ? <Text style={styles.debugNote}>{result.notes}</Text> : null}
-    </Card>
-  );
-}
-
 export function ResultsScreen({ navigation, route }: Props) {
-  const { showTechnicalAnalysisDetails } = useAppPreferences();
   const { accountId, user } = useAuth();
   const { getHistoryRecord, isHydrated, saveAnalysisResult } = useResultsHistory();
   const { getPool } = usePools();
@@ -396,8 +368,6 @@ export function ResultsScreen({ navigation, route }: Props) {
         </Card>
       ) : null}
 
-      {showTechnicalAnalysisDetails ? <AnalysisDebugCard result={analysisResult} /> : null}
-
       <View style={styles.section}>
         <ParameterArcs recs={resultCards} />
       </View>
@@ -540,47 +510,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     lineHeight: 18,
-    ...rtl.text,
-  },
-  debugCard: {
-    marginTop: 12,
-    gap: 5,
-    backgroundColor: colors.surfaceSoft,
-  },
-  debugHeader: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 8,
-  },
-  debugIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  debugTitle: {
-    color: colors.primaryDeep,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 12,
-    fontWeight: '900',
-    ...rtl.text,
-  },
-  debugText: {
-    color: colors.textSoft,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 11,
-    fontWeight: '800',
-    ...rtl.text,
-  },
-  debugNote: {
-    marginTop: 2,
-    color: colors.muted,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 10,
-    fontWeight: '700',
-    lineHeight: 16,
     ...rtl.text,
   },
   safetyIcon: {

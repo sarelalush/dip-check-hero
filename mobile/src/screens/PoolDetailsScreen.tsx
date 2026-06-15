@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
@@ -23,6 +24,7 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
   const { startScanSession } = useScanSession();
   const { getReminder, setReminder } = useReminders();
   const pool = getPool(route.params.poolId);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const recentTests = pool ? getPoolHistoryRecords(pool.id, 3) : [];
   const poolName = pool?.name ?? 'בריכה ללא שם';
   const poolVolume = pool ? `${pool.volumeLiters.toLocaleString('he-IL')} ליטר` : 'לא הוגדר נפח';
@@ -140,10 +142,31 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
           <Pressable onPress={() => navigation.navigate('EditPool', { poolId: pool.id })} style={styles.editButton}>
             <Text style={styles.editText}>עריכת בריכה</Text>
           </Pressable>
-          <Pressable onPress={handleDelete} style={styles.deleteButton}>
+          <Pressable onPress={() => setConfirmDelete(true)} style={styles.deleteButton}>
             <Text style={styles.deleteText}>מחיקת בריכה</Text>
           </Pressable>
         </View>
+      ) : null}
+
+      {pool && confirmDelete ? (
+        <Card compact style={styles.deleteConfirmCard}>
+          <Text style={styles.deleteConfirmTitle}>למחוק את הבריכה?</Text>
+          <Text style={styles.deleteConfirmText}>הבריכה "{pool.name}" תוסר מהמכשיר ומהענן אם יש חיבור פעיל. פעולה זו לא תמחק בדיקות שכבר נשמרו בהיסטוריה.</Text>
+          <View style={styles.deleteConfirmActions}>
+            <Pressable onPress={() => setConfirmDelete(false)} style={styles.cancelDeleteButton}>
+              <Text style={styles.cancelDeleteText}>ביטול</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                deletePool(pool.id);
+                navigation.navigate('Pools');
+              }}
+              style={styles.confirmDeleteButton}
+            >
+              <Text style={styles.confirmDeleteText}>מחיקה</Text>
+            </Pressable>
+          </View>
+        </Card>
       ) : null}
     </AppShell>
   );
@@ -442,5 +465,58 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
     ...rtl.textCenter,
+  },
+  deleteConfirmCard: {
+    marginTop: 10,
+    gap: 10,
+    borderColor: 'rgba(231,92,98,0.26)',
+    backgroundColor: colors.dangerSoft,
+  },
+  deleteConfirmTitle: {
+    color: colors.danger,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 15,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  deleteConfirmText: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 18,
+    ...rtl.text,
+  },
+  deleteConfirmActions: {
+    flexDirection: 'row-reverse',
+    gap: 8,
+  },
+  cancelDeleteButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 999,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelDeleteText: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  confirmDeleteButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 999,
+    backgroundColor: colors.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmDeleteText: {
+    color: colors.white,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
   },
 });
