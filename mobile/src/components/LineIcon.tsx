@@ -18,6 +18,11 @@ export type LineIconName =
   | 'camera'
   | 'image'
   | 'user'
+  | 'mail'
+  | 'lock'
+  | 'eye'
+  | 'shield'
+  | 'apple'
   | 'close'
   | 'check'
   | 'drop'
@@ -42,6 +47,11 @@ const iconMap: Record<LineIconName, { source: IconSource; name: string }> = {
   camera: { source: 'feather', name: 'camera' },
   image: { source: 'feather', name: 'image' },
   user: { source: 'feather', name: 'user' },
+  mail: { source: 'feather', name: 'mail' },
+  lock: { source: 'feather', name: 'lock' },
+  eye: { source: 'feather', name: 'eye' },
+  shield: { source: 'feather', name: 'shield' },
+  apple: { source: 'material', name: 'apple' },
   close: { source: 'feather', name: 'x' },
   check: { source: 'feather', name: 'check' },
   drop: { source: 'ionicons', name: 'water-outline' },
