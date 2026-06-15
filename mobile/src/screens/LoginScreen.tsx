@@ -65,12 +65,12 @@ export function LoginScreen({ navigation }: Props) {
               <Text style={styles.accountLink}>צור חשבון</Text>
             </Pressable>
           </View>
-          <SecureDataNote />
+          <SecureDataNote compact />
         </>
       }
     >
-      <AuthField icon="mail" keyboardType="email-address" label="אימייל" onChangeText={setEmail} placeholder="הכנס כתובת אימייל" value={email} />
-      <AuthField icon="lock" label="סיסמה" onChangeText={setPassword} placeholder="הכנס סיסמה" secure sideIcon="eye" value={password} />
+      <AuthField compact icon="mail" keyboardType="email-address" label="אימייל" onChangeText={setEmail} placeholder="הכנס כתובת אימייל" value={email} />
+      <AuthField compact icon="lock" label="סיסמה" onChangeText={setPassword} placeholder="הכנס סיסמה" secure sideIcon="eye" value={password} />
 
       <Pressable onPress={() => setError('איפוס סיסמה יהיה זמין בקרוב.')} style={styles.forgotButton}>
         <Text style={styles.forgotText}>שכחתי סיסמה</Text>
@@ -78,18 +78,18 @@ export function LoginScreen({ navigation }: Props) {
 
       <AuthMessage text={error} tone="error" />
 
-      <AuthPrimaryButton busy={busy} disabled={googleBusy} label="התחברות" onPress={submit} />
-      <AuthDivider />
-      <SocialButton disabled={busy || googleBusy} label="המשך עם Apple" mark="apple" onPress={() => setError('התחברות עם Apple תהיה זמינה בקרוב.')} />
-      <SocialButton disabled={busy || googleBusy} label={googleBusy ? 'מתחבר עם Google...' : 'המשך עם Google'} mark="google" onPress={google} />
+      <AuthPrimaryButton compact busy={busy} disabled={googleBusy} label="התחברות" onPress={submit} />
+      <AuthDivider compact />
+      <SocialButton compact disabled={busy || googleBusy} label="המשך עם Apple" mark="apple" onPress={() => setError('התחברות עם Apple תהיה זמינה בקרוב.')} />
+      <SocialButton compact disabled={busy || googleBusy} label={googleBusy ? 'מתחבר עם Google...' : 'המשך עם Google'} mark="google" onPress={google} />
     </AuthScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  forgotButton: { alignSelf: 'flex-start', marginTop: -5, paddingVertical: 2 },
-  forgotText: { color: colors.primary, fontFamily: typography.fontFamilyRegular, fontSize: 17, fontWeight: '700', ...rtl.text },
-  accountRow: { marginTop: 1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4 },
-  accountText: { color: '#1D2530', fontFamily: typography.fontFamilyRegular, fontSize: 16, fontWeight: '700' },
-  accountLink: { color: colors.primary, fontFamily: typography.fontFamilySemiBold, fontSize: 16, fontWeight: '900' },
+  forgotButton: { alignSelf: 'flex-start', marginTop: -4, paddingVertical: 0 },
+  forgotText: { color: colors.primary, fontFamily: typography.fontFamilyRegular, fontSize: 14, fontWeight: '700', ...rtl.text },
+  accountRow: { marginTop: -1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  accountText: { color: '#1D2530', fontFamily: typography.fontFamilyRegular, fontSize: 13, fontWeight: '700' },
+  accountLink: { color: colors.primary, fontFamily: typography.fontFamilySemiBold, fontSize: 13, fontWeight: '900' },
 });
