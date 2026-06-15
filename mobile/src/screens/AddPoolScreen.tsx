@@ -3,6 +3,7 @@ import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleShee
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { getRecommendedBrand } from '../config/stripBrands';
+import { WebPhoneFrame } from '../components/WebPhoneFrame';
 import {
   calculateManualVolumeLiters,
   calculatePoolVolume,
@@ -164,6 +165,7 @@ export function AddPoolScreen({ navigation }: Props) {
 
   if (!quotaChecking && quotaExceeded) {
     return (
+      <WebPhoneFrame>
       <View style={styles.root}>
         <View style={styles.quotaContent}>
           <View style={styles.quotaCard}>
@@ -181,10 +183,12 @@ export function AddPoolScreen({ navigation }: Props) {
           </View>
         </View>
       </View>
+      </WebPhoneFrame>
     );
   }
 
   return (
+    <WebPhoneFrame>
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.topBar}>
@@ -322,6 +326,7 @@ export function AddPoolScreen({ navigation }: Props) {
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
+    </WebPhoneFrame>
   );
 }
 

@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { LineIcon, type LineIconName } from '../components/LineIcon';
+import { WebPhoneFrame } from '../components/WebPhoneFrame';
 import { getRecommendedBrand } from '../config/stripBrands';
 import { useAppPreferences } from '../state/AppPreferencesContext';
 import { useAuth } from '../state/AuthContext';
@@ -92,6 +93,7 @@ export function SettingsScreen({ navigation }: Props) {
   }
 
   return (
+    <WebPhoneFrame>
     <View style={styles.root}>
       <View style={styles.blob} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
@@ -188,6 +190,7 @@ export function SettingsScreen({ navigation }: Props) {
       </ScrollView>
       <BottomTabBar active="settings" navigation={navigation} />
     </View>
+    </WebPhoneFrame>
   );
 }
 

@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
-import { ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NavigationProp } from '@react-navigation/native';
 import { BottomTabBar, type TabKey } from './BottomTabBar';
 import { DeviceStatusBar } from './DeviceStatusBar';
+import { WebPhoneFrame } from './WebPhoneFrame';
 import { colors, layout } from '../theme';
 import type { RootStackParamList } from '../../App';
 
@@ -24,32 +25,35 @@ export function AppShell({
   waterMode = 'soft',
   contentStyle,
 }: AppShellProps) {
+  const showDevicePreview = Platform.OS === 'web';
   const content = (
     <SafeAreaView style={[styles.safe, contentStyle]} edges={['top']}>
       {children}
     </SafeAreaView>
   );
 
-  return (
-    <View style={styles.viewport}>
-      <View style={styles.deviceFrame}>
-      <View style={[styles.phone, waterMode === 'full' && styles.phoneFull]}>
-        <WaterBackdrop full={waterMode === 'full'} />
-        <DeviceStatusBar light={waterMode === 'full'} />
-        {scroll ? (
-          <SafeAreaView style={styles.safeScroll} edges={[]}>
-            <ScrollView contentContainerStyle={[styles.scrollContent, contentStyle]} showsVerticalScrollIndicator={false}>
-              {children}
-            </ScrollView>
-          </SafeAreaView>
-        ) : (
-          content
-        )}
-        <BottomTabBar active={activeTab} navigation={navigation} />
-      </View>
-      </View>
+  const phone = (
+    <View style={[styles.phone, !showDevicePreview && styles.nativePhone, waterMode === 'full' && styles.phoneFull]}>
+      <WaterBackdrop full={waterMode === 'full'} />
+      {showDevicePreview ? <DeviceStatusBar light={waterMode === 'full'} /> : null}
+      {scroll ? (
+        <SafeAreaView style={styles.safeScroll} edges={[]}>
+          <ScrollView contentContainerStyle={[styles.scrollContent, contentStyle]} showsVerticalScrollIndicator={false}>
+            {children}
+          </ScrollView>
+        </SafeAreaView>
+      ) : (
+        content
+      )}
+      <BottomTabBar active={activeTab} navigation={navigation} />
     </View>
   );
+
+  if (!showDevicePreview) {
+    return phone;
+  }
+
+  return <WebPhoneFrame>{phone}</WebPhoneFrame>;
 }
 
 function WaterBackdrop({ full }: { full: boolean }) {
@@ -65,35 +69,15 @@ function WaterBackdrop({ full }: { full: boolean }) {
 }
 
 const styles = StyleSheet.create({
-  viewport: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#EAF8FB',
-    paddingVertical: 14,
-  },
-  deviceFrame: {
-    flex: 1,
-    width: '100%',
-    maxWidth: layout.maxPhoneWidth,
-    maxHeight: layout.maxPhoneHeight,
-    borderRadius: 42,
-    backgroundColor: '#080D11',
-    borderWidth: 4,
-    borderColor: '#111820',
-    padding: 4,
-    shadowColor: '#0B2730',
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.22,
-    shadowRadius: 28,
-    elevation: 10,
-  },
   phone: {
     flex: 1,
     width: '100%',
     backgroundColor: colors.background,
     borderRadius: 36,
     overflow: 'hidden',
+  },
+  nativePhone: {
+    borderRadius: 0,
   },
   phoneFull: {
     backgroundColor: colors.water,
