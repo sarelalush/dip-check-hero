@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import type { KeyboardTypeOptions } from 'react-native';
 import { LineIcon, type LineIconName } from './LineIcon';
 import { colors, layout, radius, rtl, shadows, typography } from '../theme';
@@ -49,6 +49,12 @@ export function AuthScreenShell({
   subtitle,
   title,
 }: AuthScreenShellProps) {
+  const viewport = useWindowDimensions();
+  const webScale =
+    Platform.OS === 'web'
+      ? Math.min(1, (viewport.width - 28) / layout.maxPhoneWidth, (viewport.height - 28) / layout.maxPhoneHeight)
+      : 1;
+
   const body = (
     <>
       <View style={styles.heroSpacer} />
@@ -95,8 +101,30 @@ export function AuthScreenShell({
 
   return (
     <View style={styles.webViewport}>
-      <View style={styles.webDeviceFrame}>
-        <View style={styles.webPhone}>{screen}</View>
+      <View
+        style={[
+          styles.webDeviceFrame,
+          {
+            width: layout.maxPhoneWidth * webScale,
+            height: layout.maxPhoneHeight * webScale,
+            borderRadius: 42 * webScale,
+            borderWidth: 4 * webScale,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.webPhone,
+            {
+              width: layout.maxPhoneWidth,
+              height: layout.maxPhoneHeight,
+              transform: [{ scale: webScale }],
+              transformOrigin: 'top left',
+            } as object,
+          ]}
+        >
+          {screen}
+        </View>
       </View>
     </View>
   );
@@ -197,24 +225,21 @@ function GoogleMark({ compact }: { compact?: boolean }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
-  webViewport: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAF8FB', paddingVertical: 14 },
+  webViewport: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAF8FB', padding: 14, overflow: 'hidden' },
   webDeviceFrame: {
-    flex: 1,
-    width: '100%',
-    maxWidth: layout.maxPhoneWidth,
-    maxHeight: layout.maxPhoneHeight,
+    position: 'relative',
     borderRadius: 42,
     backgroundColor: '#080D11',
     borderWidth: 4,
     borderColor: '#111820',
-    padding: 4,
+    overflow: 'hidden',
     shadowColor: '#0B2730',
     shadowOffset: { width: 0, height: 18 },
     shadowOpacity: 0.22,
     shadowRadius: 28,
     elevation: 10,
   },
-  webPhone: { flex: 1, width: '100%', borderRadius: 36, overflow: 'hidden' },
+  webPhone: { position: 'absolute', top: 0, left: 0, borderRadius: 36, overflow: 'hidden' },
   background: { flex: 1 },
   backgroundImage: { width: '100%', height: '100%' },
   topShade: { position: 'absolute', top: 0, left: 0, right: 0, height: 260, backgroundColor: 'rgba(232,249,255,0.04)' },
