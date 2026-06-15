@@ -1,4 +1,4 @@
-import { ImageBackground, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ImageBackground, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LineIcon, type LineIconName } from '../components/LineIcon';
 import { colors, layout, radius, rtl, shadows, typography } from '../theme';
@@ -23,7 +23,7 @@ export function LandingScreen({ navigation }: Props) {
       <ImageBackground source={welcomePool} resizeMode="cover" style={styles.background} imageStyle={styles.backgroundImage}>
         <View pointerEvents="none" style={styles.skyWash} />
         <View pointerEvents="none" style={styles.bottomMist} />
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} bounces={false}>
+        <View style={styles.content}>
           <View style={styles.brandBlock}>
             <View style={styles.brandRow}>
               <Text style={styles.brandDip}>Dip</Text>
@@ -74,16 +74,6 @@ export function LandingScreen({ navigation }: Props) {
               <View style={[styles.chevron, styles.chevronSecond]} />
             </View>
           </View>
-        </ScrollView>
-
-        <View style={styles.fakeTabBar}>
-          <LineIcon name="user" color="#C3D2DA" size={23} />
-          <LineIcon name="history" color="#C3D2DA" size={23} />
-          <View style={styles.fakeCenter}>
-            <LineIcon name="drop" color={colors.white} size={26} />
-          </View>
-          <LineIcon name="results" color="#C3D2DA" size={24} />
-          <LineIcon name="home" color={colors.primary} size={26} />
         </View>
       </ImageBackground>
     </View>
@@ -149,18 +139,18 @@ const styles = StyleSheet.create({
   background: { flex: 1 },
   backgroundImage: { width: '100%', height: '100%' },
   skyWash: { position: 'absolute', top: 0, left: 0, right: 0, height: 178, backgroundColor: 'rgba(240,250,255,0.14)' },
-  bottomMist: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 390, backgroundColor: 'rgba(255,255,255,0.62)' },
-  content: { minHeight: 820, paddingHorizontal: 20, paddingTop: 48, paddingBottom: 118 },
-  brandBlock: { alignItems: 'flex-end', paddingRight: 22 },
+  bottomMist: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 360, backgroundColor: 'rgba(255,255,255,0.66)' },
+  content: { flex: 1, paddingHorizontal: 20, paddingTop: 48, paddingBottom: 10 },
+  brandBlock: { alignItems: 'flex-end', paddingRight: 18 },
   brandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
-  brandDip: { color: '#0A3D78', fontFamily: typography.fontFamilyExtraBold, fontSize: 41, fontWeight: '900', letterSpacing: 0 },
-  brandCheck: { color: colors.primary, fontFamily: typography.fontFamilyExtraBold, fontSize: 41, fontWeight: '900', letterSpacing: 0 },
-  brandSub: { marginTop: -5, marginRight: 86, color: '#133F72', fontFamily: typography.fontFamilyBold, fontSize: 18, fontWeight: '900', ...rtl.text },
+  brandDip: { color: '#0A3D78', fontFamily: typography.fontFamilyExtraBold, fontSize: 37, fontWeight: '900', letterSpacing: 0 },
+  brandCheck: { color: colors.primary, fontFamily: typography.fontFamilyExtraBold, fontSize: 37, fontWeight: '900', letterSpacing: 0 },
+  brandSub: { marginTop: -7, marginRight: 76, color: '#133F72', fontFamily: typography.fontFamilyBold, fontSize: 16, fontWeight: '900', ...rtl.text },
   dropLogo: {
     marginLeft: 11,
-    width: 57,
-    height: 68,
-    borderRadius: 31,
+    width: 52,
+    height: 62,
+    borderRadius: 29,
     borderBottomLeftRadius: 36,
     borderBottomRightRadius: 36,
     backgroundColor: 'rgba(8,175,203,0.74)',
@@ -170,32 +160,32 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: 'rgba(125,221,236,0.9)',
   },
-  heroStage: { flex: 1, minHeight: 412, marginTop: 42, justifyContent: 'flex-end' },
-  copyBlock: { alignItems: 'flex-end', marginBottom: 26 },
+  heroStage: { flex: 1, minHeight: 0, marginTop: 20, justifyContent: 'flex-end' },
+  copyBlock: { alignItems: 'flex-end', marginBottom: 14 },
   heroTitle: {
     color: '#073B73',
     fontFamily: typography.fontFamilyExtraBold,
-    fontSize: 54,
+    fontSize: 48,
     fontWeight: '900',
-    lineHeight: 63,
+    lineHeight: 55,
     ...rtl.text,
   },
   heroSubtitle: {
-    marginTop: 15,
+    marginTop: 9,
     color: '#0B3F72',
     fontFamily: typography.fontFamilyRegular,
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: '700',
-    lineHeight: 38,
+    lineHeight: 32,
     ...rtl.text,
   },
-  stripScene: { position: 'absolute', left: 34, bottom: 22, width: 132, height: 370 },
+  stripScene: { position: 'absolute', left: 32, bottom: 8, width: 116, height: 310 },
   glass: {
     position: 'absolute',
     left: -28,
     bottom: -18,
-    width: 128,
-    height: 96,
+    width: 116,
+    height: 78,
     borderRadius: 34,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.82)',
@@ -207,7 +197,7 @@ const styles = StyleSheet.create({
     left: 42,
     bottom: 6,
     width: 36,
-    height: 330,
+    height: 284,
     borderRadius: 12,
     backgroundColor: 'rgba(255,255,255,0.92)',
     alignItems: 'center',
@@ -226,28 +216,28 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 8,
     borderBottomRightRadius: 8,
     backgroundColor: 'rgba(255,255,255,0.95)',
-    paddingHorizontal: 24,
-    paddingTop: 29,
-    paddingBottom: 66,
+    paddingHorizontal: 22,
+    paddingTop: 22,
+    paddingBottom: 17,
     ...shadows.hero,
   },
   primaryButton: {
-    minHeight: 66,
+    minHeight: 58,
     borderRadius: 22,
     backgroundColor: colors.primary,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 48,
+    gap: 42,
     borderWidth: 3,
     borderColor: 'rgba(0,147,180,0.35)',
     ...shadows.button,
   },
-  primaryIcon: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-  primaryLabel: { color: colors.white, fontFamily: typography.fontFamilyBold, fontSize: 27, fontWeight: '900', ...rtl.textCenter },
+  primaryIcon: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  primaryLabel: { color: colors.white, fontFamily: typography.fontFamilyBold, fontSize: 24, fontWeight: '900', ...rtl.textCenter },
   loginButton: {
-    marginTop: 14,
-    minHeight: 62,
+    marginTop: 11,
+    minHeight: 54,
     borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.96)',
     borderWidth: 1.5,
@@ -255,32 +245,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 88,
+    gap: 78,
     ...shadows.soft,
   },
-  loginIcon: { width: 45, height: 45, alignItems: 'center', justifyContent: 'center' },
-  loginLabel: { color: colors.primaryDeep, fontFamily: typography.fontFamilyBold, fontSize: 23, fontWeight: '900', ...rtl.textCenter },
-  featureRow: { marginTop: 23, flexDirection: 'row-reverse', gap: 16 },
-  featureCard: { flex: 1, minHeight: 116, borderRadius: 17, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, ...shadows.card },
-  featureIcon: { width: 58, height: 58, borderRadius: 29, backgroundColor: 'rgba(8,175,203,0.08)', alignItems: 'center', justifyContent: 'center' },
-  featureLabel: { marginTop: 12, color: '#0B3F72', fontFamily: typography.fontFamilyBold, fontSize: 14, fontWeight: '900', ...rtl.textCenter },
-  chevrons: { marginTop: 20, alignItems: 'center', gap: 3 },
-  chevron: { width: 17, height: 17, borderRightWidth: 4, borderBottomWidth: 4, borderColor: colors.primary, transform: [{ rotate: '45deg' }] },
+  loginIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
+  loginLabel: { color: colors.primaryDeep, fontFamily: typography.fontFamilyBold, fontSize: 21, fontWeight: '900', ...rtl.textCenter },
+  featureRow: { marginTop: 16, flexDirection: 'row-reverse', gap: 12 },
+  featureCard: { flex: 1, minHeight: 88, borderRadius: 17, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7, ...shadows.card },
+  featureIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(8,175,203,0.08)', alignItems: 'center', justifyContent: 'center' },
+  featureLabel: { marginTop: 8, color: '#0B3F72', fontFamily: typography.fontFamilyBold, fontSize: 12, fontWeight: '900', ...rtl.textCenter },
+  chevrons: { marginTop: 10, alignItems: 'center', gap: 2 },
+  chevron: { width: 13, height: 13, borderRightWidth: 3, borderBottomWidth: 3, borderColor: colors.primary, transform: [{ rotate: '45deg' }] },
   chevronSecond: { marginTop: -8, opacity: 0.72 },
-  fakeTabBar: {
-    position: 'absolute',
-    left: 18,
-    right: 18,
-    bottom: 18,
-    height: 76,
-    borderRadius: 32,
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    paddingHorizontal: 24,
-    ...shadows.tab,
-  },
-  fakeCenter: { width: 58, height: 58, borderRadius: 29, backgroundColor: 'rgba(8,175,203,0.18)', alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.9, transform: [{ scale: 0.99 }] },
 });
