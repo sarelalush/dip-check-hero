@@ -179,12 +179,6 @@ export function SettingsScreen({ navigation }: Props) {
 
         <Section title="מוכנות לפרסום">
           <SettingsRow
-            icon="scan"
-            label="בדיקת חיבור"
-            value="בדיקת Supabase, session, RPC ו-Storage על מכשיר אמיתי"
-            onPress={() => navigation.navigate('ConnectionDiagnostics')}
-          />
-          <SettingsRow
             icon="check"
             label="בדיקות לפני פרסום"
             value="רשימת מצב פנימית לפני App Store"

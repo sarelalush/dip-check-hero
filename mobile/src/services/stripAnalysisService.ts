@@ -1,7 +1,7 @@
 import type { StripAnalysisResult } from '../domain/scanResults';
 import type { StripBrand } from '../domain/strip';
 import type { ScanSessionState } from '../state/ScanSessionContext';
-import { getSupabaseClient, getSupabasePublicUrl, isSupabaseConfigured } from '../integrations/supabase/client';
+import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
 import { analyzeStripImageMock } from './mockAnalysisService';
 import { isLocalUploadCandidate, readLocalImageAsDataUrl, uploadScanImage } from './scanImageStorage';
 
@@ -83,24 +83,9 @@ function isDirectRemoteImageCandidate(uri?: string) {
   return Boolean(uri && (uri.startsWith('data:image/') || /^https?:\/\//i.test(uri)));
 }
 
-function getEndpointType() {
-  const url = getSupabasePublicUrl();
-  if (!url) return 'missing';
-  if (/(^|\/\/)(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/i.test(url) || /:54321(\/|$)/.test(url)) return 'local';
-  if (/^https:\/\/[^/]+\.supabase\.co\/?$/i.test(url)) return 'cloud';
-  return 'external';
-}
-
 export async function analyzeStripImage(input: StripAnalysisInput): Promise<StripAnalysisResult> {
-  let fallbackReason: string | undefined;
-  const endpointType = getEndpointType();
   logAnalysisDebug('selected analysis mode', {
-    accountIdExists: Boolean(input.accountId),
-    brandId: input.brandId,
-    endpointType,
-    functionName: analysisConfig.remoteFunctionName,
     mode: analysisConfig.mode,
-    poolIdExists: Boolean(input.poolId),
     hasFunctionName: Boolean(analysisConfig.remoteFunctionName),
     hasImagePath: Boolean(input.imagePath),
     hasImageUrl: Boolean(input.imageUrl),
@@ -142,21 +127,10 @@ export async function analyzeStripImage(input: StripAnalysisInput): Promise<Stri
       logAnalysisDebug('remote analysis skipped, falling back to mock', {
         mode: analysisConfig.mode,
       });
-      fallbackReason = 'remote-skipped';
     } catch (error) {
-      fallbackReason = error instanceof Error ? error.message : String(error);
-      console.warn('Remote strip analysis failed, falling back to mock analysis', {
-        accountIdExists: Boolean(input.accountId),
-        brandId: input.brandId,
-        endpointType,
-        functionName: analysisConfig.remoteFunctionName,
-        hasImagePath: Boolean(input.imagePath),
-        hasImageUrl: Boolean(input.imageUrl),
-        poolIdExists: Boolean(input.poolId),
-        reason: fallbackReason,
-      });
+      console.warn('Remote strip analysis failed, falling back to mock analysis', error);
       logAnalysisDebug('remote analysis failed, falling back to mock', {
-        error: fallbackReason,
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   }
@@ -177,9 +151,6 @@ export async function analyzeStripImage(input: StripAnalysisInput): Promise<Stri
     imageUri: input.imageUri,
     poolId: input.poolId,
   });
-  if (fallbackReason) {
-    fallbackResult.notes = `Fallback reason: ${fallbackReason}`;
-  }
   logAnalysisDebug('analysis result selected', {
     source: fallbackResult.source ?? 'mock',
     confidence: fallbackResult.confidence,
@@ -276,14 +247,10 @@ async function analyzeStripImageRemote(
   }
 
   logAnalysisDebug('invoking remote analysis function', {
-    accountIdExists: Boolean(input.accountId),
-    brandId: input.brandId ?? input.selectedBrand?.id,
-    endpointType: getEndpointType(),
     functionName: config.remoteFunctionName,
     hasImagePath: Boolean(imagePath),
     hasImageUrl: Boolean(imageUrl),
     hasDirectImageUri: hasRemoteReadableImageUri,
-    poolIdExists: Boolean(input.poolId),
     testId,
   });
 

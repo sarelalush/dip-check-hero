@@ -33,7 +33,6 @@ import { TermsScreen } from './src/screens/TermsScreen';
 import { SupportScreen } from './src/screens/SupportScreen';
 import { DeleteAccountScreen } from './src/screens/DeleteAccountScreen';
 import { ReleaseChecklistScreen } from './src/screens/ReleaseChecklistScreen';
-import { ConnectionDiagnosticsScreen } from './src/screens/ConnectionDiagnosticsScreen';
 import { colors } from './src/theme';
 import { AuthProvider, useAuth } from './src/state/AuthContext';
 import { PoolsProvider, usePools } from './src/state/PoolsContext';
@@ -41,7 +40,6 @@ import { ResultsHistoryProvider } from './src/state/ResultsHistoryContext';
 import { ScanSessionProvider } from './src/state/ScanSessionContext';
 import { ReminderProvider } from './src/state/ReminderContext';
 import { AppPreferencesProvider } from './src/state/AppPreferencesContext';
-import { logDeviceEnvironmentWarnings } from './src/services/deviceEnvironment';
 
 export type RootStackParamList = {
   Home: undefined;
@@ -60,7 +58,6 @@ export type RootStackParamList = {
   Support: undefined;
   DeleteAccount: undefined;
   ReleaseChecklist: undefined;
-  ConnectionDiagnostics: undefined;
 
   Welcome: undefined;
   Login: undefined;
@@ -85,12 +82,6 @@ export default function App() {
     ...Ionicons.font,
     ...MaterialCommunityIcons.font,
   });
-
-  useEffect(() => {
-    if (process.env.NODE_ENV !== 'production') {
-      logDeviceEnvironmentWarnings();
-    }
-  }, []);
 
   if (!fontsLoaded) {
     return null;
@@ -189,7 +180,6 @@ function AppNavigator() {
             <Stack.Screen name="Support" component={SupportScreen} />
             <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
             <Stack.Screen name="ReleaseChecklist" component={ReleaseChecklistScreen} />
-            <Stack.Screen name="ConnectionDiagnostics" component={ConnectionDiagnosticsScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
           </>
         ) : (

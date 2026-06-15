@@ -33,7 +33,3 @@ export function getSupabaseClient() {
 
   return supabase;
 }
-
-export function getSupabasePublicUrl() {
-  return SUPABASE_URL;
-}
