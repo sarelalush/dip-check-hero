@@ -4,7 +4,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AuthDivider,
   AuthField,
-  AuthFieldRow,
   AuthMessage,
   AuthPrimaryButton,
   AuthScreenShell,
@@ -84,14 +83,8 @@ export function SignupScreen({ navigation }: Props) {
         </>
       }
     >
-      <AuthFieldRow>
-        <View style={styles.halfField}>
-          <AuthField compact icon="user" label="שם מלא" onChangeText={setName} placeholder="שם" value={name} />
-        </View>
-        <View style={styles.halfField}>
-          <AuthField compact icon="user" keyboardType="phone-pad" label="טלפון" onChangeText={setPhone} placeholder="050..." value={phone} />
-        </View>
-      </AuthFieldRow>
+      <AuthField compact icon="user" label="שם מלא" onChangeText={setName} placeholder="הכנס שם מלא" value={name} />
+      <AuthField compact icon="user" keyboardType="phone-pad" label="טלפון" onChangeText={setPhone} placeholder="050..." value={phone} />
       <AuthField compact icon="mail" keyboardType="email-address" label="אימייל" onChangeText={setEmail} placeholder="הכנס כתובת אימייל" value={email} />
       <AuthField compact icon="lock" label="סיסמה" onChangeText={setPassword} placeholder="בחר סיסמה" secure sideIcon="eye" value={password} />
 
@@ -107,7 +100,6 @@ export function SignupScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  halfField: { flex: 1 },
   accountRow: { marginTop: -1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4 },
   accountText: { color: '#1D2530', fontFamily: typography.fontFamilyRegular, fontSize: 13, fontWeight: '700' },
   accountLink: { color: colors.primary, fontFamily: typography.fontFamilySemiBold, fontSize: 13, fontWeight: '900', ...rtl.text },
