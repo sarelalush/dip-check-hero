@@ -24,7 +24,7 @@ roles, and scan images. Scan image policies use the production mobile path:
 `accounts/{account_id}/users/{user_id}/tests/{test_id}/scan.jpg`.
 Admin helper policies/functions are also included.
 
-Older Lovable/user-only migrations were moved to `supabase/legacy_migrations`.
+Older user-only migrations were moved to `supabase/legacy_migrations`.
 The active `supabase/migrations` folder now contains the production
 account-based schema for the independent Supabase project.
 

@@ -1,5 +1,5 @@
 -- Production account-based schema for Dip Check Hero / AquaSense mobile.
--- This migration intentionally replaces the older user-only Lovable schema.
+-- This migration intentionally replaces the older user-only prototype schema.
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
