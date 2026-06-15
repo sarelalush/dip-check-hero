@@ -1,7 +1,7 @@
-import { ImageBackground, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ImageBackground, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LineIcon, type LineIconName } from '../components/LineIcon';
-import { colors, radius, rtl, shadows, typography } from '../theme';
+import { colors, layout, radius, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Welcome'>;
@@ -17,7 +17,7 @@ const features: Array<{ icon: LineIconName; label: string }> = [
 ];
 
 export function LandingScreen({ navigation }: Props) {
-  return (
+  const screen = (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" />
       <ImageBackground source={welcomePool} resizeMode="cover" style={styles.background} imageStyle={styles.backgroundImage}>
@@ -88,6 +88,18 @@ export function LandingScreen({ navigation }: Props) {
       </ImageBackground>
     </View>
   );
+
+  if (Platform.OS !== 'web') {
+    return screen;
+  }
+
+  return (
+    <View style={styles.webViewport}>
+      <View style={styles.webDeviceFrame}>
+        <View style={styles.webPhone}>{screen}</View>
+      </View>
+    </View>
+  );
 }
 
 function TestStrip() {
@@ -105,6 +117,35 @@ function TestStrip() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
+  webViewport: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EAF8FB',
+    paddingVertical: 14,
+  },
+  webDeviceFrame: {
+    flex: 1,
+    width: '100%',
+    maxWidth: layout.maxPhoneWidth,
+    maxHeight: layout.maxPhoneHeight,
+    borderRadius: 42,
+    backgroundColor: '#080D11',
+    borderWidth: 4,
+    borderColor: '#111820',
+    padding: 4,
+    shadowColor: '#0B2730',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    elevation: 10,
+  },
+  webPhone: {
+    flex: 1,
+    width: '100%',
+    borderRadius: 36,
+    overflow: 'hidden',
+  },
   background: { flex: 1 },
   backgroundImage: { width: '100%', height: '100%' },
   skyWash: { position: 'absolute', top: 0, left: 0, right: 0, height: 178, backgroundColor: 'rgba(240,250,255,0.14)' },
