@@ -361,10 +361,11 @@ export interface TestSyncResult {
   pulledCount: number;
 }
 
-// Simple conflict strategy for this history-sync slice:
-// keep local AsyncStorage visible immediately, fetch cloud tests after auth, and
-// prefer the record with the newest updatedAt/testedAt. Usage registration is
-// added only when a cloud test is first created to avoid duplicate counters.
+// Simple conflict strategy:
+// Supabase is authoritative after login. Local-only tests from AsyncStorage are
+// not uploaded during automatic login sync, because that can resurrect history
+// the user deleted from the cloud. Fresh Results saves still call
+// upsertTestToCloud directly and are uploaded immediately.
 export async function syncTestsWithCloud(
   localRecords: SavedHistoryRecord[],
   user: User,
@@ -386,14 +387,7 @@ export async function syncTestsWithCloud(
     const remoteRecord = cloudId ? remoteByCloudId.get(cloudId) : undefined;
 
     if (!remoteRecord) {
-      const pushed = await upsertTestToCloud(localRecord, user.id, accountId, pools);
-      if (pushed) {
-        pushedCount += 1;
-        merged.push(pushed);
-        if (pushed.cloudId) remoteByCloudId.delete(pushed.cloudId);
-      } else {
-        merged.push(localRecord);
-      }
+      // Local-only or deleted cloud tests should not be recreated on login.
       continue;
     }
 
