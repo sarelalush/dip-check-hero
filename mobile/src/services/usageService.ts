@@ -20,6 +20,8 @@ export const PLAN_ADDONS = {
   },
 };
 
+const PLAN_ADDONS_ENABLED = false;
+
 export interface PlanUsageInfo {
   activePoolLimit: number;
   activePoolsUsed: number;
@@ -43,7 +45,11 @@ export function getFallbackPlanUsage(activePoolsUsed = 0): PlanUsageInfo {
   };
 }
 
-export async function canCreatePool(accountId?: string) {
+export async function canCreatePool(accountId?: string, localActivePools = 0) {
+  if (!PLAN_ADDONS_ENABLED && localActivePools >= BASE_PLAN.activePoolLimit) {
+    return false;
+  }
+
   if (!isSupabaseConfigured || !accountId) return true;
 
   try {
@@ -114,14 +120,20 @@ export async function fetchPlanUsage(accountId?: string, localActivePools = 0): 
     const usage = usageResponse.data;
     const subscription = subscriptionResponse.data;
     const planName = await fetchPlanName(subscription?.plan_id);
+    const activePoolLimit = PLAN_ADDONS_ENABLED
+      ? entitlements?.total_pool_limit ?? usage?.pools_limit ?? BASE_PLAN.activePoolLimit
+      : entitlements?.included_pools ?? BASE_PLAN.activePoolLimit;
+    const scansLimit = PLAN_ADDONS_ENABLED
+      ? entitlements?.total_scan_limit ?? usage?.scans_limit ?? BASE_PLAN.includedScans
+      : entitlements?.included_scans ?? BASE_PLAN.includedScans;
 
     return {
-      activePoolLimit: entitlements?.total_pool_limit ?? usage?.pools_limit ?? BASE_PLAN.activePoolLimit,
-      activePoolsUsed: usage?.pools_active_count ?? localActivePools,
+      activePoolLimit,
+      activePoolsUsed: localActivePools,
       includedPools: entitlements?.included_pools ?? BASE_PLAN.activePoolLimit,
       includedScans: entitlements?.included_scans ?? BASE_PLAN.includedScans,
       planName,
-      scansLimit: entitlements?.total_scan_limit ?? usage?.scans_limit ?? BASE_PLAN.includedScans,
+      scansLimit,
       scansUsed: usage?.scans_used ?? 0,
       status: subscription?.status ?? undefined,
     };

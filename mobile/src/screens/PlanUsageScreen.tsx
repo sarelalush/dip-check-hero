@@ -17,6 +17,11 @@ function pct(used: number, limit: number) {
   return Math.max(0, Math.min(100, Math.round((used / limit) * 100)));
 }
 
+function formatUsageValue(used: number, limit: number, unit: string) {
+  const count = `${used.toLocaleString('he-IL')} / ${limit.toLocaleString('he-IL')}`;
+  return `‪${count}‬ ${unit}`;
+}
+
 export function PlanUsageScreen({ navigation, route }: Props) {
   const { accountId } = useAuth();
   const { pools } = usePools();
@@ -87,12 +92,12 @@ export function PlanUsageScreen({ navigation, route }: Props) {
       <View style={styles.metrics}>
         <UsageMeter
           label="סריקות החודש"
-          value={`${usage.scansUsed.toLocaleString('he-IL')} / ${usage.scansLimit.toLocaleString('he-IL')} סריקות`}
+          value={formatUsageValue(usage.scansUsed, usage.scansLimit, 'סריקות')}
           percent={scanPercent}
         />
         <UsageMeter
           label="בריכות פעילות"
-          value={`${usage.activePoolsUsed.toLocaleString('he-IL')} / ${usage.activePoolLimit.toLocaleString('he-IL')} בריכות פעילות`}
+          value={formatUsageValue(usage.activePoolsUsed, usage.activePoolLimit, 'בריכות פעילות')}
           percent={poolPercent}
         />
       </View>

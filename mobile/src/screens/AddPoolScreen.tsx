@@ -27,7 +27,7 @@ function parseNumber(value: string) {
 }
 
 export function AddPoolScreen({ navigation }: Props) {
-  const { addPool } = usePools();
+  const { addPool, pools } = usePools();
   const { accountId } = useAuth();
   const recommendedBrand = getRecommendedBrand();
   const [name, setName] = useState('');
@@ -75,7 +75,7 @@ export function AddPoolScreen({ navigation }: Props) {
 
     async function checkPoolQuota() {
       setQuotaChecking(true);
-      const allowed = await canCreatePool(accountId);
+      const allowed = await canCreatePool(accountId, pools.length);
       if (!mounted) return;
       setQuotaExceeded(!allowed);
       setQuotaChecking(false);
@@ -86,7 +86,7 @@ export function AddPoolScreen({ navigation }: Props) {
     return () => {
       mounted = false;
     };
-  }, [accountId]);
+  }, [accountId, pools.length]);
 
   async function pickPoolImage() {
     setImageBusy(true);
@@ -126,7 +126,7 @@ export function AddPoolScreen({ navigation }: Props) {
     savingRef.current = true;
     setSaving(true);
     try {
-      const allowed = await canCreatePool(accountId);
+      const allowed = await canCreatePool(accountId, pools.length);
       if (!allowed) {
         setQuotaExceeded(true);
         return;
