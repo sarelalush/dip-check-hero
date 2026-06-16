@@ -148,13 +148,14 @@ function FeaturedPoolCard({
   pool: Pool;
   snapshot: ReturnType<typeof getPoolSnapshot>;
 }) {
-  const imageSource = pool.imageUri || pool.imageUrl ? { uri: pool.imageUri ?? pool.imageUrl } : POOL_FALLBACK_IMAGE;
+  const hasCustomImage = Boolean(pool.imageUri || pool.imageUrl);
+  const imageSource = hasCustomImage ? { uri: pool.imageUri ?? pool.imageUrl } : POOL_FALLBACK_IMAGE;
 
   return (
     <Pressable onPress={onOpen} style={({ pressed }) => [styles.featuredCard, pressed && styles.pressed]}>
       <View style={styles.featuredTop}>
         <View style={styles.featuredImageWrap}>
-          <ImageBackground source={imageSource} resizeMode="cover" style={styles.featuredImage} imageStyle={styles.poolImageFocus}>
+          <ImageBackground source={imageSource} resizeMode="cover" style={styles.featuredImage} imageStyle={hasCustomImage ? styles.poolImageNatural : styles.poolImageFocus}>
             <View style={styles.imageShade} />
             <View style={styles.moreDots}>
               <LineIcon name="more" color={colors.textSoft} size={18} />
@@ -200,7 +201,8 @@ function CompactPoolCard({
   pool: Pool;
   snapshot: ReturnType<typeof getPoolSnapshot>;
 }) {
-  const imageSource = pool.imageUri || pool.imageUrl ? { uri: pool.imageUri ?? pool.imageUrl } : POOL_FALLBACK_IMAGE;
+  const hasCustomImage = Boolean(pool.imageUri || pool.imageUrl);
+  const imageSource = hasCustomImage ? { uri: pool.imageUri ?? pool.imageUrl } : POOL_FALLBACK_IMAGE;
 
   return (
     <Pressable onPress={onOpen} style={({ pressed }) => [styles.compactCard, pressed && styles.pressed]}>
@@ -211,7 +213,7 @@ function CompactPoolCard({
         <InfoLine icon="history" text={snapshot.lastTest} />
         <StatusPill status={snapshot.status} tone={snapshot.tone} compact />
       </View>
-      <ImageBackground source={imageSource} resizeMode="cover" style={styles.compactImage} imageStyle={styles.poolImageFocus}>
+      <ImageBackground source={imageSource} resizeMode="cover" style={styles.compactImage} imageStyle={hasCustomImage ? styles.poolImageNatural : styles.poolImageFocus}>
         <View style={styles.compactImageShade} />
         <View style={styles.compactDots}>
           <LineIcon name="more" color={colors.white} size={17} />
@@ -346,6 +348,9 @@ const styles = StyleSheet.create({
   },
   poolImageFocus: {
     transform: [{ translateY: -92 }],
+  },
+  poolImageNatural: {
+    transform: [{ translateY: 0 }],
   },
   imageShade: {
     ...StyleSheet.absoluteFillObject,
