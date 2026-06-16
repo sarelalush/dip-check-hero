@@ -5,7 +5,6 @@ import { AppShell } from '../components/AppShell';
 import { HistoryItem } from '../components/HistoryItem';
 import { LineIcon } from '../components/LineIcon';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
-import { historyItems } from '../data/mockAppData';
 import { useResultsHistory } from '../state/ResultsHistoryContext';
 import type { RootStackParamList } from '../../App';
 
@@ -19,16 +18,14 @@ export function HistoryScreen({ navigation }: Props) {
 
   const allHistoryItems = useMemo(
     () =>
-      historyRecords.length > 0
-        ? historyRecords.map((record) => ({
-            date: record.date,
-            testId: record.testId,
-            poolName: record.poolName,
-            status: record.status,
-            time: record.resultSummary,
-            tone: record.tone,
-          }))
-        : historyItems,
+      historyRecords.map((record) => ({
+        date: record.date,
+        testId: record.testId,
+        poolName: record.poolName,
+        status: record.status,
+        time: record.resultSummary,
+        tone: record.tone,
+      })),
     [historyRecords],
   );
 
@@ -69,21 +66,17 @@ export function HistoryScreen({ navigation }: Props) {
             <Text style={styles.emptyText}>נסה לבחור סינון אחר או לבצע בדיקה חדשה.</Text>
           </View>
         ) : (
-          visibleHistoryItems.map((item) => {
-            const testId = 'testId' in item ? item.testId : undefined;
-
-            return (
-              <HistoryItem
-                key={`${item.date}-${item.time}`}
-                date={item.date}
-                onPress={testId ? () => navigation.navigate('Results', { testId }) : undefined}
-                poolName={item.poolName}
-                status={item.status}
-                time={item.time}
-                tone={item.tone}
-              />
-            );
-          })
+          visibleHistoryItems.map((item) => (
+            <HistoryItem
+              key={item.testId}
+              date={item.date}
+              onPress={() => navigation.navigate('Results', { testId: item.testId })}
+              poolName={item.poolName}
+              status={item.status}
+              time={item.time}
+              tone={item.tone}
+            />
+          ))
         )}
       </View>
     </AppShell>

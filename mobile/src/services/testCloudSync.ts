@@ -100,8 +100,12 @@ export function mapCloudTestToLocal(row: TestRow, pools: Pool[]): SavedHistoryRe
   const baseRecord = isMobileResultsPayload(resultsPayload) ? resultsPayload.record : undefined;
   const payloadAnalysisResult = isMobileResultsPayload(resultsPayload) ? resultsPayload.analysisResult : undefined;
   const payloadDosageResult = isMobileResultsPayload(resultsPayload) ? resultsPayload.dosageResult : undefined;
-  const poolId = baseRecord?.poolId ?? getLocalPoolId(row.pool_id, pools);
-  const pool = pools.find((item) => item.id === poolId || item.cloudId === row.pool_id);
+  const localPoolId = getLocalPoolId(row.pool_id, pools);
+  const basePool = baseRecord?.poolId
+    ? pools.find((item) => item.id === baseRecord.poolId || item.cloudId === baseRecord.poolId)
+    : undefined;
+  const poolId = localPoolId ?? basePool?.id ?? baseRecord?.poolId;
+  const pool = pools.find((item) => item.id === poolId || item.cloudId === row.pool_id || item.cloudId === baseRecord?.poolId);
   const imagePath = baseRecord?.imagePath ?? row.image_path ?? undefined;
   const imageUrl = baseRecord?.imageUrl ?? row.image_url ?? (imagePath ? getPublicScanImageUrl(imagePath) : undefined);
   const analysisResult = baseRecord?.analysisResult ?? payloadAnalysisResult;

@@ -103,6 +103,15 @@ function normalizeHistoryRecord(record: SavedHistoryRecord): SavedHistoryRecord 
   };
 }
 
+function poolIdsFor(poolId: string, pools: ReturnType<typeof usePools>['pools']) {
+  const pool = pools.find((item) => item.id === poolId || item.cloudId === poolId);
+  return new Set([poolId, pool?.id, pool?.cloudId].filter((id): id is string => Boolean(id)));
+}
+
+function isRecordForPool(record: SavedHistoryRecord, poolIds: Set<string>) {
+  return Boolean(record.poolId && poolIds.has(record.poolId));
+}
+
 export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
   const { accountId, user, loading: authLoading } = useAuth();
   const { getPool, pools } = usePools();
@@ -219,8 +228,9 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         return historyRecords.find((record) => record.testId === testId || record.id === testId);
       },
       getPoolHistoryRecords(poolId, limit = 3) {
+        const ids = poolIdsFor(poolId, pools);
         return historyRecords
-          .filter((record) => record.poolId === poolId)
+          .filter((record) => isRecordForPool(record, ids))
           .sort((a, b) => b.testedAt - a.testedAt)
           .slice(0, limit);
       },

@@ -173,7 +173,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
         }
       },
       getPool(poolId) {
-        return pools.find((pool) => pool.id === poolId);
+        return pools.find((pool) => pool.id === poolId || pool.cloudId === poolId);
       },
     }),
     [accountId, hydrated, pools, syncError, syncing, user],
