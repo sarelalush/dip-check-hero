@@ -2,9 +2,10 @@
 // src/utils/calculateDosage.ts, src/config/productConfig.ts, src/config/targetRanges.ts,
 // src/utils/storage.ts, and src/routes/results.$testId.tsx.
 //
-// Parity fixture: pH 7.3, free chlorine 1.5, alkalinity 120 in a 48,000L chlorine
-// pool produces only status cards because the priority readings are in range.
-// If alkalinity is high, the active recommendation is acid before pH/chlorine.
+// PoolCheck treatment spec:
+// one active action only, ordered by alkalinity -> pH -> free chlorine -> CYA -> salt -> hardness.
+// pH below 7.2 is a safety override and is treated before alkalinity unless alkalinity is high,
+// in which case the user receives aeration guidance rather than acid.
 
 import { productConfig, type ProductKey } from '../config/productConfig';
 import { targetRanges } from '../config/targetRanges';
@@ -47,6 +48,7 @@ const PH_FLOOR = 7.2;
 const TABLET_AVAILABLE_CHLORINE_PCT = 0.9;
 const TABLET_DISSOLVE_DAYS = 5;
 const TABLET_SAFETY_FACTOR = 0.5;
+const RETEST_WINDOW_TEXT = 'המתן 4–6 שעות.';
 
 const DEFAULT_SAFETY_NOTE = 'החישוב הוא הערכה לפי נתוני הבריכה ותוצאת הסטיק. יש לפעול לפי הוראות יצרן חומרי הבריכה, להוסיף חומרים בהדרגה ולא לערבב חומרים שונים יחד.';
 
@@ -104,10 +106,11 @@ function createStatusCard(parameter: ScanResultParameter, exactAmountAvailable: 
 }
 
 function buildSteps(firstAction: string, retestHours: number) {
+  void retestHours;
   return [
     firstAction,
     'הפעל את משאבת הסחרור והשאר אותה דולקת.',
-    `המתן ${retestHours} שעות.`,
+    RETEST_WINDOW_TEXT,
     'בצע סריקה חדשה של סטיק לבדיקת המצב.',
   ].join('\n');
 }
@@ -309,6 +312,7 @@ export function calculateDosage(result: StripAnalysisResult, pool?: Pool): Dosag
 }
 
 function buildResult(cards: Map<StripParameter, DosageRecommendation>, retestHours: number): DosageCalculationResult {
+  void retestHours;
   const recommendations = [...cards.values()].sort(sortByPriority);
   const primaryRecommendation = recommendations.find((recommendation) => recommendation.active);
   return {
@@ -316,7 +320,7 @@ function buildResult(cards: Map<StripParameter, DosageRecommendation>, retestHou
     primaryRecommendation,
     summary: primaryRecommendation?.actionHe ?? 'כל הערכים המרכזיים בטווח. אין צורך להוסיף חומר כרגע.',
     safetyNote: DEFAULT_SAFETY_NOTE,
-    retestNote: `בדיקה חוזרת מומלצת בעוד ${retestHours} שעות.`,
+    retestNote: 'בדיקה חוזרת מומלצת בעוד 4–6 שעות.',
     volumeMissing: false,
   };
 }

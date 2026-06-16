@@ -11,13 +11,13 @@ export interface ProductInfo {
 
 export const productConfig: Record<ProductKey, ProductInfo> = {
   chlorineLiquid10: {
-    labelHe: 'כלור נוזלי 10%',
+    labelHe: 'כלור נוזלי 12%',
     unit: 'מ״ל',
     type: 'chlorine',
     dosePerPpmPer10kL: 100,
   },
   acidHCl: {
-    labelHe: 'חומצת מלח 32%',
+    labelHe: 'חומצת מלח 33%',
     unit: 'מ״ל',
     type: 'acid',
     dosePerPpmPer10kL: 100,
