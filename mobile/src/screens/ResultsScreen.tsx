@@ -330,9 +330,8 @@ export function ResultsScreen({ navigation, route }: Props) {
     autoSavedTestIdRef.current = analysisResult.id;
     autoSavedResultIds.add(analysisResult.id);
     saveAnalysisResult(analysisResult);
-    resetScanSession();
     setAutoSaved(true);
-  }, [analysisResult, resetScanSession, saveAnalysisResult, savedTestId]);
+  }, [analysisResult, saveAnalysisResult, savedTestId]);
 
   function handleNewScan() {
     resetScanSession();
