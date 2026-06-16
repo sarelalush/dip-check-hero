@@ -1,240 +1,441 @@
 import { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppHeader } from '../components/AppHeader';
 import { AppShell } from '../components/AppShell';
 import { Card } from '../components/Card';
-import { LineIcon } from '../components/LineIcon';
-import { MetricCard } from '../components/MetricCard';
+import { LineIcon, type LineIconName } from '../components/LineIcon';
 import { PrimaryButton } from '../components/PrimaryButton';
-import { PoolPhoto } from '../components/WaterVisuals';
-import { colors, rtl, typography } from '../theme';
+import { colors, radius, rtl, shadows, typography } from '../theme';
 import type { ScanResultParameter } from '../domain/scanResults';
+import type { StatusTone } from '../components/StatusBadge';
 import { useStartScanFlow } from '../hooks/useStartScanFlow';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory } from '../state/ResultsHistoryContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
+const HOME_POOL_IMAGE = require('../../assets/images/home-pool.png');
+
+interface HomeMetric {
+  icon: LineIconName;
+  label: string;
+  status: string;
+  tone: StatusTone;
+  value: string;
+}
 
 function formatMetricValue(parameter?: ScanResultParameter) {
   if (!parameter) return '-';
   return parameter.key === 'ph' ? parameter.value.toFixed(1) : Math.round(parameter.value).toLocaleString('he-IL');
 }
 
-function metricFromResult(parameters: ScanResultParameter[], keys: ScanResultParameter['key'][], fallbackLabel: string) {
+function metricFromResult(
+  parameters: ScanResultParameter[],
+  keys: ScanResultParameter['key'][],
+  fallbackLabel: string,
+  icon: LineIconName,
+): HomeMetric {
   const parameter = parameters.find((item) => keys.includes(item.key));
   return {
+    icon,
     label: parameter?.name ?? fallbackLabel,
     status: parameter?.status.label ?? 'אין נתון',
-    tone: parameter?.status.tone ?? ('warning' as const),
+    tone: parameter?.status.tone ?? 'warning',
     value: formatMetricValue(parameter),
   };
+}
+
+function scoreForTone(tone: StatusTone) {
+  if (tone === 'success') return 92;
+  if (tone === 'danger') return 48;
+  if (tone === 'neutral') return 82;
+  return 72;
+}
+
+function colorForTone(tone: StatusTone) {
+  if (tone === 'success') return colors.success;
+  if (tone === 'danger') return colors.danger;
+  if (tone === 'neutral') return colors.primary;
+  return '#F78A12';
+}
+
+function formatLastTest(record?: { date?: string }) {
+  return record?.date ? `בדיקה אחרונה: ${record.date}` : 'עדיין אין בדיקה אחרונה';
 }
 
 export function HomeScreen({ navigation }: Props) {
   const { pools } = usePools();
   const { historyRecords } = useResultsHistory();
   const startScanFlow = useStartScanFlow(navigation);
-  const hasPools = pools.length > 0;
   const latestRecord = useMemo(
     () => [...historyRecords].sort((a, b) => b.testedAt - a.testedAt)[0],
     [historyRecords],
   );
   const latestResult = latestRecord?.analysisResult;
-  const latestMetrics = latestResult
-    ? [
-        metricFromResult(latestResult.parameters, ['ph'], 'pH'),
-        metricFromResult(latestResult.parameters, ['freeChlorine', 'totalChlorine'], 'כלור'),
-        metricFromResult(latestResult.parameters, ['alkalinity'], 'אלקליניות'),
-      ]
-    : [];
   const latestTone = latestRecord?.tone ?? latestResult?.overallStatus.tone ?? 'warning';
-
-  if (!hasPools) {
-    return (
-      <AppShell activeTab="home" navigation={navigation}>
-        <AppHeader />
-
-        <View style={styles.greeting}>
-          <Text style={styles.hello}>ברוכים הבאים ל־AquaSense</Text>
-          <Text style={styles.subtitle}>כדי להתחיל, הוסף את הבריכה הראשונה שלך</Text>
-        </View>
-
-        <View style={styles.hero}>
-          <PoolPhoto variant="home" />
-        </View>
-
-        <Card style={styles.emptyCard}>
-          <View style={styles.emptyIcon}>
-            <LineIcon name="pools" color={colors.primaryDark} size={28} />
-          </View>
-          <Text style={styles.statusTitle}>הבריכה שלך מתחילה כאן</Text>
-          <Text style={styles.emptyText}>לאחר מכן תוכל לצלם סטיק ולקבל המלצה מותאמת לפי נפח וסוג הבריכה.</Text>
-        </Card>
-
-        <View style={styles.ctaWrap}>
-          <PrimaryButton label="הוסף בריכה" icon="plus" onPress={() => navigation.navigate('AddPool')} />
-        </View>
-      </AppShell>
-    );
-  }
+  const score = latestResult ? scoreForTone(latestTone) : 0;
+  const primaryStatus = latestRecord?.status ?? (pools.length > 0 ? 'מוכן לבדיקה ראשונה' : 'הוסף בריכה ראשונה');
+  const metrics = latestResult
+    ? [
+        metricFromResult(latestResult.parameters, ['ph'], 'pH', 'drop'),
+        metricFromResult(latestResult.parameters, ['freeChlorine', 'totalChlorine'], 'כלור פעיל', 'help'),
+        metricFromResult(latestResult.parameters, ['alkalinity'], 'אלקליניות', 'results'),
+      ]
+    : [
+        { icon: 'drop' as const, label: 'pH', status: 'אין נתון', tone: 'neutral' as const, value: '-' },
+        { icon: 'help' as const, label: 'כלור פעיל', status: 'אין נתון', tone: 'neutral' as const, value: '-' },
+        { icon: 'results' as const, label: 'אלקליניות', status: 'אין נתון', tone: 'neutral' as const, value: '-' },
+      ];
 
   return (
-    <AppShell activeTab="home" navigation={navigation}>
+    <AppShell activeTab="home" navigation={navigation} scroll={false} contentStyle={styles.screen}>
       <AppHeader />
 
-      <View style={styles.greeting}>
-        <Text style={styles.hello}>שלום!</Text>
-        <Text style={styles.subtitle}>כיף לראות אותך שוב</Text>
-      </View>
-
       <View style={styles.hero}>
-        <PoolPhoto variant="home" />
+        <ImageBackground source={HOME_POOL_IMAGE} resizeMode="cover" style={styles.heroImage}>
+          <View style={styles.heroMist} />
+          <View style={styles.heroFade} />
+        </ImageBackground>
+        <View style={styles.greeting}>
+          <Text style={styles.hello}>{pools.length > 0 ? 'שלום!' : 'ברוכים הבאים'}</Text>
+          <Text style={styles.subtitle}>
+            {pools.length > 0 ? 'כיף לראות אותך שוב' : 'כדי להתחיל, הוסף את הבריכה הראשונה שלך'}
+          </Text>
+        </View>
       </View>
 
-      {latestRecord && latestResult ? (
-        <Card style={styles.statusCard}>
+      <Card style={styles.statusCard}>
+        <View style={styles.cardKickerRow}>
+          <LineIcon name="drop" color={colors.primary} size={18} />
           <Text style={styles.cardKicker}>מצב המים</Text>
-          <View style={[styles.checkCircle, latestTone === 'success' ? styles.checkCircleOk : styles.checkCircleWarning]}>
-            <LineIcon name={latestTone === 'success' ? 'check' : 'help'} color={latestTone === 'success' ? colors.success : colors.warning} size={32} />
-          </View>
-          <Text style={styles.statusTitle}>{latestRecord.status}</Text>
-          <Text style={styles.statusSubtitle}>{latestRecord.poolName} · {latestRecord.date}</Text>
+        </View>
 
-          <View style={styles.metrics}>
-            {latestMetrics.map((metric) => (
-              <MetricCard key={metric.label} label={metric.label} status={metric.status} tone={metric.tone} value={metric.value} />
-            ))}
+        <View style={styles.statusTop}>
+          <ScoreRing score={score} tone={latestTone} />
+          <View style={styles.statusCopy}>
+            <Text style={[styles.statusTitle, { color: latestResult ? colorForTone(latestTone) : colors.text }]}>
+              {primaryStatus}
+            </Text>
+            <Text style={styles.statusSubtitle}>{formatLastTest(latestRecord)}</Text>
           </View>
-        </Card>
-      ) : (
-        <Card style={styles.emptyCard}>
-          <View style={styles.emptyIcon}>
-            <LineIcon name="scan" color={colors.primaryDark} size={28} />
-          </View>
-          <Text style={styles.statusTitle}>עדיין אין בדיקה אחרונה</Text>
-          <Text style={styles.emptyText}>בצע סריקה ראשונה כדי שמצב המים במסך הבית יתעדכן לפי התוצאה האמיתית האחרונה.</Text>
-        </Card>
-      )}
+        </View>
+
+        <View style={styles.metrics}>
+          {metrics.map((metric) => (
+            <MetricTile key={metric.label} metric={metric} />
+          ))}
+        </View>
+      </Card>
 
       <View style={styles.ctaWrap}>
-        <PrimaryButton label="התחל סריקה" icon="scan" onPress={() => startScanFlow()} />
+        <PrimaryButton label={pools.length > 0 ? 'התחל סריקה' : 'הוסף בריכה'} icon={pools.length > 0 ? 'scan' : 'plus'} onPress={() => (pools.length > 0 ? startScanFlow() : navigation.navigate('AddPool'))} />
+      </View>
+
+      <View style={styles.shortcuts}>
+        <ShortcutCard
+          icon="pools"
+          title="הבריכה שלי"
+          subtitle="צפייה בפרטי הבריכה ותוכניות"
+          onPress={() => navigation.navigate('Pools')}
+        />
+        <ShortcutCard
+          icon="history"
+          title="היסטוריית בדיקות"
+          subtitle="צפייה בבדיקות קודמות ותוצאות"
+          onPress={() => navigation.navigate('History')}
+        />
       </View>
     </AppShell>
   );
 }
 
+function ScoreRing({ score, tone }: { score: number; tone: StatusTone }) {
+  const size = 82;
+  const stroke = 7;
+  const radiusValue = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radiusValue;
+  const progress = Math.max(0, Math.min(100, score));
+  const dashOffset = circumference - (circumference * progress) / 100;
+  const color = colorForTone(tone);
+
+  return (
+    <View style={styles.scoreWrap}>
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <Circle cx={size / 2} cy={size / 2} r={radiusValue} stroke="#F4E6D0" strokeWidth={stroke} fill="#FFF8EA" />
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radiusValue}
+          stroke={color}
+          strokeWidth={stroke}
+          fill="transparent"
+          strokeDasharray={`${circumference} ${circumference}`}
+          strokeDashoffset={dashOffset}
+          strokeLinecap="round"
+          rotation="-90"
+          origin={`${size / 2}, ${size / 2}`}
+        />
+      </Svg>
+      <View style={styles.scoreCenter}>
+        <Text style={styles.scoreValue}>{score || '-'}</Text>
+        <Text style={styles.scoreLabel}>מכל 100</Text>
+      </View>
+    </View>
+  );
+}
+
+function MetricTile({ metric }: { metric: HomeMetric }) {
+  return (
+    <View style={styles.metricCard}>
+      <LineIcon name={metric.icon} color={colors.primaryDark} size={22} />
+      <Text style={styles.metricLabel}>{metric.label}</Text>
+      <Text style={styles.metricValue}>{metric.value}</Text>
+      <Text style={[styles.metricStatus, { color: colorForTone(metric.tone) }]}>{metric.status}</Text>
+    </View>
+  );
+}
+
+function ShortcutCard({
+  icon,
+  onPress,
+  subtitle,
+  title,
+}: {
+  icon: LineIconName;
+  onPress: () => void;
+  subtitle: string;
+  title: string;
+}) {
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.shortcutCard, pressed && styles.pressed]}>
+      <View style={styles.shortcutIcon}>
+        <LineIcon name={icon} color={colors.primaryDark} size={24} />
+      </View>
+      <View style={styles.shortcutCopy}>
+        <Text style={styles.shortcutTitle}>{title}</Text>
+        <Text style={styles.shortcutSubtitle}>{subtitle}</Text>
+      </View>
+      <LineIcon name="chevronLeft" color={colors.textSoft} size={18} />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
+  screen: {
+    paddingHorizontal: 18,
+    paddingBottom: 82,
+  },
+  hero: {
+    height: 250,
+    marginHorizontal: -18,
+    marginTop: 4,
+    overflow: 'hidden',
+  },
+  heroImage: {
+    height: 430,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: -118,
+  },
+  heroMist: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
+  heroFade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(247,253,255,0.20)',
+  },
   greeting: {
-    marginTop: 10,
-    alignItems: 'center',
+    alignItems: 'flex-end',
+    position: 'absolute',
+    right: 26,
+    top: 28,
   },
   hello: {
     color: colors.text,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 22,
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 30,
     fontWeight: '900',
-    ...rtl.textCenter,
+    lineHeight: 36,
+    ...rtl.text,
   },
   subtitle: {
-    marginTop: 5,
     color: colors.textSoft,
     fontFamily: typography.fontFamilyRegular,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '800',
-    ...rtl.textCenter,
-  },
-  hero: {
-    marginHorizontal: -20,
-    marginTop: 16,
-    height: 230,
-    borderRadius: 0,
-    backgroundColor: colors.water,
-    overflow: 'hidden',
+    marginTop: 2,
+    ...rtl.text,
   },
   statusCard: {
-    width: '79%',
     alignSelf: 'center',
-    marginTop: -132,
-    alignItems: 'center',
-    gap: 11,
+    borderRadius: 26,
+    marginTop: -40,
+    paddingBottom: 16,
     paddingHorizontal: 14,
     paddingTop: 16,
-    paddingBottom: 16,
-    borderRadius: 20,
+    width: '100%',
   },
-  emptyCard: {
-    width: '84%',
-    alignSelf: 'center',
-    marginTop: -112,
+  cardKickerRow: {
     alignItems: 'center',
-    gap: 11,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-    paddingBottom: 18,
-    borderRadius: 20,
-  },
-  emptyIcon: {
-    width: 66,
-    height: 66,
-    borderRadius: 33,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
+    flexDirection: 'row-reverse',
+    gap: 7,
     justifyContent: 'center',
-  },
-  emptyText: {
-    color: colors.textSoft,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 13,
-    lineHeight: 20,
-    fontWeight: '800',
-    ...rtl.textCenter,
   },
   cardKicker: {
     color: colors.text,
-    fontFamily: typography.fontFamilySemiBold,
-    fontSize: 13,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 15,
     fontWeight: '900',
     ...rtl.textCenter,
   },
-  checkCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 1,
+  statusTop: {
     alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: 'row-reverse',
+    gap: 18,
+    justifyContent: 'space-between',
+    marginTop: 10,
   },
-  checkCircleOk: {
-    backgroundColor: '#CFF6D6',
-    borderColor: '#9EE8AD',
-  },
-  checkCircleWarning: {
-    backgroundColor: colors.warningSoft,
-    borderColor: 'rgba(240,165,41,0.35)',
+  statusCopy: {
+    alignItems: 'flex-end',
+    flex: 1,
   },
   statusTitle: {
-    color: colors.text,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 19,
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 24,
     fontWeight: '900',
-    ...rtl.textCenter,
+    lineHeight: 30,
+    ...rtl.text,
   },
   statusSubtitle: {
-    marginTop: -7,
-    color: colors.muted,
+    color: colors.textSoft,
     fontFamily: typography.fontFamilyRegular,
     fontSize: 13,
     fontWeight: '800',
-    ...rtl.textCenter,
+    marginTop: 3,
+    ...rtl.text,
+  },
+  scoreWrap: {
+    alignItems: 'center',
+    height: 82,
+    justifyContent: 'center',
+    width: 82,
+  },
+  scoreCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'absolute',
+  },
+  scoreValue: {
+    color: colors.text,
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 24,
+    fontWeight: '900',
+    lineHeight: 30,
+  },
+  scoreLabel: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 11,
+    fontWeight: '700',
   },
   metrics: {
-    width: '100%',
     flexDirection: 'row-reverse',
-    gap: 8,
+    gap: 10,
+    marginTop: 16,
+  },
+  metricCard: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.borderSoft,
+    borderRadius: 18,
+    borderWidth: 1,
+    flex: 1,
+    minHeight: 104,
+    paddingHorizontal: 7,
+    paddingVertical: 10,
+    ...shadows.soft,
+  },
+  metricLabel: {
+    color: colors.text,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 4,
+    ...rtl.textCenter,
+  },
+  metricValue: {
+    color: '#0F9F8E',
+    fontFamily: typography.fontFamilyExtraBold,
+    fontSize: 30,
+    fontWeight: '900',
+    lineHeight: 34,
+    marginTop: 3,
+    ...rtl.textCenter,
+  },
+  metricStatus: {
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
+    marginTop: 3,
+    ...rtl.textCenter,
   },
   ctaWrap: {
-    marginTop: 16,
+    marginTop: 14,
+  },
+  shortcuts: {
+    flexDirection: 'row-reverse',
+    gap: 12,
+    marginTop: 14,
+    paddingBottom: 0,
+  },
+  shortcutCard: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderColor: colors.borderSoft,
+    borderRadius: 18,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row-reverse',
+    gap: 8,
+    minHeight: 74,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    ...shadows.soft,
+  },
+  shortcutIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.round,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  shortcutCopy: {
+    alignItems: 'flex-end',
+    flex: 1,
+  },
+  shortcutTitle: {
+    color: colors.text,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 12,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  shortcutSubtitle: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 10,
+    fontWeight: '700',
+    lineHeight: 14,
+    marginTop: 2,
+    ...rtl.text,
+  },
+  pressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
   },
 });

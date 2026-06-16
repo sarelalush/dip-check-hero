@@ -3,11 +3,10 @@ import { colors, radius, rtl, typography } from '../theme';
 import { LineIcon } from './LineIcon';
 
 interface AppHeaderProps {
-  onMenuPress?: () => void;
   onNotificationPress?: () => void;
 }
 
-export function AppHeader({ onMenuPress, onNotificationPress }: AppHeaderProps) {
+export function AppHeader({ onNotificationPress }: AppHeaderProps) {
   return (
     <View style={styles.header}>
       <Pressable onPress={onNotificationPress} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
@@ -24,9 +23,7 @@ export function AppHeader({ onMenuPress, onNotificationPress }: AppHeaderProps) 
         </View>
       </View>
 
-      <Pressable onPress={onMenuPress} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
-        <LineIcon name="menu" color={colors.textSoft} size={19} />
-      </Pressable>
+      <View style={styles.iconButton} />
     </View>
   );
 }
