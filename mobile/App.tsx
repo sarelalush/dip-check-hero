@@ -10,8 +10,6 @@ import {
 } from '@expo-google-fonts/heebo';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useState } from 'react';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { PoolsScreen } from './src/screens/PoolsScreen';
@@ -21,12 +19,12 @@ import { EditPoolScreen } from './src/screens/EditPoolScreen';
 import { ConfirmScanScreen } from './src/screens/ConfirmScanScreen';
 import { ResultsScreen } from './src/screens/ResultsScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
+import { SelectPoolScreen } from './src/screens/SelectPoolScreen';
 import { SelectStripScreen } from './src/screens/SelectStripScreen';
 import { LandingScreen } from './src/screens/LandingScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { SignupScreen } from './src/screens/SignupScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
-import { OnboardingScreen, ONBOARDING_COMPLETE_KEY } from './src/screens/OnboardingScreen';
 import { PlanUsageScreen } from './src/screens/PlanUsageScreen';
 import { PrivacyPolicyScreen } from './src/screens/PrivacyPolicyScreen';
 import { TermsScreen } from './src/screens/TermsScreen';
@@ -43,10 +41,10 @@ import { AppPreferencesProvider } from './src/state/AppPreferencesContext';
 
 export type RootStackParamList = {
   Home: undefined;
-  Onboarding: undefined;
   Pools: undefined;
   PoolDetails: { poolId: string };
   EditPool: { poolId: string };
+  SelectPool: undefined;
   SelectStrip: { poolId?: string } | undefined;
   Scan: { brandId?: string; poolId?: string } | undefined;
   ConfirmScan: { brandId?: string; poolId?: string; imageUri: string };
@@ -106,48 +104,9 @@ export default function App() {
 
 function AppNavigator() {
   const { loading, isAuthenticated } = useAuth();
-  const { hydrated: poolsHydrated, pools } = usePools();
-  const [onboardingLoaded, setOnboardingLoaded] = useState(false);
-  const [onboardingComplete, setOnboardingComplete] = useState(false);
+  const { hydrated: poolsHydrated } = usePools();
 
-  useEffect(() => {
-    let mounted = true;
-
-    async function restoreOnboarding() {
-      try {
-        const stored = await AsyncStorage.getItem(ONBOARDING_COMPLETE_KEY);
-        if (!mounted) return;
-        setOnboardingComplete(stored === 'true');
-      } catch (error) {
-        console.warn('Failed to restore onboarding state', error);
-      } finally {
-        if (mounted) setOnboardingLoaded(true);
-      }
-    }
-
-    restoreOnboarding();
-
-    return () => {
-      mounted = false;
-    };
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (!isAuthenticated || !poolsHydrated || pools.length === 0 || onboardingComplete) return;
-
-    async function markCompleteAfterFirstPool() {
-      try {
-        await AsyncStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
-      } catch (error) {
-        console.warn('Failed to persist onboarding completion', error);
-      }
-      setOnboardingComplete(true);
-    }
-
-    markCompleteAfterFirstPool();
-  }, [isAuthenticated, onboardingComplete, pools.length, poolsHydrated]);
-
-  if (loading || (isAuthenticated && (!poolsHydrated || !onboardingLoaded))) {
+  if (loading || (isAuthenticated && !poolsHydrated)) {
     return (
       <View style={styles.loadingScreen}>
         <ActivityIndicator color={colors.primary} size="large" />
@@ -158,17 +117,17 @@ function AppNavigator() {
   return (
     <NavigationContainer key={isAuthenticated ? 'app' : 'auth'}>
       <Stack.Navigator
-        initialRouteName={isAuthenticated ? (pools.length === 0 && !onboardingComplete ? 'Onboarding' : 'Home') : 'Welcome'}
+        initialRouteName={isAuthenticated ? 'Home' : 'Welcome'}
         screenOptions={{ headerShown: false }}
       >
         {isAuthenticated ? (
           <>
-            <Stack.Screen name="Onboarding" component={OnboardingScreen} />
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="Pools" component={PoolsScreen} />
             <Stack.Screen name="PoolDetails" component={PoolDetailsScreen} />
             <Stack.Screen name="AddPool" component={AddPoolScreen} />
             <Stack.Screen name="EditPool" component={EditPoolScreen} />
+            <Stack.Screen name="SelectPool" component={SelectPoolScreen} />
             <Stack.Screen name="SelectStrip" component={SelectStripScreen} />
             <Stack.Screen name="Scan" component={ScanScreen} />
             <Stack.Screen name="ConfirmScan" component={ConfirmScanScreen} />

@@ -12,6 +12,7 @@ import { colors, radius, rtl, shadows, typography } from '../theme';
 import type { DosageRecommendation } from '../domain/dosage';
 import { calculateDosage } from '../domain/dosage';
 import type { ScanResultParameter, StripAnalysisResult } from '../domain/scanResults';
+import { useStartScanFlow } from '../hooks/useStartScanFlow';
 import { analyzeStripImage, getStripAnalysisConfig } from '../services/stripAnalysisService';
 import { prepareScanImageForRemoteAnalysis } from '../services/scanImageStorage';
 import { useAuth } from '../state/AuthContext';
@@ -91,6 +92,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     setScanError,
     setScanImageUpload,
   } = useScanSession();
+  const startScanFlow = useStartScanFlow(navigation);
   const [analysisResult, setAnalysisResult] = useState<StripAnalysisResult | null>(null);
   const [analysisError, setAnalysisError] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(true);
@@ -269,7 +271,7 @@ export function ResultsScreen({ navigation, route }: Props) {
 
   function handleNewScan() {
     resetScanSession();
-    navigation.navigate('SelectStrip', poolId ? { poolId } : undefined);
+    startScanFlow(poolId);
   }
 
   if (savedTestId && isHydrated && !analysisResult) {

@@ -3,6 +3,7 @@ import type { NavigationProp } from '@react-navigation/native';
 import { colors, layout, radius, rtl, shadows, typography } from '../theme';
 import { LineIcon, type LineIconName } from './LineIcon';
 import type { RootStackParamList } from '../../App';
+import { useStartScanFlow } from '../hooks/useStartScanFlow';
 
 export type TabKey = 'home' | 'pools' | 'scan' | 'results' | 'history' | 'settings';
 
@@ -22,10 +23,12 @@ const rightTabs: { key: Extract<TabKey, 'pools' | 'home'>; label: string; icon: 
 ];
 
 export function BottomTabBar({ active, navigation }: Props) {
+  const startScanFlow = useStartScanFlow(navigation);
+
   function go(tab: TabKey) {
     if (tab === 'home') navigation.navigate('Home');
     else if (tab === 'pools') navigation.navigate('Pools');
-    else if (tab === 'scan') navigation.navigate('SelectStrip');
+    else if (tab === 'scan') startScanFlow();
     else if (tab === 'results') navigation.navigate('Results');
     else if (tab === 'history') navigation.navigate('History');
     else navigation.navigate('Settings');

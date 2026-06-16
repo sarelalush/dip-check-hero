@@ -3,6 +3,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { colors, layout, radius, rtl, shadows, typography } from '../theme';
 import { usePools } from '../state/PoolsContext';
+import { useStartScanFlow } from '../hooks/useStartScanFlow';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
@@ -11,6 +12,7 @@ type Level = 'red' | 'yellow' | 'green';
 
 export function DashboardLightScreen({ navigation }: Props) {
   const { pools } = usePools();
+  const startScanFlow = useStartScanFlow(navigation);
 
   return (
     <View style={styles.viewport}>
@@ -39,7 +41,7 @@ export function DashboardLightScreen({ navigation }: Props) {
             </View>
           </View>
 
-          <Pressable onPress={() => navigation.navigate('SelectStrip')} style={styles.mainButton}>
+          <Pressable onPress={() => startScanFlow()} style={styles.mainButton}>
             <Text style={styles.mainButtonIcon}>□</Text>
             <Text style={styles.mainButtonText}>התחל סריקה</Text>
           </Pressable>

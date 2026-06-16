@@ -10,6 +10,7 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { PoolPhoto } from '../components/WaterVisuals';
 import { colors, rtl, typography } from '../theme';
 import type { ScanResultParameter } from '../domain/scanResults';
+import { useStartScanFlow } from '../hooks/useStartScanFlow';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory } from '../state/ResultsHistoryContext';
 import type { RootStackParamList } from '../../App';
@@ -34,6 +35,7 @@ function metricFromResult(parameters: ScanResultParameter[], keys: ScanResultPar
 export function HomeScreen({ navigation }: Props) {
   const { pools } = usePools();
   const { historyRecords } = useResultsHistory();
+  const startScanFlow = useStartScanFlow(navigation);
   const hasPools = pools.length > 0;
   const latestRecord = useMemo(
     () => [...historyRecords].sort((a, b) => b.testedAt - a.testedAt)[0],
@@ -117,7 +119,7 @@ export function HomeScreen({ navigation }: Props) {
       )}
 
       <View style={styles.ctaWrap}>
-        <PrimaryButton label="התחל סריקה" icon="scan" onPress={() => navigation.navigate('SelectStrip')} />
+        <PrimaryButton label="התחל סריקה" icon="scan" onPress={() => startScanFlow()} />
       </View>
     </AppShell>
   );

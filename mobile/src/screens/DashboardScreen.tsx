@@ -3,12 +3,14 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { colors, layout, radius, rtl, shadows, spacing, typography } from '../theme';
 import { usePools } from '../state/PoolsContext';
+import { useStartScanFlow } from '../hooks/useStartScanFlow';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 
 export function DashboardScreen({ navigation }: Props) {
   const { pools } = usePools();
+  const startScanFlow = useStartScanFlow(navigation);
 
   return (
     <View style={styles.viewport}>
@@ -70,7 +72,7 @@ export function DashboardScreen({ navigation }: Props) {
             <MetricCard label="אלקליניות" value="120" status="ppm" tone="ok" />
           </View>
 
-          <Pressable onPress={() => navigation.navigate('SelectStrip')} style={({ pressed }) => [styles.primaryScan, pressed && styles.pressed]}>
+          <Pressable onPress={() => startScanFlow()} style={({ pressed }) => [styles.primaryScan, pressed && styles.pressed]}>
             <View style={styles.scanTextWrap}>
               <Text style={styles.primaryScanTitle}>התחל בדיקה חדשה</Text>
               <Text style={styles.primaryScanSub}>בחר סטיק, צלם וקבל תוצאות</Text>

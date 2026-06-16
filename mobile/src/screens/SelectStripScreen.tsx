@@ -19,7 +19,7 @@ import type { RootStackParamList } from '../../App';
 type Props = NativeStackScreenProps<RootStackParamList, 'SelectStrip'>;
 
 export function SelectStripScreen({ navigation, route }: Props) {
-  const { getPool } = usePools();
+  const { getPool, pools } = usePools();
   const { accountId } = useAuth();
   const { session, setSelectedBrand, startScanSession } = useScanSession();
   const didStartSession = useRef(false);
@@ -39,6 +39,25 @@ export function SelectStripScreen({ navigation, route }: Props) {
   const selectedBrand = stripBrands.find((brand) => brand.id === selectedBrandId) ?? initialBrand;
 
   useEffect(() => {
+    if (selectedPoolId) return;
+
+    if (pools.length === 0) {
+      navigation.replace('AddPool');
+      return;
+    }
+
+    if (pools.length === 1) {
+      const [singlePool] = pools;
+      startScanSession({ brandId: singlePool.stripBrandId ?? initialBrand.id, poolId: singlePool.id });
+      navigation.replace('SelectStrip', { poolId: singlePool.id });
+      return;
+    }
+
+    navigation.replace('SelectPool');
+  }, [initialBrand.id, navigation, pools, selectedPoolId, startScanSession]);
+
+  useEffect(() => {
+    if (!selectedPoolId) return;
     if (didStartSession.current) return;
     didStartSession.current = true;
     startScanSession({ brandId: initialBrand.id, poolId: selectedPoolId });
