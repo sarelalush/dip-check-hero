@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
   hero: {
     height: 228,
     marginHorizontal: -18,
-    marginTop: -18,
+    marginTop: -8,
     overflow: 'hidden',
   },
   heroImage: {
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     position: 'absolute',
     right: 26,
-    top: 12,
+    top: 16,
   },
   hello: {
     color: colors.text,
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
   statusCard: {
     alignSelf: 'center',
     borderRadius: 26,
-    marginTop: -64,
+    marginTop: -60,
     paddingBottom: 16,
     paddingHorizontal: 14,
     paddingTop: 16,
