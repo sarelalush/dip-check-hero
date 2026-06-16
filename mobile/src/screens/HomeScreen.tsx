@@ -228,17 +228,17 @@ const styles = StyleSheet.create({
     paddingBottom: 82,
   },
   hero: {
-    height: 236,
+    height: 228,
     marginHorizontal: -18,
-    marginTop: -10,
+    marginTop: -18,
     overflow: 'hidden',
   },
   heroImage: {
-    height: 418,
+    height: 410,
     left: 0,
     position: 'absolute',
     right: 0,
-    top: -134,
+    top: -144,
   },
   heroMist: {
     ...StyleSheet.absoluteFillObject,
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     position: 'absolute',
     right: 26,
-    top: 18,
+    top: 12,
   },
   hello: {
     color: colors.text,
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
   statusCard: {
     alignSelf: 'center',
     borderRadius: 26,
-    marginTop: -56,
+    marginTop: -64,
     paddingBottom: 16,
     paddingHorizontal: 14,
     paddingTop: 16,
