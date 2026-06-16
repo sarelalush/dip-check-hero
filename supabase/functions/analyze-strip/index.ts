@@ -33,7 +33,16 @@ import { Image as ImageScript } from 'https://deno.land/x/imagescript@1.2.15/mod
 type StatusTone = 'success' | 'warning' | 'danger';
 type AnalysisSource = 'ai' | 'cv' | 'remote-mock';
 type AiProviderName = 'gemini';
-type FailureReason = 'none' | 'not_strip' | 'blurry' | 'lighting' | 'framing' | 'low_confidence' | 'ai_error' | 'unknown';
+type FailureReason =
+  | 'none'
+  | 'not_strip'
+  | 'blurry'
+  | 'lighting'
+  | 'framing'
+  | 'low_confidence'
+  | 'unsupported_strip'
+  | 'ai_error'
+  | 'unknown';
 type StripParameter =
   | 'freeChlorine'
   | 'totalChlorine'
@@ -97,6 +106,8 @@ interface StripAnalysisResult {
   model?: string;
   confidence: number;
   lowConfidence?: boolean;
+  isValidStrip?: boolean;
+  failureReason?: FailureReason;
   notes?: string;
   shotsUsed?: number;
   overallStatus: {
@@ -485,7 +496,15 @@ function buildResult(
   values: Partial<Record<StripParameter, number>>,
   source: AnalysisSource,
   confidence: number,
-  options: { lowConfidence?: boolean; model?: string; notes?: string; provider?: AiProviderName; shotsUsed?: number } = {},
+  options: {
+    lowConfidence?: boolean;
+    model?: string;
+    notes?: string;
+    provider?: AiProviderName;
+    shotsUsed?: number;
+    isValidStrip?: boolean;
+    failureReason?: FailureReason;
+  } = {},
 ): StripAnalysisResult {
   const parameters = brand.parameters
     .map((parameter) => {
@@ -512,6 +531,8 @@ function buildResult(
     model: options.model,
     confidence: Number(Math.max(0, Math.min(1, confidence)).toFixed(2)),
     lowConfidence: options.lowConfidence,
+    isValidStrip: options.isValidStrip ?? true,
+    failureReason: options.failureReason ?? 'none',
     notes: options.notes,
     shotsUsed: options.shotsUsed,
     overallStatus: {
@@ -531,6 +552,40 @@ function buildRemoteMockResult(request: AnalyzeStripRequest, note = 'הוחזר�
     lowConfidence: true,
     notes: note,
   });
+}
+
+function buildInvalidStripResult(
+  request: AnalyzeStripRequest,
+  brand: StripBrand,
+  source: AnalysisSource,
+  failureReason: FailureReason,
+  note: string,
+  options: { provider?: AiProviderName; model?: string; shotsUsed?: number; confidence?: number } = {},
+): StripAnalysisResult {
+  return {
+    id: request.testId,
+    analyzedAt: Date.now(),
+    brandId: brand.id,
+    imageUri: request.imageUrl ?? request.imagePath ?? request.imageUri,
+    imagePath: request.imagePath,
+    imageUrl: request.imageUrl,
+    poolId: request.poolId,
+    source,
+    provider: options.provider,
+    model: options.model,
+    confidence: Number(Math.max(0, Math.min(1, options.confidence ?? 0.12)).toFixed(2)),
+    lowConfidence: true,
+    isValidStrip: false,
+    failureReason,
+    notes: note,
+    shotsUsed: options.shotsUsed,
+    overallStatus: {
+      label: 'הסטיק שהוזן אינו תקין',
+      tone: 'warning',
+    },
+    parameters: [],
+    recommendation: note,
+  };
 }
 
 function median(nums: number[]) {
@@ -800,6 +855,7 @@ ${isPro
 
 FIRST determine if the image actually shows a pool/spa test strip (a thin plastic strip with multiple colored pads).
 If NOT, set isStrip=false, confidence=0, all values=0, and put a short Hebrew note.
+If the image shows a different strip type/brand/model than "${brand.nameHe}", classify it as unsupported_strip.
 
 Classify failureReason as one of:
 - "none": clear, usable strip
@@ -807,9 +863,10 @@ Classify failureReason as one of:
 - "blurry": strip visible but out of focus
 - "lighting": bad lighting / glare / strong color cast
 - "framing": strip cut off, too far, or some pads not visible
+- "unsupported_strip": a real strip is visible but it does not match the selected/supported brand
 - "low_confidence": strip readable but you are unsure of values
 
-For not_strip / blurry / lighting / framing -> isStrip=false.
+For not_strip / blurry / lighting / framing / unsupported_strip -> isStrip=false.
 For low_confidence -> isStrip=true, confidence < 0.4.
 Always provide a short, actionable Hebrew tip in notes.
 
@@ -891,7 +948,7 @@ function buildGeminiResponseSchema() {
       isStrip: { type: 'BOOLEAN' },
       failureReason: {
         type: 'STRING',
-        enum: ['none', 'not_strip', 'blurry', 'lighting', 'framing', 'low_confidence'],
+        enum: ['none', 'not_strip', 'blurry', 'lighting', 'framing', 'low_confidence', 'unsupported_strip'],
       },
       confidence: { type: 'NUMBER' },
       notes: { type: 'STRING' },
@@ -993,9 +1050,33 @@ async function analyzeWithAiProvider(dataUrl: string, brand: StripBrand): Promis
 
 function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, brand: StripBrand): StripAnalysisResult | null {
   const okRuns = runs.filter((run): run is Extract<AiRunResponse, { ok: true }> => run.ok);
-  const notStripRuns = okRuns.filter((run) => run.data.isStrip === false);
-  if (okRuns.length > 0 && notStripRuns.length > okRuns.length / 2) {
-    return null;
+  const invalidRuns = okRuns.filter(
+    (run) =>
+      run.data.isStrip === false &&
+      ['not_strip', 'blurry', 'lighting', 'framing', 'unsupported_strip'].includes(run.data.failureReason),
+  );
+  if (okRuns.length > 0 && invalidRuns.length > okRuns.length / 2) {
+    const reasonCounts = new Map<FailureReason, number>();
+    for (const run of invalidRuns) {
+      reasonCounts.set(run.data.failureReason, (reasonCounts.get(run.data.failureReason) ?? 0) + 1);
+    }
+    const [dominantReason = 'not_strip'] = [...reasonCounts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [];
+    const notes = invalidRuns.map((run) => run.data.notes).filter(Boolean).join(' ');
+    return buildInvalidStripResult(
+      request,
+      brand,
+      'ai',
+      dominantReason,
+      notes || (dominantReason === 'unsupported_strip'
+        ? 'הסטיק שצולם אינו תואם לסוג הסטיק שנבחר. יש לבחור סטיק נתמך ולצלם שוב.'
+        : 'לא זוהה סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.'),
+      {
+        provider: invalidRuns[0]?.data.provider,
+        model: invalidRuns[0]?.data.model,
+        shotsUsed: invalidRuns.length,
+        confidence: invalidRuns.reduce((sum, run) => sum + (run.data.confidence ?? 0), 0) / invalidRuns.length,
+      },
+    );
   }
 
   const stripRuns = okRuns.filter((run) => run.data.isStrip);
@@ -1209,7 +1290,7 @@ async function persistAnalysisResult(body: AnalyzeStripRequest, result: StripAna
     id: body.testId,
     image_path: result.imagePath ?? body.imagePath ?? null,
     image_url: result.imageUrl ?? body.imageUrl ?? null,
-    is_billable: result.source !== 'remote-mock',
+    is_billable: result.source !== 'remote-mock' && result.isValidStrip !== false,
     low_confidence: result.lowConfidence ?? false,
     model: result.model ?? null,
     overall_status: result.overallStatus.label,
@@ -1277,7 +1358,7 @@ async function persistAnalysisResult(body: AnalyzeStripRequest, result: StripAna
     ]),
   });
 
-  if (!alreadyExists && result.source !== 'remote-mock') {
+  if (!alreadyExists && result.source !== 'remote-mock' && result.isValidStrip !== false) {
     await fetch(`${supabaseUrl}/rest/v1/rpc/register_scan_usage`, {
       method: 'POST',
       headers,
@@ -1344,9 +1425,10 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     Array.from({ length: MULTI_SHOT_RUNS }, () => analyzeWithAiProvider(dataUrl, brand)),
   );
   const aiResult = combineAiRuns(aiRuns, body, brand);
-  if (aiResult && !aiResult.lowConfidence) {
+  if (aiResult && (aiResult.isValidStrip === false || !aiResult.lowConfidence)) {
     console.log('Gemini strip analysis selected', {
       confidence: aiResult.confidence,
+      failureReason: aiResult.failureReason,
       model: aiResult.model,
       source: aiResult.source,
       testId: body.testId,

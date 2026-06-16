@@ -42,6 +42,8 @@ export interface StripAnalysisResult {
   model?: string;
   confidence?: number;
   lowConfidence?: boolean;
+  isValidStrip?: boolean;
+  failureReason?: 'none' | 'not_strip' | 'blurry' | 'lighting' | 'framing' | 'low_confidence' | 'unsupported_strip';
   notes?: string;
   shotsUsed?: number;
   overallStatus: {

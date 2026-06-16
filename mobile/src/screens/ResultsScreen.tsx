@@ -65,6 +65,19 @@ function getResultCards(result: StripAnalysisResult): DosageRecommendation[] {
   return result.parameters.map(mapParameterToRecommendation);
 }
 
+function isInvalidStripResult(result?: StripAnalysisResult | null) {
+  if (!result) return false;
+  return result.isValidStrip === false || result.failureReason === 'not_strip' || result.failureReason === 'unsupported_strip';
+}
+
+function invalidStripMessage(result?: StripAnalysisResult | null) {
+  if (!result) return 'לא הצלחנו לזהות סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.';
+  if (result.failureReason === 'unsupported_strip') {
+    return result.notes || 'הסטיק שצולם אינו תואם לסוג הסטיק שנבחר או אינו נתמך. יש לבחור סטיק נתמך ולצלם שוב.';
+  }
+  return result.notes || 'לא זוהה סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.';
+}
+
 function SafetyCard({ text }: { text?: string }) {
   return (
     <View style={styles.safetyCard}>
@@ -186,18 +199,20 @@ export function ResultsScreen({ navigation, route }: Props) {
           testId,
           userId: user?.id,
         });
-        const dosage = calculateDosage(result, pool);
+        const dosage = isInvalidStripResult(result) ? undefined : calculateDosage(result, pool);
         const enrichedResult: StripAnalysisResult = {
           ...result,
           id: testId,
           dosage,
           imagePath: result.imagePath ?? imagePath,
           imageUrl: result.imageUrl ?? imageUrl,
-          overallStatus: {
-            label: dosage.primaryRecommendation ? 'נדרש תיקון קל' : 'המים מאוזנים',
-            tone: dosage.primaryRecommendation ? 'warning' : 'success',
-          },
-          recommendation: dosage.summary,
+          overallStatus: isInvalidStripResult(result)
+            ? result.overallStatus
+            : {
+                label: dosage?.primaryRecommendation ? 'נדרש תיקון קל' : 'המים מאוזנים',
+                tone: dosage?.primaryRecommendation ? 'warning' : 'success',
+              },
+          recommendation: isInvalidStripResult(result) ? result.recommendation : dosage?.summary ?? result.recommendation,
         };
 
         if (isMounted) {
@@ -323,6 +338,32 @@ export function ResultsScreen({ navigation, route }: Props) {
           <Pressable style={styles.secondaryButton} onPress={() => navigation.replace('Scan', poolId ? { poolId, brandId: inputBrandId } : undefined)}>
             <LineIcon name="camera" color={colors.primaryDark} size={16} />
             <Text style={styles.secondaryText}>חזרה לסריקה</Text>
+          </Pressable>
+        </View>
+      </AppShell>
+    );
+  }
+
+  if (analysisResult && isInvalidStripResult(analysisResult)) {
+    return (
+      <AppShell activeTab="scan" navigation={navigation}>
+        <View style={styles.emptyHeader}>
+          <Text style={styles.title}>תוצאות הבדיקה</Text>
+          <Text style={styles.subtitle}>הסטיק אינו תקין</Text>
+        </View>
+        <Card compact style={styles.messageCard}>
+          <Text style={styles.messageTitle}>לא זוהה סטיק מתאים</Text>
+          <Text style={styles.messageText}>{invalidStripMessage(analysisResult)}</Text>
+        </Card>
+        <View style={styles.actions}>
+          <PrimaryButton
+            label="צלם שוב"
+            icon="camera"
+            onPress={() => navigation.replace('Scan', poolId ? { poolId, brandId: inputBrandId } : undefined)}
+          />
+          <Pressable style={styles.secondaryButton} onPress={() => navigation.navigate('SelectStrip', poolId ? { poolId } : undefined)}>
+            <LineIcon name="scan" color={colors.primaryDark} size={16} />
+            <Text style={styles.secondaryText}>בחר סטיק אחר</Text>
           </Pressable>
         </View>
       </AppShell>
