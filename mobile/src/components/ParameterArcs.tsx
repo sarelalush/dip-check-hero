@@ -26,12 +26,13 @@ const STATUS_LABEL: Record<DosageRecommendation['status'], string> = {
   high: 'גבוה',
 };
 
-const SIZE = 320;
-const CX = SIZE / 2;
-const CY = SIZE * 0.78;
-const RING_GAP = 22;
-const RING_THICK = 14;
-const BASE_RADIUS = 50;
+const SVG_WIDTH = 220;
+const SVG_HEIGHT = 132;
+const CX = SVG_WIDTH / 2;
+const CY = 122;
+const RING_GAP = 14;
+const RING_THICK = 10;
+const BASE_RADIUS = 38;
 const START_ANGLE = 180;
 const END_ANGLE = 0;
 
@@ -94,7 +95,7 @@ export function ParameterArcs({ recs }: ParameterArcsProps) {
           })}
         </View>
 
-        <Svg width={178} height={168} viewBox={`0 0 ${SIZE} ${SIZE * 0.85}`}>
+        <Svg width={178} height={124} viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} style={styles.arcSvg}>
           <Defs>
             {ordered.map((rec) => (
               <LinearGradient key={`grad-${rec.paramKey}`} id={`grad-${rec.paramKey}`} x1="0" y1="0" x2="1" y2="0">
@@ -184,14 +185,17 @@ const styles = StyleSheet.create({
   },
   topRow: {
     flexDirection: 'row-reverse',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 8,
+  },
+  arcSvg: {
+    marginTop: 2,
   },
   statusColumn: {
     flex: 1,
-    paddingTop: 8,
-    gap: 12,
+    paddingTop: 0,
+    gap: 10,
   },
   statusItem: {
     flexDirection: 'row-reverse',
