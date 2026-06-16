@@ -32,6 +32,8 @@ const CY = SIZE * 0.78;
 const RING_GAP = 22;
 const RING_THICK = 14;
 const BASE_RADIUS = 50;
+const START_ANGLE = 180;
+const END_ANGLE = 0;
 
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
@@ -48,8 +50,10 @@ function polar(cx: number, cy: number, radius: number, angleDeg: number) {
 function arcPath(cx: number, cy: number, radius: number, startDeg: number, endDeg: number) {
   const start = polar(cx, cy, radius, startDeg);
   const end = polar(cx, cy, radius, endDeg);
-  const largeArc = endDeg - startDeg > 180 ? 1 : 0;
-  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} 1 ${end.x} ${end.y}`;
+  const delta = Math.abs(endDeg - startDeg);
+  const largeArc = delta > 180 ? 1 : 0;
+  const sweep = endDeg > startDeg ? 1 : 0;
+  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} ${sweep} ${end.x} ${end.y}`;
 }
 
 function rangeFor(rec: DosageRecommendation) {
@@ -105,14 +109,14 @@ export function ParameterArcs({ recs }: ParameterArcsProps) {
             const range = rangeFor(rec);
             const valuePct = clamp01((rec.measured - range.min) / (range.max - range.min));
             const targetPct = clamp01((rec.target - range.min) / (range.max - range.min));
-            const valueAngle = 180 + 180 * valuePct;
-            const targetAngle = 180 + 180 * targetPct;
+            const valueAngle = START_ANGLE + (END_ANGLE - START_ANGLE) * valuePct;
+            const targetAngle = START_ANGLE + (END_ANGLE - START_ANGLE) * targetPct;
             const targetMark = polar(CX, CY, radius, targetAngle);
 
             return (
               <G key={`ring-${rec.paramKey}`}>
                 <Path
-                  d={arcPath(CX, CY, radius, 180, 360)}
+                  d={arcPath(CX, CY, radius, START_ANGLE, END_ANGLE)}
                   fill="none"
                   stroke="#E7F2F5"
                   strokeLinecap="round"
@@ -120,7 +124,7 @@ export function ParameterArcs({ recs }: ParameterArcsProps) {
                 />
                 {valuePct > 0.01 ? (
                   <Path
-                    d={arcPath(CX, CY, radius, 180, Math.max(181, valueAngle))}
+                    d={arcPath(CX, CY, radius, START_ANGLE, Math.min(START_ANGLE - 1, valueAngle))}
                     fill="none"
                     stroke={`url(#grad-${rec.paramKey})`}
                     strokeLinecap="round"
