@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
 import { Card } from '../components/Card';
@@ -146,6 +146,8 @@ export function ResultsScreen({ navigation, route }: Props) {
   const [analysisError, setAnalysisError] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(true);
   const [retryKey, setRetryKey] = useState(0);
+  const [autoSaved, setAutoSaved] = useState(false);
+  const autoSavedTestIdRef = useRef<string | undefined>(undefined);
   const savedTestId = route.params?.testId;
   const savedRecord = savedTestId ? getHistoryRecord(savedTestId) : undefined;
   const inputBrandId = savedTestId ? route.params?.brandId : session.selectedBrandId ?? route.params?.brandId;
@@ -316,12 +318,15 @@ export function ResultsScreen({ navigation, route }: Props) {
   const resultCards = useMemo(() => (analysisResult ? getResultCards(analysisResult) : []), [analysisResult]);
   const volumeLabel = formatVolume(pool?.volumeLiters);
 
-  function handleSave() {
-    if (!analysisResult) return;
+  useEffect(() => {
+    if (savedTestId || !analysisResult || isInvalidStripResult(analysisResult)) return;
+    if (autoSavedTestIdRef.current === analysisResult.id) return;
+
+    autoSavedTestIdRef.current = analysisResult.id;
     saveAnalysisResult(analysisResult);
     resetScanSession();
-    navigation.navigate('History');
-  }
+    setAutoSaved(true);
+  }, [analysisResult, resetScanSession, saveAnalysisResult, savedTestId]);
 
   function handleNewScan() {
     resetScanSession();
@@ -476,7 +481,13 @@ export function ResultsScreen({ navigation, route }: Props) {
             </Pressable>
           </>
         ) : (
-          <PrimaryButton label="סיום ושמירה" icon="history" onPress={handleSave} />
+          <>
+            <PrimaryButton disabled label={autoSaved ? 'נשמר בהיסטוריה' : 'שומר להיסטוריה'} icon="history" />
+            <Pressable style={styles.secondaryButton} onPress={() => navigation.navigate('History')}>
+              <LineIcon name="history" color={colors.primaryDark} size={16} />
+              <Text style={styles.secondaryText}>צפייה בהיסטוריה</Text>
+            </Pressable>
+          </>
         )}
       </View>
     </AppShell>
