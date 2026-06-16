@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from 'react-native';
-import Svg, { Defs, G, Line, LinearGradient, Path, Stop } from 'react-native-svg';
+import Svg, { Circle, G, Line, Path } from 'react-native-svg';
 import type { DosageRecommendation } from '../domain/dosage';
 import { colors, radius, rtl, shadows, typography } from '../theme';
 
@@ -34,7 +34,7 @@ const RING_GAP = 14;
 const RING_THICK = 10;
 const BASE_RADIUS = 38;
 const START_ANGLE = 180;
-const END_ANGLE = 0;
+const END_ANGLE = 360;
 
 function clamp01(value: number) {
   return Math.max(0, Math.min(1, value));
@@ -95,16 +95,7 @@ export function ParameterArcs({ recs }: ParameterArcsProps) {
           })}
         </View>
 
-        <Svg width={178} height={124} viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} style={styles.arcSvg}>
-          <Defs>
-            {ordered.map((rec) => (
-              <LinearGradient key={`grad-${rec.paramKey}`} id={`grad-${rec.paramKey}`} x1="0" y1="0" x2="1" y2="0">
-                <Stop offset="0%" stopColor={STATUS_COLOR[rec.status]} stopOpacity={0.42} />
-                <Stop offset="100%" stopColor={STATUS_COLOR[rec.status]} stopOpacity={1} />
-              </LinearGradient>
-            ))}
-          </Defs>
-
+        <Svg width={180} height={124} viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} style={styles.arcSvg}>
           {ordered.map((rec, index) => {
             const radius = BASE_RADIUS + (ordered.length - 1 - index) * RING_GAP;
             const range = rangeFor(rec);
@@ -113,6 +104,8 @@ export function ParameterArcs({ recs }: ParameterArcsProps) {
             const valueAngle = START_ANGLE + (END_ANGLE - START_ANGLE) * valuePct;
             const targetAngle = START_ANGLE + (END_ANGLE - START_ANGLE) * targetPct;
             const targetMark = polar(CX, CY, radius, targetAngle);
+            const valueMark = polar(CX, CY, radius, valueAngle);
+            const statusColor = STATUS_COLOR[rec.status];
 
             return (
               <G key={`ring-${rec.paramKey}`}>
@@ -125,13 +118,15 @@ export function ParameterArcs({ recs }: ParameterArcsProps) {
                 />
                 {valuePct > 0.01 ? (
                   <Path
-                    d={arcPath(CX, CY, radius, START_ANGLE, Math.min(START_ANGLE - 1, valueAngle))}
+                    d={arcPath(CX, CY, radius, START_ANGLE, Math.max(START_ANGLE + 1, valueAngle))}
                     fill="none"
-                    stroke={`url(#grad-${rec.paramKey})`}
+                    stroke={statusColor}
                     strokeLinecap="round"
+                    strokeOpacity={0.94}
                     strokeWidth={RING_THICK}
                   />
                 ) : null}
+                {valuePct > 0.01 ? <Circle cx={valueMark.x} cy={valueMark.y} fill={statusColor} r={RING_THICK * 0.46} /> : null}
                 <Line
                   x1={targetMark.x}
                   x2={targetMark.x}
