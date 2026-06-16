@@ -70,24 +70,48 @@ function isInvalidStripResult(result?: StripAnalysisResult | null) {
   return result.isValidStrip === false || result.failureReason === 'not_strip' || result.failureReason === 'unsupported_strip';
 }
 
+function normalizeRepeatedMessage(message?: string) {
+  if (!message) return '';
+
+  const parts = message
+    .split(/(?<=[.!?。！？])\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (!parts.length) {
+    return message.trim();
+  }
+
+  const seen = new Set<string>();
+  const uniqueParts: string[] = [];
+
+  for (const part of parts) {
+    if (seen.has(part)) continue;
+    seen.add(part);
+    uniqueParts.push(part);
+  }
+
+  return uniqueParts.join(' ');
+}
+
 function invalidStripMessage(result?: StripAnalysisResult | null) {
   if (!result) return 'לא הצלחנו לזהות סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.';
   if (result.failureReason === 'unsupported_strip') {
-    return result.notes || 'הסטיק שצולם אינו תואם לסוג הסטיק שנבחר או אינו נתמך. יש לבחור סטיק נתמך ולצלם שוב.';
+    return normalizeRepeatedMessage(result.notes) || 'הסטיק שצולם אינו תואם לסוג הסטיק שנבחר או אינו נתמך. יש לבחור סטיק נתמך ולצלם שוב.';
   }
   if (result.failureReason === 'blurry') {
-    return result.notes || 'התמונה מטושטשת מדי לניתוח. יש לצלם שוב תמונה חדה של הסטיק כולו.';
+    return normalizeRepeatedMessage(result.notes) || 'התמונה מטושטשת מדי לניתוח. יש לצלם שוב תמונה חדה של הסטיק כולו.';
   }
   if (result.failureReason === 'lighting') {
-    return result.notes || 'התאורה בתמונה לא מתאימה לניתוח אמין. יש לצלם שוב באור ברור ואחיד.';
+    return normalizeRepeatedMessage(result.notes) || 'התאורה בתמונה לא מתאימה לניתוח אמין. יש לצלם שוב באור ברור ואחיד.';
   }
   if (result.failureReason === 'framing') {
-    return result.notes || 'הסטיק לא הופיע במלואו בתוך המסגרת. יש לצלם שוב כשהסטיק כולו נראה בבירור.';
+    return normalizeRepeatedMessage(result.notes) || 'הסטיק לא הופיע במלואו בתוך המסגרת. יש לצלם שוב כשהסטיק כולו נראה בבירור.';
   }
   if (result.failureReason === 'low_confidence') {
-    return result.notes || 'לא התקבלה ודאות מספקת שהצילום מציג סטיק נתמך וברור. יש לצלם שוב.';
+    return normalizeRepeatedMessage(result.notes) || 'לא התקבלה ודאות מספקת שהצילום מציג סטיק נתמך וברור. יש לצלם שוב.';
   }
-  return result.notes || 'לא זוהה סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.';
+  return normalizeRepeatedMessage(result.notes) || 'לא זוהה סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.';
 }
 
 function SafetyCard({ text }: { text?: string }) {

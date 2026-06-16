@@ -586,6 +586,20 @@ function median(nums: number[]) {
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+function uniqueNonEmpty(values: Array<string | undefined | null>) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const value of values) {
+    const normalized = value?.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+
+  return result;
+}
+
 function agreementOf(values: number[], reference: number) {
   if (values.length < 2) return 1;
   const denom = Math.max(Math.abs(reference), 1);
@@ -1053,7 +1067,7 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
       reasonCounts.set(run.data.failureReason, (reasonCounts.get(run.data.failureReason) ?? 0) + 1);
     }
     const [dominantReason = 'not_strip'] = [...reasonCounts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [];
-    const notes = invalidRuns.map((run) => run.data.notes).filter(Boolean).join(' ');
+    const notes = uniqueNonEmpty(invalidRuns.map((run) => run.data.notes)).join(' ');
     return buildInvalidStripResult(
       request,
       brand,
@@ -1138,7 +1152,7 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
     lowConfidence,
     provider: stripRuns[0]?.data.provider,
     model: stripRuns[0]?.data.model,
-    notes: notes.join(' ') || undefined,
+    notes: uniqueNonEmpty(notes).join(' ') || undefined,
     shotsUsed: stripRuns.length,
   });
 }
