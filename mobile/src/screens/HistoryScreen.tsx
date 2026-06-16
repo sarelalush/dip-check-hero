@@ -19,6 +19,7 @@ export function HistoryScreen({ navigation }: Props) {
   const allHistoryItems = useMemo(
     () =>
       historyRecords.map((record) => ({
+        cloudId: record.cloudId,
         date: record.date,
         testId: record.testId,
         poolName: record.poolName,
@@ -70,7 +71,7 @@ export function HistoryScreen({ navigation }: Props) {
             <HistoryItem
               key={item.testId}
               date={item.date}
-              onPress={() => navigation.navigate('Results', { testId: item.testId })}
+              onPress={() => navigation.navigate('Results', { testId: item.cloudId ?? item.testId })}
               poolName={item.poolName}
               status={item.status}
               time={item.time}

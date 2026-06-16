@@ -225,7 +225,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
       syncing,
       syncError,
       getHistoryRecord(testId) {
-        return historyRecords.find((record) => record.testId === testId || record.id === testId);
+        return historyRecords.find((record) => record.testId === testId || record.id === testId || record.cloudId === testId);
       },
       getPoolHistoryRecords(poolId, limit = 3) {
         const ids = poolIdsFor(poolId, pools);

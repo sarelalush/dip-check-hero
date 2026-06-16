@@ -4,7 +4,7 @@
 import type { User } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
 import type { Database, Json } from '../integrations/supabase/types';
-import type { ScanResultParameter } from '../domain/scanResults';
+import type { ScanResultParameter, StripAnalysisResult } from '../domain/scanResults';
 import type { Pool } from '../domain/pool';
 import type { SavedHistoryRecord } from '../state/ResultsHistoryContext';
 import { getPublicScanImageUrl, uploadScanImage } from './scanImageStorage';
@@ -94,12 +94,24 @@ function isMobileResultsPayload(value: unknown): value is MobileTestResultsPaylo
   );
 }
 
+function isStripAnalysisResult(value: unknown): value is StripAnalysisResult {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      'id' in value &&
+      'parameters' in value &&
+      Array.isArray((value as { parameters?: unknown }).parameters) &&
+      'overallStatus' in value,
+  );
+}
+
 export function mapCloudTestToLocal(row: TestRow, pools: Pool[]): SavedHistoryRecord {
   const testedAt = toMillis(row.analyzed_at) ?? toMillis(row.created_at) ?? Date.now();
   const resultsPayload = row.raw_result as unknown;
   const baseRecord = isMobileResultsPayload(resultsPayload) ? resultsPayload.record : undefined;
   const payloadAnalysisResult = isMobileResultsPayload(resultsPayload) ? resultsPayload.analysisResult : undefined;
   const payloadDosageResult = isMobileResultsPayload(resultsPayload) ? resultsPayload.dosageResult : undefined;
+  const directAnalysisResult = isStripAnalysisResult(resultsPayload) ? resultsPayload : undefined;
   const localPoolId = getLocalPoolId(row.pool_id, pools);
   const basePool = baseRecord?.poolId
     ? pools.find((item) => item.id === baseRecord.poolId || item.cloudId === baseRecord.poolId)
@@ -108,7 +120,7 @@ export function mapCloudTestToLocal(row: TestRow, pools: Pool[]): SavedHistoryRe
   const pool = pools.find((item) => item.id === poolId || item.cloudId === row.pool_id || item.cloudId === baseRecord?.poolId);
   const imagePath = baseRecord?.imagePath ?? row.image_path ?? undefined;
   const imageUrl = baseRecord?.imageUrl ?? row.image_url ?? (imagePath ? getPublicScanImageUrl(imagePath) : undefined);
-  const analysisResult = baseRecord?.analysisResult ?? payloadAnalysisResult;
+  const analysisResult = baseRecord?.analysisResult ?? payloadAnalysisResult ?? directAnalysisResult;
   const dosageResult = baseRecord?.dosageResult ?? payloadDosageResult ?? analysisResult?.dosage;
 
   return {

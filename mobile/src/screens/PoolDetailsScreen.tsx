@@ -130,7 +130,7 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
               <RecentTestItem
                 key={record.testId}
                 record={record}
-                onPress={() => navigation.navigate('Results', { testId: record.testId })}
+                onPress={() => navigation.navigate('Results', { testId: record.cloudId ?? record.testId })}
               />
             ))}
           </View>
