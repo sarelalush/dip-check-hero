@@ -228,17 +228,17 @@ const styles = StyleSheet.create({
     paddingBottom: 82,
   },
   hero: {
-    height: 250,
+    height: 236,
     marginHorizontal: -18,
-    marginTop: 4,
+    marginTop: -10,
     overflow: 'hidden',
   },
   heroImage: {
-    height: 430,
+    height: 418,
     left: 0,
     position: 'absolute',
     right: 0,
-    top: -118,
+    top: -134,
   },
   heroMist: {
     ...StyleSheet.absoluteFillObject,
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     position: 'absolute',
     right: 26,
-    top: 28,
+    top: 18,
   },
   hello: {
     color: colors.text,
@@ -273,7 +273,7 @@ const styles = StyleSheet.create({
   statusCard: {
     alignSelf: 'center',
     borderRadius: 26,
-    marginTop: -40,
+    marginTop: -56,
     paddingBottom: 16,
     paddingHorizontal: 14,
     paddingTop: 16,
@@ -384,12 +384,12 @@ const styles = StyleSheet.create({
     ...rtl.textCenter,
   },
   ctaWrap: {
-    marginTop: 14,
+    marginTop: 12,
   },
   shortcuts: {
     flexDirection: 'row-reverse',
     gap: 12,
-    marginTop: 14,
+    marginTop: 12,
     paddingBottom: 0,
   },
   shortcutCard: {

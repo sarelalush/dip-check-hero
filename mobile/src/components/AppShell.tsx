@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Platform, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { ImageBackground, Platform, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NavigationProp } from '@react-navigation/native';
 import { BottomTabBar, type TabKey } from './BottomTabBar';
@@ -7,6 +7,8 @@ import { DeviceStatusBar } from './DeviceStatusBar';
 import { WebPhoneFrame } from './WebPhoneFrame';
 import { colors, layout } from '../theme';
 import type { RootStackParamList } from '../../App';
+
+const APP_POOL_IMAGE = require('../../assets/images/home-pool.png');
 
 interface AppShellProps {
   activeTab: TabKey;
@@ -59,6 +61,9 @@ export function AppShell({
 function WaterBackdrop({ full }: { full: boolean }) {
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      <ImageBackground source={APP_POOL_IMAGE} resizeMode="cover" style={[styles.topWaterImage, full && styles.fullWaterImage]}>
+        <View style={[styles.topWaterTint, full && styles.fullWaterTint]} />
+      </ImageBackground>
       <View style={[styles.topWater, full && styles.fullWater]} />
       <View style={styles.waveOne} />
       <View style={styles.waveTwo} />
@@ -95,6 +100,28 @@ const styles = StyleSheet.create({
     paddingTop: 2,
     paddingBottom: layout.tabHeight + 26,
   },
+  topWaterImage: {
+    position: 'absolute',
+    top: -56,
+    left: -18,
+    right: -18,
+    height: 310,
+    overflow: 'hidden',
+  },
+  fullWaterImage: {
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: undefined,
+  },
+  topWaterTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(242,251,255,0.78)',
+  },
+  fullWaterTint: {
+    backgroundColor: 'rgba(225,247,252,0.50)',
+  },
   topWater: {
     position: 'absolute',
     top: -40,
@@ -103,13 +130,13 @@ const styles = StyleSheet.create({
     height: 236,
     borderBottomLeftRadius: 42,
     borderBottomRightRadius: 42,
-    backgroundColor: '#E7F8FC',
+    backgroundColor: 'rgba(231,248,252,0.72)',
   },
   fullWater: {
     height: '100%',
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
-    backgroundColor: '#BDEFF7',
+    backgroundColor: 'rgba(189,239,247,0.34)',
   },
   waveOne: {
     position: 'absolute',
