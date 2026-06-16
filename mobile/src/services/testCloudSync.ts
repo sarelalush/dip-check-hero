@@ -19,6 +19,7 @@ interface MobileTestResultsPayload {
   schemaVersion: 2;
   record: SavedHistoryRecord;
   analysisResult: SavedHistoryRecord['analysisResult'];
+  dosageResult?: SavedHistoryRecord['dosageResult'];
   status: SavedHistoryRecord['status'];
   summary: SavedHistoryRecord['resultSummary'];
   brandId?: string;
@@ -97,10 +98,14 @@ export function mapCloudTestToLocal(row: TestRow, pools: Pool[]): SavedHistoryRe
   const testedAt = toMillis(row.analyzed_at) ?? toMillis(row.created_at) ?? Date.now();
   const resultsPayload = row.raw_result as unknown;
   const baseRecord = isMobileResultsPayload(resultsPayload) ? resultsPayload.record : undefined;
+  const payloadAnalysisResult = isMobileResultsPayload(resultsPayload) ? resultsPayload.analysisResult : undefined;
+  const payloadDosageResult = isMobileResultsPayload(resultsPayload) ? resultsPayload.dosageResult : undefined;
   const poolId = baseRecord?.poolId ?? getLocalPoolId(row.pool_id, pools);
   const pool = pools.find((item) => item.id === poolId || item.cloudId === row.pool_id);
   const imagePath = baseRecord?.imagePath ?? row.image_path ?? undefined;
   const imageUrl = baseRecord?.imageUrl ?? row.image_url ?? (imagePath ? getPublicScanImageUrl(imagePath) : undefined);
+  const analysisResult = baseRecord?.analysisResult ?? payloadAnalysisResult;
+  const dosageResult = baseRecord?.dosageResult ?? payloadDosageResult ?? analysisResult?.dosage;
 
   return {
     id: baseRecord?.id ?? row.id,
@@ -122,8 +127,8 @@ export function mapCloudTestToLocal(row: TestRow, pools: Pool[]): SavedHistoryRe
     testedAt,
     createdAt: baseRecord?.createdAt ?? toMillis(row.created_at) ?? testedAt,
     updatedAt: baseRecord?.updatedAt ?? toMillis(row.updated_at) ?? testedAt,
-    analysisResult: baseRecord?.analysisResult ?? undefined,
-    dosageResult: baseRecord?.dosageResult ?? baseRecord?.analysisResult?.dosage,
+    analysisResult,
+    dosageResult,
   };
 }
 
@@ -146,6 +151,7 @@ export function mapLocalTestToCloud(
     schemaVersion: 2,
     record: normalizedRecord,
     analysisResult: normalizedRecord.analysisResult,
+    dosageResult: normalizedRecord.dosageResult,
     status: normalizedRecord.status,
     summary: normalizedRecord.resultSummary,
     brandId: normalizedRecord.brandId,
