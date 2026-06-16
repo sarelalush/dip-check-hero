@@ -216,11 +216,11 @@ export interface PoolSyncResult {
   pulledCount: number;
 }
 
-// Simple conflict strategy for the first cloud-sync slice:
-// keep local pools visible from AsyncStorage, fetch cloud pools after auth, and
-// prefer the record with the newest updatedAt/updated_at. Local-only fields
-// such as dimensions and notes stay in the AsyncStorage cache until matching
-// columns exist in Supabase.
+// Simple conflict strategy:
+// Supabase is authoritative after login. Local-only pools from AsyncStorage are
+// not uploaded during automatic login sync, because that can resurrect pools the
+// user deleted from the cloud. New pools are still uploaded by the explicit
+// addPool flow, and matched cloud pools use newest updatedAt.
 export async function syncPoolsWithCloud(localPools: Pool[], user: User, accountId: string): Promise<PoolSyncResult> {
   if (!isSupabaseConfigured) {
     return { pools: localPools.map((pool) => normalizePool(pool)), pushedCount: 0, pulledCount: 0 };
@@ -237,10 +237,7 @@ export async function syncPoolsWithCloud(localPools: Pool[], user: User, account
     const remotePool = cloudId ? remoteByCloudId.get(cloudId) : undefined;
 
     if (!remotePool) {
-      const pushed = await upsertPoolToCloud(localPool, user.id, accountId);
-      pushedCount += 1;
-      merged.push(pushed);
-      if (pushed.cloudId) remoteByCloudId.delete(pushed.cloudId);
+      // Local-only or deleted cloud pools should not be recreated on login.
       continue;
     }
 
