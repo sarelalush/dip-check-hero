@@ -355,6 +355,11 @@ function testSyncKey(record: SavedHistoryRecord) {
   return record.cloudId ?? (isUuid(record.testId) ? record.testId : undefined);
 }
 
+function isFreshLocalRecord(record: SavedHistoryRecord) {
+  const createdAt = record.createdAt ?? record.testedAt ?? 0;
+  return Date.now() - createdAt < 10 * 60 * 1000;
+}
+
 export interface TestSyncResult {
   records: SavedHistoryRecord[];
   pushedCount: number;
@@ -387,6 +392,9 @@ export async function syncTestsWithCloud(
     const remoteRecord = cloudId ? remoteByCloudId.get(cloudId) : undefined;
 
     if (!remoteRecord) {
+      if (isFreshLocalRecord(localRecord)) {
+        merged.push(localRecord);
+      }
       // Local-only or deleted cloud tests should not be recreated on login.
       continue;
     }
