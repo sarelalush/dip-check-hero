@@ -14,8 +14,9 @@
 // 2. Decode it with ImageScript, then apply a gray-world white balance when possible.
 // 3. Run the AI analyzer three times in parallel.
 // 4. Combine numeric readings with median/agreement confidence.
-// 5. If AI is unavailable or confidence is low, fall back to deterministic pixel CV.
-// 6. Return remote-mock only when both AI and CV cannot produce a safe result.
+// 5. AI decides whether the uploaded image is a valid supported strip.
+// 6. If AI cannot validate the strip, return a clear invalid response.
+// 7. If the AI provider is unavailable, return a service-unavailable response.
 //
 // Required secrets for AI mode:
 // - GEMINI_API_KEY for direct server-side Gemini API access.
@@ -31,7 +32,7 @@
 import { Image as ImageScript } from 'https://deno.land/x/imagescript@1.2.15/mod.ts';
 
 type StatusTone = 'success' | 'warning' | 'danger';
-type AnalysisSource = 'ai' | 'cv' | 'remote-mock';
+type AnalysisSource = 'ai';
 type AiProviderName = 'gemini';
 type FailureReason =
   | 'none'
@@ -169,6 +170,16 @@ const MULTI_SHOT_RUNS = 3;
 const CONFIDENCE_WARN_THRESHOLD = 0.55;
 const CONFIDENCE_BLOCK_THRESHOLD = 0.4;
 
+class EdgeAnalysisError extends Error {
+  code: 'unavailable' | 'invalid_strip';
+
+  constructor(code: 'unavailable' | 'invalid_strip', message: string) {
+    super(message);
+    this.code = code;
+    this.name = 'EdgeAnalysisError';
+  }
+}
+
 const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -242,17 +253,6 @@ const STRIP_BRANDS: StripBrand[] = [
 ];
 
 const DEFAULT_BRAND_ID = 'aquachek-pro-5in1';
-
-const MOCK_VALUES: Record<StripParameter, number> = {
-  freeChlorine: 1.5,
-  totalChlorine: 2,
-  bromine: 4,
-  ph: 7.3,
-  alkalinity: 120,
-  cyanuricAcid: 40,
-  hardness: 260,
-  salt: 3200,
-};
 
 const PRO_COMBINED_PAD_COLORS: Array<{ tc: number; bromine: number; rgb: Rgb }> = [
   { tc: 0, bromine: 0, rgb: [254, 254, 168] },
@@ -544,14 +544,6 @@ function buildResult(
       ? `ניתוח ${sourceLabel} זיהה ערך אחד או יותר מחוץ לטווח.${lowConfidenceText}`
       : `ניתוח ${sourceLabel} מצא את הערכים בטווח תקין.${lowConfidenceText}`,
   };
-}
-
-function buildRemoteMockResult(request: AnalyzeStripRequest, note = 'הוחזרו ערכי דמו מרוחקים.'): StripAnalysisResult {
-  const brand = getBrand(request.brandId);
-  return buildResult(request, brand, MOCK_VALUES, 'remote-mock', 0.25, {
-    lowConfidence: true,
-    notes: note,
-  });
 }
 
 function buildInvalidStripResult(
@@ -1094,7 +1086,21 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
     agreements.push(agreementOf(parameterValues, med));
   }
 
-  if (Object.keys(values).length === 0) return null;
+  if (Object.keys(values).length === 0) {
+    return buildInvalidStripResult(
+      request,
+      brand,
+      'ai',
+      'low_confidence',
+      'לא התקבלו ערכים מהימנים מהתמונה. יש לצלם שוב את הסטיק באור טוב ובתוך המסגרת.',
+      {
+        provider: stripRuns[0]?.data.provider,
+        model: stripRuns[0]?.data.model,
+        shotsUsed: stripRuns.length,
+        confidence: stripRuns.reduce((sum, run) => sum + (run.data.confidence ?? 0), 0) / stripRuns.length,
+      },
+    );
+  }
 
   const meanConfidence = stripRuns.reduce((sum, run) => sum + (run.data.confidence ?? 0.5), 0) / stripRuns.length;
   const meanAgreement = agreements.length ? agreements.reduce((sum, agreement) => sum + agreement, 0) / agreements.length : 1;
@@ -1102,7 +1108,19 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
   const lowConfidence = consensusConfidence < CONFIDENCE_WARN_THRESHOLD;
 
   if (consensusConfidence < CONFIDENCE_BLOCK_THRESHOLD) {
-    return null;
+    return buildInvalidStripResult(
+      request,
+      brand,
+      'ai',
+      'low_confidence',
+      'הבדיקה לא הייתה ברורה מספיק לניתוח אמין. יש לצלם שוב סטיק מלא, חד ומואר היטב.',
+      {
+        provider: stripRuns[0]?.data.provider,
+        model: stripRuns[0]?.data.model,
+        shotsUsed: stripRuns.length,
+        confidence: consensusConfidence,
+      },
+    );
   }
 
   const notes: string[] = [];
@@ -1290,7 +1308,7 @@ async function persistAnalysisResult(body: AnalyzeStripRequest, result: StripAna
     id: body.testId,
     image_path: result.imagePath ?? body.imagePath ?? null,
     image_url: result.imageUrl ?? body.imageUrl ?? null,
-    is_billable: result.source !== 'remote-mock' && result.isValidStrip !== false,
+    is_billable: result.isValidStrip !== false,
     low_confidence: result.lowConfidence ?? false,
     model: result.model ?? null,
     overall_status: result.overallStatus.label,
@@ -1358,7 +1376,7 @@ async function persistAnalysisResult(body: AnalyzeStripRequest, result: StripAna
     ]),
   });
 
-  if (!alreadyExists && result.source !== 'remote-mock' && result.isValidStrip !== false) {
+  if (!alreadyExists && result.isValidStrip !== false) {
     await fetch(`${supabaseUrl}/rest/v1/rpc/register_scan_usage`, {
       method: 'POST',
       headers,
@@ -1382,17 +1400,17 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
   if (body.accountId) {
     authenticatedUserId = await getAuthenticatedUserId(request);
     if (!authenticatedUserId) {
-      return buildRemoteMockResult(body, 'נדרשת התחברות כדי לבצע ניתוח מרוחק.');
+      throw new EdgeAnalysisError('unavailable', 'נדרשת התחברות כדי לבצע ניתוח AI.');
     }
 
     const isMember = await verifyAccountMembership(body.accountId, authenticatedUserId, request);
     if (!isMember) {
-      return buildRemoteMockResult(body, 'המשתמש אינו משויך לחשבון שנשלח לניתוח.');
+      throw new EdgeAnalysisError('unavailable', 'המשתמש אינו משויך לחשבון שנשלח לניתוח.');
     }
 
     const quotaAvailable = await canCreateScan(body.accountId, request);
     if (!quotaAvailable) {
-      return buildRemoteMockResult(body, 'מכסת הסריקות החודשית נוצלה. הניתוח המרוחק לא הופעל.');
+      throw new EdgeAnalysisError('unavailable', 'מכסת הסריקות החודשית נוצלה. כרגע לא ניתן לבצע ניתוח נוסף.');
     }
   }
 
@@ -1402,7 +1420,7 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     mimeType = loaded.mimeType;
   } catch (error) {
     console.warn('remote image download failed', error);
-    return buildRemoteMockResult(body, 'הורדת תמונת הסטיק נכשלה. הוחזרו ערכי דמו כדי לא לעצור את הזרימה.');
+    throw new EdgeAnalysisError('unavailable', 'לא הצלחנו לטעון את תמונת הסטיק לניתוח. נסו שוב בעוד כמה דקות.');
   }
 
   dataUrl = imageBytesToDataUrl(imageBytes, mimeType);
@@ -1416,7 +1434,7 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
 
   console.log('Starting Gemini strip analysis', {
     brandId: brand.id,
-    hasDecodedImageForCv: Boolean(image),
+    hasDecodedImageForAiPrep: Boolean(image),
     model: Deno.env.get('GEMINI_MODEL_PRIMARY') || Deno.env.get('GEMINI_MODEL') || GEMINI_DEFAULT_MODEL,
     testId: body.testId,
   });
@@ -1425,7 +1443,7 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     Array.from({ length: MULTI_SHOT_RUNS }, () => analyzeWithAiProvider(dataUrl, brand)),
   );
   const aiResult = combineAiRuns(aiRuns, body, brand);
-  if (aiResult && (aiResult.isValidStrip === false || !aiResult.lowConfidence)) {
+  if (aiResult) {
     console.log('Gemini strip analysis selected', {
       confidence: aiResult.confidence,
       failureReason: aiResult.failureReason,
@@ -1443,37 +1461,12 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     return aiResult;
   }
 
-  if (image) {
-    try {
-      const cv = analyzeCv(image, brand);
-      if (cv) {
-        const cvResult = buildResult(body, brand, cv.values, 'cv', cv.confidence, {
-          lowConfidence: true,
-          notes: `Gemini consensus was unavailable or low-confidence. ${cv.notes ?? ''}`.trim(),
-          shotsUsed: aiRuns.filter((run) => run.ok).length,
-        });
-        if (authenticatedUserId) {
-          try {
-            await persistAnalysisResult(body, cvResult, authenticatedUserId, request);
-          } catch (error) {
-            console.warn('Persisting CV analysis failed', error);
-          }
-        }
-        return cvResult;
-      }
-    } catch (error) {
-      console.warn('CV fallback failed', error);
-    }
-  } else {
-    console.warn('CV fallback skipped because image decoding failed before pixel sampling.');
-  }
-
   const aiError = aiRuns.find((run): run is Extract<AiRunResponse, { ok: false }> => !run.ok);
-  return buildRemoteMockResult(
-    body,
+  throw new EdgeAnalysisError(
+    'unavailable',
     aiError?.message
-      ? `ניתוח AI ו-CV לא הצליחו. ${aiError.message}`
-      : 'ניתוח AI ו-CV לא הצליחו. הוחזרו ערכי דמו מרוחקים.',
+      ? `שירות הניתוח אינו זמין כרגע. ${aiError.message}`
+      : 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה דקות.',
   );
 }
 
@@ -1505,18 +1498,27 @@ Deno.serve(async (request) => {
     );
   } catch (error) {
     console.error('analyze-strip failed', error);
-    const result = buildRemoteMockResult(
-      { testId: `fallback-${Date.now()}` },
-      'אירעה שגיאה כללית בניתוח המרוחק. הוחזרו ערכי דמו כדי לא לעצור את האפליקציה.',
-    );
+    if (error instanceof EdgeAnalysisError) {
+      return Response.json(
+        {
+          ok: false,
+          code: error.code,
+          message: error.message,
+        },
+        {
+          status: error.code === 'invalid_strip' ? 422 : 503,
+          headers: corsHeaders,
+        },
+      );
+    }
 
     return Response.json(
       {
-        ok: true,
-        result,
-        analysisSource: result.source,
+        ok: false,
+        code: 'unavailable',
+        message: 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה דקות.',
       },
-      { headers: corsHeaders },
+      { status: 503, headers: corsHeaders },
     );
   }
 });

@@ -13,7 +13,7 @@ import type { DosageRecommendation } from '../domain/dosage';
 import { calculateDosage } from '../domain/dosage';
 import type { ScanResultParameter, StripAnalysisResult } from '../domain/scanResults';
 import { useStartScanFlow } from '../hooks/useStartScanFlow';
-import { analyzeStripImage, getStripAnalysisConfig } from '../services/stripAnalysisService';
+import { analyzeStripImage, getStripAnalysisConfig, StripAnalysisServiceError } from '../services/stripAnalysisService';
 import { prepareScanImageForRemoteAnalysis } from '../services/scanImageStorage';
 import { useAuth } from '../state/AuthContext';
 import { usePools } from '../state/PoolsContext';
@@ -74,6 +74,18 @@ function invalidStripMessage(result?: StripAnalysisResult | null) {
   if (!result) return 'לא הצלחנו לזהות סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.';
   if (result.failureReason === 'unsupported_strip') {
     return result.notes || 'הסטיק שצולם אינו תואם לסוג הסטיק שנבחר או אינו נתמך. יש לבחור סטיק נתמך ולצלם שוב.';
+  }
+  if (result.failureReason === 'blurry') {
+    return result.notes || 'התמונה מטושטשת מדי לניתוח. יש לצלם שוב תמונה חדה של הסטיק כולו.';
+  }
+  if (result.failureReason === 'lighting') {
+    return result.notes || 'התאורה בתמונה לא מתאימה לניתוח אמין. יש לצלם שוב באור ברור ואחיד.';
+  }
+  if (result.failureReason === 'framing') {
+    return result.notes || 'הסטיק לא הופיע במלואו בתוך המסגרת. יש לצלם שוב כשהסטיק כולו נראה בבירור.';
+  }
+  if (result.failureReason === 'low_confidence') {
+    return result.notes || 'לא התקבלה ודאות מספקת שהצילום מציג סטיק נתמך וברור. יש לצלם שוב.';
   }
   return result.notes || 'לא זוהה סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.';
 }
@@ -229,7 +241,10 @@ export function ResultsScreen({ navigation, route }: Props) {
       } catch (error) {
         console.warn('Failed to prepare results', error);
         if (isMounted) {
-          const message = 'לא הצלחנו להשלים את ניתוח הבדיקה כרגע. אפשר לנסות שוב או לחזור לסריקה.';
+          const message =
+            error instanceof StripAnalysisServiceError
+              ? error.message
+              : 'שירות הניתוח אינו זמין כרגע. אנא נסו שוב בעוד כמה דקות.';
           setScanError({ code: 'analysisFailed', message });
           setAnalysisError(message);
           setAnalysisResult(null);

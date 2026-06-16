@@ -2,7 +2,6 @@ import type { StripAnalysisResult } from '../domain/scanResults';
 import type { StripBrand } from '../domain/strip';
 import type { ScanSessionState } from '../state/ScanSessionContext';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
-import { analyzeStripImageMock } from './mockAnalysisService';
 import { isLocalUploadCandidate, readLocalImageAsDataUrl, uploadScanImage } from './scanImageStorage';
 
 // Parity sources:
@@ -57,6 +56,16 @@ export interface StripAnalysisServiceConfig {
   remoteFunctionName: string;
 }
 
+export class StripAnalysisServiceError extends Error {
+  code: 'unavailable' | 'invalid_strip';
+
+  constructor(code: 'unavailable' | 'invalid_strip', message: string) {
+    super(message);
+    this.code = code;
+    this.name = 'StripAnalysisServiceError';
+  }
+}
+
 const expoEnv = (typeof process !== 'undefined' ? process.env : {}) as Record<string, string | undefined>;
 const configuredMode = expoEnv.EXPO_PUBLIC_STRIP_ANALYSIS_MODE;
 const configuredFunctionName = expoEnv.EXPO_PUBLIC_STRIP_ANALYSIS_FUNCTION?.trim();
@@ -95,19 +104,11 @@ export async function analyzeStripImage(input: StripAnalysisInput): Promise<Stri
     isSupabaseConfigured,
   });
 
-  if (analysisConfig.mode === 'mock') {
-    logAnalysisDebug('using mock mode by override');
-    const mockResult = await analyzeStripImageMock({
-      brandId: input.brandId,
-      imageUri: input.imageUri,
-      poolId: input.poolId,
-    });
-    logAnalysisDebug('analysis result selected', {
-      source: mockResult.source ?? 'mock',
-      confidence: mockResult.confidence,
-      remoteAttempted: false,
-    });
-    return mockResult;
+  if (analysisConfig.mode === 'mock' || analysisConfig.mode === 'native') {
+    throw new StripAnalysisServiceError(
+      'unavailable',
+      'שירות הניתוח אינו זמין כרגע באפליקציה. נסו שוב בעוד כמה דקות.',
+    );
   }
 
   if (analysisConfig.mode === 'remote' || analysisConfig.mode === 'auto') {
@@ -124,40 +125,24 @@ export async function analyzeStripImage(input: StripAnalysisInput): Promise<Stri
         });
         return remoteResult;
       }
-      logAnalysisDebug('remote analysis skipped, falling back to mock', {
+      logAnalysisDebug('remote analysis unavailable', {
         mode: analysisConfig.mode,
       });
     } catch (error) {
-      console.warn('Remote strip analysis failed, falling back to mock analysis', error);
-      logAnalysisDebug('remote analysis failed, falling back to mock', {
+      if (error instanceof StripAnalysisServiceError) {
+        throw error;
+      }
+      console.warn('Remote strip analysis failed', error);
+      logAnalysisDebug('remote analysis failed', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
   }
 
-  if (analysisConfig.mode === 'native') {
-    try {
-      const nativeResult = await analyzeStripImageNative(input);
-      if (nativeResult) {
-        return nativeResult;
-      }
-    } catch (error) {
-      console.warn('Native strip analysis failed, falling back to mock analysis', error);
-    }
-  }
-
-  const fallbackResult = await analyzeStripImageMock({
-    brandId: input.brandId,
-    imageUri: input.imageUri,
-    poolId: input.poolId,
-  });
-  logAnalysisDebug('analysis result selected', {
-    source: fallbackResult.source ?? 'mock',
-    confidence: fallbackResult.confidence,
-    remoteAttempted: analysisConfig.mode === 'remote' || analysisConfig.mode === 'auto',
-    fallback: true,
-  });
-  return fallbackResult;
+  throw new StripAnalysisServiceError(
+    'unavailable',
+    'שירות הניתוח אינו זמין כרגע. אנא נסו שוב בעוד כמה דקות.',
+  );
 }
 
 async function analyzeStripImageRemote(
@@ -166,19 +151,18 @@ async function analyzeStripImageRemote(
   options: { requireAuthenticatedUser?: boolean; requireImageReference?: boolean } = {},
 ): Promise<StripAnalysisResult | null> {
   if (!isSupabaseConfigured || !config.remoteFunctionName) {
-    logAnalysisDebug('remote not attempted', {
-      reason: !isSupabaseConfigured ? 'supabase-not-configured' : 'missing-function-name',
-    });
-    return null;
+    throw new StripAnalysisServiceError(
+      'unavailable',
+      !isSupabaseConfigured
+        ? 'שירות הניתוח אינו מוגדר כרגע באפליקציה.'
+        : 'שירות הניתוח אינו זמין כרגע.',
+    );
   }
 
   const { data: userData } = await getSupabaseClient().auth.getUser();
   const userId = input.userId ?? userData.user?.id;
   if (options.requireAuthenticatedUser && !userId) {
-    logAnalysisDebug('remote not attempted', {
-      reason: 'missing-authenticated-user',
-    });
-    return null;
+    throw new StripAnalysisServiceError('unavailable', 'יש להתחבר כדי לבצע ניתוח AI.');
   }
 
   const testId = input.testId ?? `remote-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -189,13 +173,10 @@ async function analyzeStripImageRemote(
   const canUploadLocalImage = Boolean(input.accountId && userId && isLocalUploadCandidate(input.imageUri));
 
   if (options.requireImageReference && !imagePath && !imageUrl && !hasDirectImageUri && !canUploadLocalImage) {
-    logAnalysisDebug('remote not attempted', {
-      reason: 'missing-image-reference',
-      hasUserId: Boolean(userId),
-      hasDirectImageUri,
-      hasLocalUploadCandidate: canUploadLocalImage,
-    });
-    return null;
+    throw new StripAnalysisServiceError(
+      'invalid_strip',
+      'לא הצלחנו להכין את תמונת הסטיק לניתוח. יש לצלם שוב תמונה ברורה של סטיק מלא בתוך המסגרת.',
+    );
   }
 
   if (!imagePath && !imageUrl && userId && !input.skipImageUpload) {
@@ -213,10 +194,11 @@ async function analyzeStripImageRemote(
       imagePath = uploadedImage?.path;
       imageUrl = uploadedImage?.publicUrl;
     } catch (error) {
-      console.warn('Remote strip analysis image upload failed, continuing with local image fallback', error);
-      logAnalysisDebug('remote image upload failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      console.warn('Remote strip analysis image upload failed', error);
+      throw new StripAnalysisServiceError(
+        'unavailable',
+        'לא הצלחנו להעלות את תמונת הסטיק לניתוח. השירות אינו זמין כרגע.',
+      );
     }
   }
 
@@ -231,19 +213,20 @@ async function analyzeStripImageRemote(
       }
     } catch (error) {
       console.warn('Remote strip analysis data-url fallback failed', error);
-      logAnalysisDebug('remote data-url fallback failed', {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      throw new StripAnalysisServiceError(
+        'unavailable',
+        'לא הצלחנו להכין את התמונה לניתוח AI. השירות אינו זמין כרגע.',
+      );
     }
   }
 
   const hasRemoteReadableImageUri = isDirectRemoteImageCandidate(imageUriForRemote);
 
   if (options.requireImageReference && !imagePath && !imageUrl && !hasRemoteReadableImageUri) {
-    logAnalysisDebug('remote not attempted', {
-      reason: 'image-upload-did-not-produce-path-or-url',
-    });
-    return null;
+    throw new StripAnalysisServiceError(
+      'invalid_strip',
+      'לא התקבלה תמונת סטיק תקינה לניתוח. יש לצלם שוב סטיק ברור ומלא.',
+    );
   }
 
   logAnalysisDebug('invoking remote analysis function', {
@@ -279,11 +262,26 @@ async function analyzeStripImageRemote(
   });
 
   if (error) {
-    throw error;
+    const errorPayload = await readFunctionInvokeErrorPayload(error);
+    if (isRemoteAnalysisErrorResponse(errorPayload)) {
+      throw new StripAnalysisServiceError(
+        errorPayload.code === 'invalid_strip' ? 'invalid_strip' : 'unavailable',
+        errorPayload.message,
+      );
+    }
+
+    throw new StripAnalysisServiceError('unavailable', 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה דקות.');
+  }
+
+  if (isRemoteAnalysisErrorResponse(data)) {
+    throw new StripAnalysisServiceError(
+      data.code === 'invalid_strip' ? 'invalid_strip' : 'unavailable',
+      data.message,
+    );
   }
 
   if (!isRemoteAnalysisResponse(data)) {
-    throw new Error('Remote analysis returned an unexpected response shape.');
+    throw new StripAnalysisServiceError('unavailable', 'שירות הניתוח החזיר תשובה לא תקינה.');
   }
 
   logAnalysisDebug('remote analysis response received', {
@@ -314,10 +312,38 @@ function isRemoteAnalysisResponse(value: unknown): value is { ok: true; result: 
   );
 }
 
-async function analyzeStripImageNative(input: StripAnalysisInput): Promise<StripAnalysisResult | null> {
-  // Future shape: run Expo/native image preprocessing + CV locally, then map
-  // measurements into StripAnalysisResult. Browser canvas logic from the web app
-  // cannot be used here directly.
-  void input;
-  return null;
+function isRemoteAnalysisErrorResponse(
+  value: unknown,
+): value is { ok: false; code: 'unavailable' | 'invalid_strip'; message: string } {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as { ok?: unknown; code?: unknown; message?: unknown };
+  return payload.ok === false && typeof payload.code === 'string' && typeof payload.message === 'string';
+}
+
+async function readFunctionInvokeErrorPayload(error: unknown): Promise<unknown> {
+  if (!error || typeof error !== 'object') return undefined;
+  const maybeContext = (error as { context?: unknown }).context;
+  if (!maybeContext || typeof maybeContext !== 'object') return undefined;
+
+  const response = maybeContext as {
+    clone?: () => { json?: () => Promise<unknown> };
+    json?: () => Promise<unknown>;
+  };
+
+  try {
+    if (typeof response.clone === 'function') {
+      const cloned = response.clone();
+      if (cloned && typeof cloned.json === 'function') {
+        return await cloned.json();
+      }
+    }
+
+    if (typeof response.json === 'function') {
+      return await response.json();
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
 }

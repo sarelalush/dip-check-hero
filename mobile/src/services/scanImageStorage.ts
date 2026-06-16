@@ -173,7 +173,7 @@ export async function prepareScanImageForRemoteAnalysis({
   } catch (error) {
     console.warn('Failed to prepare scan image for remote analysis', error);
     return {
-      uploadError: 'העלאת תמונת הסטיק לפני הניתוח נכשלה. נמשיך עם fallback מקומי.',
+      uploadError: 'העלאת תמונת הסטיק לענן נכשלה. ננסה להמשיך בניתוח ישיר אם השירות זמין.',
     };
   }
 }

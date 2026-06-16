@@ -179,7 +179,7 @@ export function mapLocalTestToCloud(
     recommendation: normalizedRecord.dosageResult?.summary ?? normalizedRecord.resultSummary,
     raw_result: toJson(resultsPayload),
     error_message: normalizedRecord.imageUploadError ?? null,
-    is_billable: normalizedRecord.analysisResult?.source !== 'mock',
+    is_billable: normalizedRecord.analysisResult?.isValidStrip !== false,
     analyzed_at: new Date(normalizedRecord.testedAt).toISOString(),
     created_at: new Date(normalizedRecord.createdAt).toISOString(),
     updated_at: new Date(normalizedRecord.updatedAt ?? normalizedRecord.createdAt).toISOString(),
