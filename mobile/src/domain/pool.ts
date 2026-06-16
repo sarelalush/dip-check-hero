@@ -133,6 +133,7 @@ export function normalizePool(pool: Partial<Pool> & { id?: string; name?: string
 
   return {
     id: pool.id ?? `pool-${now}`,
+    cloudId: pool.cloudId,
     name: pool.name?.trim() || 'בריכה ללא שם',
     type,
     sanitizerType: pool.sanitizerType ?? type,
@@ -205,9 +206,23 @@ function mergeDuplicatePools(existing: Pool, incoming: Pool): Pool {
 }
 
 export function dedupePools(pools: Pool[]) {
+  const byCloudId = new Map<string, Pool>();
   const byFingerprint = new Map<string, Pool>();
 
   for (const pool of pools.map((item) => normalizePool(item))) {
+    const cloudKey = pool.cloudId;
+    if (cloudKey) {
+      const existing = byCloudId.get(cloudKey);
+      byCloudId.set(cloudKey, existing ? mergeDuplicatePools(existing, pool) : pool);
+      continue;
+    }
+
+    const key = getPoolFingerprint(pool);
+    const existing = byFingerprint.get(key);
+    byFingerprint.set(key, existing ? mergeDuplicatePools(existing, pool) : pool);
+  }
+
+  for (const pool of byCloudId.values()) {
     const key = getPoolFingerprint(pool);
     const existing = byFingerprint.get(key);
     byFingerprint.set(key, existing ? mergeDuplicatePools(existing, pool) : pool);

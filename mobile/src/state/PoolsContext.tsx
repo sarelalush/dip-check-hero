@@ -118,7 +118,9 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
       const syncedPool = await upsertPoolToCloud(pool, user.id, accountId);
       setPools((current) =>
         dedupePools(current.map((item) =>
-          item.id === syncedPool.id ? normalizePool({ ...item, ...syncedPool, id: item.id }) : item,
+          item.id === pool.id || item.cloudId === syncedPool.cloudId
+            ? normalizePool({ ...item, ...syncedPool, id: item.id })
+            : item,
         )),
       );
       setSyncError(undefined);
@@ -152,7 +154,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
         let updatedPool: Pool | undefined;
         setPools((current) =>
           dedupePools(current.map((pool) => {
-            if (pool.id !== poolId) return pool;
+            if (pool.id !== poolId && pool.cloudId !== poolId) return pool;
             updatedPool = normalizePool({ ...pool, ...updates, id: pool.id, createdAt: pool.createdAt, updatedAt: Date.now() });
             return updatedPool;
           })),
@@ -163,8 +165,8 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
         return updatedPool;
       },
       deletePool(poolId) {
-        const poolToDelete = pools.find((pool) => pool.id === poolId);
-        setPools((current) => current.filter((pool) => pool.id !== poolId));
+        const poolToDelete = pools.find((pool) => pool.id === poolId || pool.cloudId === poolId);
+        setPools((current) => current.filter((pool) => pool.id !== poolId && pool.cloudId !== poolId));
         if (poolToDelete && user) {
           deletePoolFromCloud(poolToDelete, user.id).catch((error) => {
             console.warn('Failed to delete pool from cloud', error);
