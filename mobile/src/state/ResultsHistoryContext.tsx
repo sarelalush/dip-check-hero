@@ -6,7 +6,7 @@ import type { DosageCalculationResult } from '../domain/dosage';
 import type { StripAnalysisResult } from '../domain/scanResults';
 import { usePools } from './PoolsContext';
 import { useAuth } from './AuthContext';
-import { syncTestsWithCloud, upsertTestToCloud } from '../services/testCloudSync';
+import { getTestCloudId, syncTestsWithCloud, upsertTestToCloud } from '../services/testCloudSync';
 import { getPublicScanImageUrl } from '../services/scanImageStorage';
 
 export interface SavedHistoryRecord {
@@ -206,7 +206,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
 
       setHistoryRecords((current) =>
         current.map((item) =>
-          item.testId === syncedRecord.testId || item.id === syncedRecord.id
+          item.testId === syncedRecord.testId || item.id === syncedRecord.id || item.cloudId === syncedRecord.cloudId
             ? normalizeHistoryRecord({ ...item, ...syncedRecord })
             : item,
         ),
@@ -239,6 +239,9 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         const createdAt = Date.now();
         const testedAt = analysisResult.analyzedAt ?? createdAt;
         const testId = createTestId(analysisResult, createdAt);
+        const existingRecord = historyRecords.find((record) => record.testId === testId || record.id === testId || record.cloudId === testId);
+        if (existingRecord) return existingRecord;
+
         const brand = analysisResult.brandId ? getBrand(analysisResult.brandId) : undefined;
         const record: SavedHistoryRecord = {
           id: testId,
@@ -261,8 +264,14 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
           analysisResult,
           dosageResult: analysisResult.dosage,
         };
+        record.cloudId = getTestCloudId(record);
 
-        setHistoryRecords((current) => [record, ...current]);
+        setHistoryRecords((current) => {
+          if (current.some((item) => item.testId === record.testId || item.id === record.id || item.cloudId === record.cloudId)) {
+            return current;
+          }
+          return [record, ...current];
+        });
         syncRecordToCloud(record);
         return record;
       },

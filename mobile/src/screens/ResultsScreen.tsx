@@ -23,6 +23,7 @@ import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Results'>;
 const FALLBACK_POOL_NAME = 'הבריכה שלי';
+const autoSavedResultIds = new Set<string>();
 
 function formatAnalysisDate(timestamp: number) {
   return new Intl.DateTimeFormat('he-IL', {
@@ -321,8 +322,13 @@ export function ResultsScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (savedTestId || !analysisResult || isInvalidStripResult(analysisResult)) return;
     if (autoSavedTestIdRef.current === analysisResult.id) return;
+    if (autoSavedResultIds.has(analysisResult.id)) {
+      setAutoSaved(true);
+      return;
+    }
 
     autoSavedTestIdRef.current = analysisResult.id;
+    autoSavedResultIds.add(analysisResult.id);
     saveAnalysisResult(analysisResult);
     resetScanSession();
     setAutoSaved(true);

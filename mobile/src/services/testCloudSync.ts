@@ -45,6 +45,19 @@ function newUuid() {
   });
 }
 
+function deterministicUuidFromString(value: string) {
+  let hash = 2166136261;
+  const hex = Array.from(value).map((char) => {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+    return (hash >>> 0).toString(16).padStart(8, '0');
+  }).join('');
+  const padded = `${hex}${'0'.repeat(32)}`.slice(0, 32).split('');
+  padded[12] = '4';
+  padded[16] = ((Number.parseInt(padded[16], 16) & 0x3) | 0x8).toString(16);
+  return `${padded.slice(0, 8).join('')}-${padded.slice(8, 12).join('')}-${padded.slice(12, 16).join('')}-${padded.slice(16, 20).join('')}-${padded.slice(20, 32).join('')}`;
+}
+
 function toMillis(value?: string | null) {
   if (!value) return undefined;
   const time = new Date(value).getTime();
@@ -68,6 +81,8 @@ export function getTestCloudId(record: SavedHistoryRecord) {
   if (record.cloudId) return record.cloudId;
   if (isUuid(record.testId)) return record.testId;
   if (isUuid(record.id)) return record.id;
+  if (record.testId) return deterministicUuidFromString(record.testId);
+  if (record.id) return deterministicUuidFromString(record.id);
   return newUuid();
 }
 
