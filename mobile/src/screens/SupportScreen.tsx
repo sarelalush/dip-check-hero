@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ImageBackground, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
@@ -9,6 +9,7 @@ import type { RootStackParamList } from '../../App';
 type Props = NativeStackScreenProps<RootStackParamList, 'Support'>;
 
 const SUPPORT_EMAIL = 'support@dipcheck.app';
+const SUPPORT_POOL_IMAGE = require('../../assets/images/home-pool.png');
 const FAQ_ITEMS = [
   {
     title: 'איך לצלם סטיק נכון',
@@ -48,7 +49,8 @@ export function SupportScreen({ navigation }: Props) {
   }
 
   return (
-    <View style={styles.root}>
+    <ImageBackground source={SUPPORT_POOL_IMAGE} resizeMode="cover" style={styles.root}>
+      <View style={styles.waterWash} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
           <Pressable onPress={() => navigation.navigate('Settings')} style={styles.iconButton}>
@@ -82,12 +84,13 @@ export function SupportScreen({ navigation }: Props) {
           </Card>
         </View>
       </ScrollView>
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
+  waterWash: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(245,253,255,0.72)' },
   content: { paddingHorizontal: 20, paddingTop: 44, paddingBottom: 42 },
   topBar: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
   iconButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { WebPhoneFrame } from '../components/WebPhoneFrame';
@@ -18,6 +18,7 @@ import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditPool'>;
 type TabletsChoice = 'yes' | 'no' | 'unknown';
+const EDIT_POOL_IMAGE = require('../../assets/images/home-pool.png');
 
 function parseNumber(value: string) {
   const parsed = Number.parseFloat(value.replace(',', '.'));
@@ -183,21 +184,24 @@ export function EditPoolScreen({ navigation, route }: Props) {
   if (!pool) {
     return (
       <WebPhoneFrame>
-      <View style={styles.root}>
+      <ImageBackground source={EDIT_POOL_IMAGE} resizeMode="cover" style={styles.root}>
+        <View style={styles.waterWash} />
         <View style={styles.missingCard}>
           <Text style={styles.heading}>בריכה לא נמצאה</Text>
           <Pressable onPress={() => navigation.navigate('Pools')} style={styles.primaryBtn}>
             <Text style={styles.primaryBtnLabel}>חזרה לבריכות</Text>
           </Pressable>
         </View>
-      </View>
+      </ImageBackground>
       </WebPhoneFrame>
     );
   }
 
   return (
     <WebPhoneFrame>
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
+    <ImageBackground source={EDIT_POOL_IMAGE} resizeMode="cover" style={styles.root}>
+    <View style={styles.waterWash} />
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardRoot}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.topBar}>
           <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('PoolDetails', { poolId: pool.id })}>
@@ -334,6 +338,7 @@ export function EditPoolScreen({ navigation, route }: Props) {
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
+    </ImageBackground>
     </WebPhoneFrame>
   );
 }
@@ -425,6 +430,8 @@ function Field({ label, value, onChangeText, placeholder, numeric, multiline }: 
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
+  keyboardRoot: { flex: 1 },
+  waterWash: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(245,253,255,0.72)' },
   content: { paddingHorizontal: 20, paddingTop: 50, paddingBottom: 40 },
   missingCard: { flex: 1, justifyContent: 'center', paddingHorizontal: 20, gap: 16 },
   topBar: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },

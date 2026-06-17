@@ -64,6 +64,7 @@ function WaterBackdrop({ full }: { full: boolean }) {
       <ImageBackground source={APP_POOL_IMAGE} resizeMode="cover" style={[styles.topWaterImage, full && styles.fullWaterImage]}>
         <View style={[styles.topWaterTint, full && styles.fullWaterTint]} />
       </ImageBackground>
+      {!full ? <View style={styles.softWaterWash} /> : null}
       <View style={styles.waveOne} />
       <View style={styles.waveTwo} />
       <View style={styles.waveThree} />
@@ -101,10 +102,10 @@ const styles = StyleSheet.create({
   },
   topWaterImage: {
     position: 'absolute',
-    top: -56,
-    left: -18,
-    right: -18,
-    height: 310,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     overflow: 'hidden',
   },
   fullWaterImage: {
@@ -116,10 +117,14 @@ const styles = StyleSheet.create({
   },
   topWaterTint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(245,253,255,0.72)',
   },
   fullWaterTint: {
     backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  softWaterWash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(238,251,254,0.18)',
   },
   waveOne: {
     position: 'absolute',

@@ -1,8 +1,10 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Card } from './Card';
 import { LineIcon } from './LineIcon';
 import { colors, rtl, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
+
+const STATIC_POOL_IMAGE = require('../../assets/images/home-pool.png');
 
 interface StaticInfoScreenProps {
   navigation: { navigate: (screen: keyof RootStackParamList) => void };
@@ -16,7 +18,8 @@ interface StaticInfoScreenProps {
 
 export function StaticInfoScreen({ navigation, sections, subtitle, title }: StaticInfoScreenProps) {
   return (
-    <View style={styles.root}>
+    <ImageBackground source={STATIC_POOL_IMAGE} resizeMode="cover" style={styles.root}>
+      <View style={styles.waterWash} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
           <Pressable onPress={() => navigation.navigate('Settings')} style={styles.iconButton}>
@@ -37,7 +40,7 @@ export function StaticInfoScreen({ navigation, sections, subtitle, title }: Stat
           ))}
         </View>
       </ScrollView>
-    </View>
+    </ImageBackground>
   );
 }
 
@@ -45,6 +48,10 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  waterWash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(245,253,255,0.72)',
   },
   content: {
     paddingHorizontal: 20,

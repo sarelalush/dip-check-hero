@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { LineIcon, type LineIconName } from '../components/LineIcon';
@@ -15,6 +15,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 type UnitsPreference = 'liters' | 'cubic';
 
 const UNITS_KEY = '@aquasense/preferences/volume-units';
+const SETTINGS_POOL_IMAGE = require('../../assets/images/home-pool.png');
 
 export function SettingsScreen({ navigation }: Props) {
   const { user, signOut, updateDisplayName } = useAuth();
@@ -92,7 +93,8 @@ export function SettingsScreen({ navigation }: Props) {
 
   return (
     <WebPhoneFrame>
-    <View style={styles.root}>
+    <ImageBackground source={SETTINGS_POOL_IMAGE} resizeMode="cover" style={styles.root}>
+      <View style={styles.waterWash} />
       <View style={styles.blob} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Text style={styles.kicker}>התאמה אישית</Text>
@@ -180,7 +182,7 @@ export function SettingsScreen({ navigation }: Props) {
         </Section>
       </ScrollView>
       <BottomTabBar active="settings" navigation={navigation} />
-    </View>
+    </ImageBackground>
     </WebPhoneFrame>
   );
 }
@@ -264,6 +266,7 @@ function SegmentButton({ label, onPress, selected }: { label: string; onPress: (
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background, overflow: 'hidden' },
+  waterWash: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(245,253,255,0.72)' },
   blob: { position: 'absolute', top: -115, right: -95, width: 265, height: 265, borderRadius: 133, backgroundColor: 'rgba(6,168,199,0.16)' },
   content: { paddingHorizontal: 20, paddingTop: 38, paddingBottom: 150 },
   kicker: { color: colors.primaryDark, fontSize: 12, fontWeight: '900', ...rtl.text, fontFamily: typography.fontFamily },

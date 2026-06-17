@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { getRecommendedBrand } from '../config/stripBrands';
@@ -20,6 +20,7 @@ import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddPool'>;
 type TabletsChoice = 'yes' | 'no' | 'unknown';
+const ADD_POOL_IMAGE = require('../../assets/images/home-pool.png');
 
 function parseNumber(value: string) {
   const parsed = Number.parseFloat(value.replace(',', '.'));
@@ -166,7 +167,8 @@ export function AddPoolScreen({ navigation }: Props) {
   if (!quotaChecking && quotaExceeded) {
     return (
       <WebPhoneFrame>
-      <View style={styles.root}>
+      <ImageBackground source={ADD_POOL_IMAGE} resizeMode="cover" style={styles.root}>
+        <View style={styles.waterWash} />
         <View style={styles.quotaContent}>
           <View style={styles.quotaCard}>
             <View style={styles.quotaIcon}>
@@ -182,14 +184,16 @@ export function AddPoolScreen({ navigation }: Props) {
             </Pressable>
           </View>
         </View>
-      </View>
+      </ImageBackground>
       </WebPhoneFrame>
     );
   }
 
   return (
     <WebPhoneFrame>
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.root}>
+    <ImageBackground source={ADD_POOL_IMAGE} resizeMode="cover" style={styles.root}>
+    <View style={styles.waterWash} />
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.keyboardRoot}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.topBar}>
           <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('Pools')}>
@@ -326,6 +330,7 @@ export function AddPoolScreen({ navigation }: Props) {
         </Pressable>
       </ScrollView>
     </KeyboardAvoidingView>
+    </ImageBackground>
     </WebPhoneFrame>
   );
 }
@@ -417,6 +422,8 @@ function Field({ label, value, onChangeText, placeholder, numeric, multiline }: 
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
+  keyboardRoot: { flex: 1 },
+  waterWash: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(245,253,255,0.72)' },
   content: { paddingHorizontal: 20, paddingTop: 50, paddingBottom: 40 },
   quotaContent: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
   quotaCard: { backgroundColor: colors.card, borderRadius: 28, padding: 20, gap: 14, alignItems: 'center', ...shadows.card },

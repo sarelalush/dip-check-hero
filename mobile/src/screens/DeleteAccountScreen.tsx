@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ImageBackground, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
@@ -8,6 +8,7 @@ import { colors, radius, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DeleteAccount'>;
+const DELETE_POOL_IMAGE = require('../../assets/images/home-pool.png');
 
 export function DeleteAccountScreen({ navigation }: Props) {
   const { user } = useAuth();
@@ -25,7 +26,8 @@ export function DeleteAccountScreen({ navigation }: Props) {
   }
 
   return (
-    <View style={styles.root}>
+    <ImageBackground source={DELETE_POOL_IMAGE} resizeMode="cover" style={styles.root}>
+      <View style={styles.waterWash} />
       <View style={styles.content}>
         <View style={styles.topBar}>
           <Pressable onPress={() => navigation.navigate('Settings')} style={styles.iconButton}>
@@ -65,12 +67,13 @@ export function DeleteAccountScreen({ navigation }: Props) {
           </Pressable>
         </Card>
       </View>
-    </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
+  waterWash: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(245,253,255,0.72)' },
   content: { flex: 1, paddingHorizontal: 20, paddingTop: 44 },
   topBar: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
   iconButton: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
