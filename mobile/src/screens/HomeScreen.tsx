@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppHeader } from '../components/AppHeader';
@@ -16,7 +16,6 @@ import { useResultsHistory } from '../state/ResultsHistoryContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
-const HOME_POOL_IMAGE = require('../../assets/images/home-pool.png');
 
 interface HomeMetric {
   icon: LineIconName;
@@ -94,10 +93,6 @@ export function HomeScreen({ navigation }: Props) {
       <AppHeader />
 
       <View style={styles.hero}>
-        <ImageBackground source={HOME_POOL_IMAGE} resizeMode="cover" style={styles.heroImage}>
-          <View style={styles.heroMist} />
-          <View style={styles.heroFade} />
-        </ImageBackground>
         <View style={styles.greeting}>
           <Text style={styles.hello}>{pools.length > 0 ? 'שלום!' : 'ברוכים הבאים'}</Text>
           <Text style={styles.subtitle}>
@@ -232,21 +227,6 @@ const styles = StyleSheet.create({
     marginHorizontal: -18,
     marginTop: -8,
     overflow: 'hidden',
-  },
-  heroImage: {
-    height: 410,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: -144,
-  },
-  heroMist: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-  },
-  heroFade: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(247,253,255,0.20)',
   },
   greeting: {
     alignItems: 'flex-end',
