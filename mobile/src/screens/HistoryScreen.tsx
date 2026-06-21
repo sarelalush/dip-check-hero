@@ -94,7 +94,7 @@ function FilterChip({ label, onPress, selected }: { label: string; onPress: () =
 
 const styles = StyleSheet.create({
   headerRow: {
-    marginTop: 20,
+    marginTop: 38,
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
