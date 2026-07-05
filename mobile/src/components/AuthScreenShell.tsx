@@ -274,7 +274,7 @@ const styles = StyleSheet.create({
     minHeight: 72,
     borderRadius: radius.round,
     backgroundColor: 'rgba(255,255,255,0.92)',
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     padding: 4,
     borderWidth: 1,
     borderColor: 'rgba(215,238,243,0.8)',

@@ -47,6 +47,7 @@ const appTsx = read('App.tsx');
 const theme = read('src/theme.ts');
 const appShell = read('src/components/AppShell.tsx');
 const webPhoneFrame = read('src/components/WebPhoneFrame.tsx');
+const authScreenShell = read('src/components/AuthScreenShell.tsx');
 const packageJson = JSON.parse(read('package.json'));
 
 assert(appJson.expo.android?.package === 'com.stickcheck.app', 'Android package must stay com.stickcheck.app.');
@@ -62,6 +63,10 @@ assert(appShell.includes('SafeAreaView'), 'AppShell must use SafeAreaView.');
 assert(appShell.includes('ScrollView'), 'AppShell must support scrolling for smaller screens.');
 assert(appShell.includes('BottomTabBar'), 'AppShell must keep bottom tabs inside the shell.');
 assert(webPhoneFrame.includes("Platform.OS !== 'web'"), 'WebPhoneFrame must bypass the iPhone frame on native devices.');
+assert(
+  /segmented:\s*\{[\s\S]*?flexDirection:\s*'row'/.test(authScreenShell),
+  'Auth login/signup tabs must use natural RTL row order so login appears on the right.',
+);
 
 for (const screen of requiredScreens) {
   const screenPath = path.join(root, 'src', 'screens', screen);
