@@ -74,8 +74,8 @@ assert(appShell.includes('ScrollView'), 'AppShell must support scrolling for sma
 assert(appShell.includes('BottomTabBar'), 'AppShell must keep bottom tabs inside the shell.');
 assert(webPhoneFrame.includes("Platform.OS !== 'web'"), 'WebPhoneFrame must bypass the iPhone frame on native devices.');
 assert(
-  /segmented:\s*\{[\s\S]*?flexDirection:\s*'row'/.test(authScreenShell),
-  'Auth login/signup tabs must use natural RTL row order so login appears on the right.',
+  /segmented:\s*\{[\s\S]*?flexDirection:\s*'row-reverse'/.test(authScreenShell),
+  'Auth login/signup tabs must keep login on the right and signup on the left in RTL.',
 );
 
 for (const screen of requiredScreens) {
