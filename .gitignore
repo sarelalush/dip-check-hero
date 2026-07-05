@@ -17,6 +17,10 @@ dist-ssr
 *.local
 supabase/.temp/
 mobile/dip-check-hero/
+*.jks
+*.keystore
+*.p12
+*.pem
 
 # Wrangler / Cloudflare
 .wrangler/
