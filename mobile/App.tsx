@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import {
@@ -9,7 +10,7 @@ import {
   useFonts,
 } from '@expo-google-fonts/heebo';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { ActivityIndicator, I18nManager, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, I18nManager, Platform, StyleSheet, View } from 'react-native';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { PoolsScreen } from './src/screens/PoolsScreen';
@@ -71,10 +72,13 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 I18nManager.allowRTL(true);
 I18nManager.forceRTL(true);
-I18nManager.swapLeftAndRightInRTL(true);
+if (Platform.OS !== 'web' && typeof I18nManager.swapLeftAndRightInRTL === 'function') {
+  I18nManager.swapLeftAndRightInRTL(true);
+}
 
 export default function App() {
-  const [fontsLoaded] = useFonts({
+  const [fontWaitExpired, setFontWaitExpired] = useState(false);
+  const [fontsLoaded, fontError] = useFonts({
     Heebo_400Regular,
     Heebo_500Medium,
     Heebo_600SemiBold,
@@ -85,8 +89,14 @@ export default function App() {
     ...MaterialCommunityIcons.font,
   });
 
-  if (!fontsLoaded) {
-    return null;
+  useEffect(() => {
+    if (Platform.OS !== 'web' || fontsLoaded || fontError) return undefined;
+    const timeout = setTimeout(() => setFontWaitExpired(true), 3500);
+    return () => clearTimeout(timeout);
+  }, [fontError, fontsLoaded]);
+
+  if (!fontsLoaded && !fontError && !fontWaitExpired) {
+    return <LoadingScreen />;
   }
 
   return (
@@ -106,6 +116,14 @@ export default function App() {
   );
 }
 
+function LoadingScreen() {
+  return (
+    <View style={styles.loadingScreen}>
+      <ActivityIndicator color={colors.primary} size="large" />
+    </View>
+  );
+}
+
 function AppNavigator() {
   const { loading, isAuthenticated } = useAuth();
   const { hydrated: poolsHydrated } = usePools();
@@ -113,7 +131,7 @@ function AppNavigator() {
   if (loading || (isAuthenticated && !poolsHydrated)) {
     return (
       <View style={styles.loadingScreen}>
-        <ActivityIndicator color={colors.primary} size="large" />
+        <LoadingScreen />
       </View>
     );
   }

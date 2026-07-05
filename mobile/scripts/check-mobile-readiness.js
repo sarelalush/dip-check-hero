@@ -57,7 +57,7 @@ assert(appJson.expo.extra?.eas?.projectId, 'EAS project id is missing.');
 
 assert(appTsx.includes('I18nManager.allowRTL(true)'), 'App must enable RTL.');
 assert(appTsx.includes('I18nManager.forceRTL(true)'), 'App must force RTL for Hebrew-first Android builds.');
-assert(appTsx.includes('I18nManager.swapLeftAndRightInRTL(true)'), 'App must swap left/right in RTL.');
+assert(appTsx.includes("Platform.OS !== 'web'") && appTsx.includes('I18nManager.swapLeftAndRightInRTL(true)'), 'RTL left/right swapping must be enabled on native and guarded on web.');
 assert(theme.includes("writingDirection: 'rtl'"), 'Theme RTL helper must include writingDirection rtl.');
 assert(theme.includes("textAlign: 'right'"), 'Theme RTL helper must include right text alignment.');
 assert(
