@@ -89,7 +89,7 @@ export function HomeScreen({ navigation }: Props) {
       ];
 
   return (
-    <AppShell activeTab="home" navigation={navigation} scroll={false} contentStyle={styles.screen}>
+    <AppShell activeTab="home" navigation={navigation} contentStyle={styles.screen}>
       <AppHeader />
 
       <View style={styles.hero}>

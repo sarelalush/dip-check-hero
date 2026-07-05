@@ -1,0 +1,89 @@
+const fs = require('node:fs');
+const path = require('node:path');
+
+const root = path.resolve(__dirname, '..');
+
+const deviceProfiles = [
+  { name: 'Small Android', width: 360, height: 640 },
+  { name: 'Pixel 4a', width: 393, height: 851 },
+  { name: 'Pixel 8', width: 412, height: 915 },
+  { name: 'Galaxy S24 Ultra', width: 480, height: 1067 },
+  { name: 'iPhone SE', width: 375, height: 667 },
+  { name: 'iPhone 15', width: 393, height: 852 },
+  { name: 'iPhone 15 Pro Max', width: 430, height: 932 },
+];
+
+const requiredScreens = [
+  'HomeScreen.tsx',
+  'PoolsScreen.tsx',
+  'PoolDetailsScreen.tsx',
+  'AddPoolScreen.tsx',
+  'EditPoolScreen.tsx',
+  'SelectPoolScreen.tsx',
+  'SelectStripScreen.tsx',
+  'ScanScreen.tsx',
+  'ConfirmScanScreen.tsx',
+  'ResultsScreen.tsx',
+  'HistoryScreen.tsx',
+  'SettingsScreen.tsx',
+  'PlanUsageScreen.tsx',
+];
+
+function read(relativePath) {
+  return fs.readFileSync(path.join(root, relativePath), 'utf8');
+}
+
+function fail(message) {
+  console.error(`\nMobile readiness failed: ${message}`);
+  process.exit(1);
+}
+
+function assert(condition, message) {
+  if (!condition) fail(message);
+}
+
+const appJson = JSON.parse(read('app.json'));
+const appTsx = read('App.tsx');
+const theme = read('src/theme.ts');
+const appShell = read('src/components/AppShell.tsx');
+const webPhoneFrame = read('src/components/WebPhoneFrame.tsx');
+const packageJson = JSON.parse(read('package.json'));
+
+assert(appJson.expo.android?.package === 'com.stickcheck.app', 'Android package must stay com.stickcheck.app.');
+assert(appJson.expo.extra?.eas?.projectId, 'EAS project id is missing.');
+
+assert(appTsx.includes('I18nManager.allowRTL(true)'), 'App must enable RTL.');
+assert(appTsx.includes('I18nManager.forceRTL(true)'), 'App must force RTL for Hebrew-first Android builds.');
+assert(appTsx.includes('I18nManager.swapLeftAndRightInRTL(true)'), 'App must swap left/right in RTL.');
+assert(theme.includes("writingDirection: 'rtl'"), 'Theme RTL helper must include writingDirection rtl.');
+assert(theme.includes("textAlign: 'right'"), 'Theme RTL helper must include right text alignment.');
+
+assert(appShell.includes('SafeAreaView'), 'AppShell must use SafeAreaView.');
+assert(appShell.includes('ScrollView'), 'AppShell must support scrolling for smaller screens.');
+assert(appShell.includes('BottomTabBar'), 'AppShell must keep bottom tabs inside the shell.');
+assert(webPhoneFrame.includes("Platform.OS !== 'web'"), 'WebPhoneFrame must bypass the iPhone frame on native devices.');
+
+for (const screen of requiredScreens) {
+  const screenPath = path.join(root, 'src', 'screens', screen);
+  assert(fs.existsSync(screenPath), `${screen} is missing.`);
+  const source = fs.readFileSync(screenPath, 'utf8');
+  const usesResponsiveShell =
+    source.includes('<AppShell') ||
+    source.includes('<WebPhoneFrame') ||
+    source.includes('<AuthScreenShell') ||
+    source.includes('<StaticInfoScreen');
+  assert(usesResponsiveShell, `${screen} must render inside an approved mobile shell.`);
+}
+
+for (const profile of deviceProfiles) {
+  assert(profile.width >= 320, `${profile.name} width is below the supported minimum.`);
+  assert(profile.height >= 568, `${profile.name} height is below the supported minimum.`);
+}
+
+assert(packageJson.scripts.typecheck, 'typecheck script is missing.');
+
+console.log('Mobile readiness checks passed.');
+console.log(`Checked ${requiredScreens.length} screens across ${deviceProfiles.length} device profiles:`);
+for (const profile of deviceProfiles) {
+  console.log(`- ${profile.name}: ${profile.width}x${profile.height}`);
+}
