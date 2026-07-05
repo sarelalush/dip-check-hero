@@ -16,7 +16,7 @@
       }
     },
     "android": {
-      "package": "com.sarelalush.aquasense",
+      "package": "com.stickcheck.app",
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ]
