@@ -48,6 +48,8 @@ const theme = read('src/theme.ts');
 const appShell = read('src/components/AppShell.tsx');
 const webPhoneFrame = read('src/components/WebPhoneFrame.tsx');
 const authScreenShell = read('src/components/AuthScreenShell.tsx');
+const supabaseClient = read('src/integrations/supabase/client.ts');
+const stripAnalysisService = read('src/services/stripAnalysisService.ts');
 const packageJson = JSON.parse(read('package.json'));
 
 assert(appJson.expo.android?.package === 'com.stickcheck.app', 'Android package must stay com.stickcheck.app.');
@@ -58,6 +60,14 @@ assert(appTsx.includes('I18nManager.forceRTL(true)'), 'App must force RTL for He
 assert(appTsx.includes('I18nManager.swapLeftAndRightInRTL(true)'), 'App must swap left/right in RTL.');
 assert(theme.includes("writingDirection: 'rtl'"), 'Theme RTL helper must include writingDirection rtl.');
 assert(theme.includes("textAlign: 'right'"), 'Theme RTL helper must include right text alignment.');
+assert(
+  !supabaseClient.includes('const expoEnv') && supabaseClient.includes('process.env.EXPO_PUBLIC_SUPABASE_URL'),
+  'Supabase env vars must use direct process.env.EXPO_PUBLIC_* access for Expo native builds.',
+);
+assert(
+  !stripAnalysisService.includes('const expoEnv') && stripAnalysisService.includes('process.env.EXPO_PUBLIC_STRIP_ANALYSIS_MODE'),
+  'Analysis env vars must use direct process.env.EXPO_PUBLIC_* access for Expo native builds.',
+);
 
 assert(appShell.includes('SafeAreaView'), 'AppShell must use SafeAreaView.');
 assert(appShell.includes('ScrollView'), 'AppShell must support scrolling for smaller screens.');

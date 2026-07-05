@@ -66,9 +66,8 @@ export class StripAnalysisServiceError extends Error {
   }
 }
 
-const expoEnv = (typeof process !== 'undefined' ? process.env : {}) as Record<string, string | undefined>;
-const configuredMode = expoEnv.EXPO_PUBLIC_STRIP_ANALYSIS_MODE;
-const configuredFunctionName = expoEnv.EXPO_PUBLIC_STRIP_ANALYSIS_FUNCTION?.trim();
+const configuredMode = process.env.EXPO_PUBLIC_STRIP_ANALYSIS_MODE;
+const configuredFunctionName = process.env.EXPO_PUBLIC_STRIP_ANALYSIS_FUNCTION?.trim();
 
 const analysisConfig: StripAnalysisServiceConfig = {
   mode:
@@ -83,7 +82,7 @@ export function getStripAnalysisConfig() {
 }
 
 function logAnalysisDebug(message: string, details?: Record<string, unknown>) {
-  if (expoEnv.NODE_ENV !== 'production') {
+  if (process.env.NODE_ENV !== 'production') {
     console.log(`[strip-analysis] ${message}`, details ?? {});
   }
 }
