@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 
-export type ReminderNotificationFrequency = 'off' | 'weekly' | 'biweekly' | 'monthly';
+export type ReminderNotificationFrequency = 'off' | 'every3h' | 'every6h' | 'every12h' | 'daily';
 
 interface ScheduleReminderInput {
   frequency: Exclude<ReminderNotificationFrequency, 'off'>;
@@ -17,9 +17,10 @@ export interface ScheduleReminderResult {
 const REMINDER_CHANNEL_ID = 'pool-test-reminders';
 
 const FREQUENCY_SECONDS: Record<Exclude<ReminderNotificationFrequency, 'off'>, number> = {
-  weekly: 7 * 24 * 60 * 60,
-  biweekly: 14 * 24 * 60 * 60,
-  monthly: 30 * 24 * 60 * 60,
+  every3h: 3 * 60 * 60,
+  every6h: 6 * 60 * 60,
+  every12h: 12 * 60 * 60,
+  daily: 24 * 60 * 60,
 };
 
 Notifications.setNotificationHandler({

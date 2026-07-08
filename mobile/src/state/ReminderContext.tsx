@@ -25,6 +25,18 @@ interface ReminderContextValue {
 const ReminderContext = createContext<ReminderContextValue | null>(null);
 const REMINDER_STORAGE_KEY = '@aquasense/pool-reminders';
 
+function normalizeFrequency(value: unknown): ReminderFrequency {
+  if (value === 'every3h' || value === 'every6h' || value === 'every12h' || value === 'daily' || value === 'off') {
+    return value;
+  }
+
+  if (value === 'weekly' || value === 'biweekly' || value === 'monthly') {
+    return 'daily';
+  }
+
+  return 'off';
+}
+
 function normalizeStoredReminders(stored: string) {
   const parsed = JSON.parse(stored) as Record<string, ReminderFrequency | Partial<ReminderEntry>>;
   const normalized: Record<string, ReminderEntry> = {};
@@ -32,7 +44,7 @@ function normalizeStoredReminders(stored: string) {
   for (const [poolId, value] of Object.entries(parsed)) {
     if (typeof value === 'string') {
       normalized[poolId] = {
-        frequency: value,
+        frequency: normalizeFrequency(value),
         updatedAt: Date.now(),
       };
       continue;
@@ -41,7 +53,7 @@ function normalizeStoredReminders(stored: string) {
     if (value && typeof value === 'object' && value.frequency) {
       normalized[poolId] = {
         error: value.error,
-        frequency: value.frequency,
+        frequency: normalizeFrequency(value.frequency),
         notificationId: value.notificationId,
         updatedAt: typeof value.updatedAt === 'number' ? value.updatedAt : Date.now(),
       };

@@ -198,9 +198,10 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
 
 const REMINDER_OPTIONS: { label: string; value: ReminderFrequency }[] = [
   { label: 'כבוי', value: 'off' },
-  { label: 'כל שבוע', value: 'weekly' },
-  { label: 'כל שבועיים', value: 'biweekly' },
-  { label: 'כל חודש', value: 'monthly' },
+  { label: 'כל 3 שעות', value: 'every3h' },
+  { label: 'כל 6 שעות', value: 'every6h' },
+  { label: 'כל 12 שעות', value: 'every12h' },
+  { label: 'יומי', value: 'daily' },
 ];
 
 function DetailPill({ label, value }: { label: string; value: string }) {
