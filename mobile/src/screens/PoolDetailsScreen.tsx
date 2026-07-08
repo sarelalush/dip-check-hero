@@ -13,7 +13,6 @@ import { colors, rtl, typography } from '../theme';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory, type SavedHistoryRecord } from '../state/ResultsHistoryContext';
 import { useScanSession } from '../state/ScanSessionContext';
-import { useReminders, type ReminderFrequency } from '../state/ReminderContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PoolDetails'>;
@@ -22,10 +21,8 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
   const { deletePool, getPool } = usePools();
   const { getPoolHistoryRecords } = useResultsHistory();
   const { startScanSession } = useScanSession();
-  const { getReminder, getReminderError, setReminder } = useReminders();
   const pool = getPool(route.params.poolId);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [reminderBusy, setReminderBusy] = useState(false);
   const recentTests = pool ? getPoolHistoryRecords(pool.id, 3) : [];
   const poolName = pool?.name ?? 'בריכה ללא שם';
   const poolVolume = pool ? `${pool.volumeLiters.toLocaleString('he-IL')} ליטר` : 'לא הוגדר נפח';
@@ -34,8 +31,6 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
   const shapeLabel = pool?.volumeEntryMethod === 'manual' ? 'נפח ידני' : getPoolShapeLabel(pool?.shape);
   const tabletsLabel = pool?.tabletsActive ? `${pool.tabletsCount ?? 1} טבליות · ${pool.tabletWeightGrams ?? 200} גרם` : 'אין טבליות פעילות';
   const coverUri = pool?.imageUri ?? pool?.imageUrl;
-  const reminder = pool ? getReminder(pool.id) : 'off';
-  const reminderError = pool ? getReminderError(pool.id) : undefined;
 
   function handleDelete() {
     if (!pool) return;
@@ -55,17 +50,6 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
   function startPoolScan() {
     startScanSession({ brandId: pool?.stripBrandId, poolId: route.params.poolId });
     navigation.navigate('SelectStrip', { poolId: route.params.poolId });
-  }
-
-  async function handleReminderChange(frequency: ReminderFrequency) {
-    if (!pool || reminderBusy) return;
-
-    setReminderBusy(true);
-    try {
-      await setReminder(pool.id, frequency, pool.name);
-    } finally {
-      setReminderBusy(false);
-    }
   }
 
   return (
@@ -108,38 +92,6 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
           onPress={startPoolScan}
         />
       </View>
-
-      {pool ? (
-        <Card compact style={styles.reminderCard}>
-          <View style={styles.recentHeader}>
-            <Text style={styles.recentTitle}>תזכורת לבדיקה חוזרת</Text>
-            <LineIcon name="history" color={colors.primaryDark} size={16} />
-          </View>
-          <View style={styles.reminderOptions}>
-            {REMINDER_OPTIONS.map((option) => (
-              <Pressable
-                key={option.value}
-                disabled={reminderBusy}
-                onPress={() => handleReminderChange(option.value)}
-                style={[
-                  styles.reminderOption,
-                  reminder === option.value && styles.reminderOptionSelected,
-                  reminderBusy && styles.reminderOptionDisabled,
-                ]}
-              >
-                <Text style={[styles.reminderOptionText, reminder === option.value && styles.reminderOptionTextSelected]}>{option.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <Text style={[styles.reminderHint, reminderError && styles.reminderError]}>
-            {reminderError
-              ? reminderError
-              : reminder === 'off'
-                ? 'התזכורות כבויות עבור הבריכה הזו.'
-                : 'התזכורת פעילה ותישלח מהמכשיר לפי התדירות שנבחרה.'}
-          </Text>
-        </Card>
-      ) : null}
 
       <Card compact style={styles.recentCard}>
         <View style={styles.recentHeader}>
@@ -195,14 +147,6 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
     </AppShell>
   );
 }
-
-const REMINDER_OPTIONS: { label: string; value: ReminderFrequency }[] = [
-  { label: 'כבוי', value: 'off' },
-  { label: 'כל 3 שעות', value: 'every3h' },
-  { label: 'כל 6 שעות', value: 'every6h' },
-  { label: 'כל 12 שעות', value: 'every12h' },
-  { label: 'יומי', value: 'daily' },
-];
 
 function DetailPill({ label, value }: { label: string; value: string }) {
   return (
@@ -350,54 +294,6 @@ const styles = StyleSheet.create({
   recentCard: {
     marginTop: 16,
     gap: 10,
-  },
-  reminderCard: {
-    marginTop: 16,
-    gap: 10,
-  },
-  reminderOptions: {
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  reminderOption: {
-    minWidth: '46%',
-    flexGrow: 1,
-    borderRadius: 999,
-    backgroundColor: colors.surfaceSoft,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    paddingVertical: 9,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-  },
-  reminderOptionSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  reminderOptionDisabled: {
-    opacity: 0.72,
-  },
-  reminderOptionText: {
-    color: colors.textSoft,
-    fontFamily: typography.fontFamilySemiBold,
-    fontSize: 12,
-    fontWeight: '900',
-    ...rtl.textCenter,
-  },
-  reminderOptionTextSelected: {
-    color: colors.white,
-  },
-  reminderHint: {
-    color: colors.muted,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 11,
-    fontWeight: '800',
-    lineHeight: 16,
-    ...rtl.text,
-  },
-  reminderError: {
-    color: colors.warning,
   },
   recentHeader: {
     flexDirection: 'row-reverse',
