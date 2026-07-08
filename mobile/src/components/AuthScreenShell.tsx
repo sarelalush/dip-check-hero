@@ -66,11 +66,11 @@ export function AuthScreenShell({
       </View>
 
       <View style={[styles.segmented, noScroll && styles.segmentedCompact]}>
-        <Pressable onPress={onLoginTab} style={[styles.segment, activeMode === 'login' && styles.segmentActive]}>
-          <Text style={[styles.segmentText, noScroll && styles.segmentTextCompact, activeMode === 'login' && styles.segmentTextActive]}>התחברות</Text>
-        </Pressable>
         <Pressable onPress={onSignupTab} style={[styles.segment, activeMode === 'signup' && styles.segmentActive]}>
           <Text style={[styles.segmentText, noScroll && styles.segmentTextCompact, activeMode === 'signup' && styles.segmentTextActive]}>הרשמה</Text>
+        </Pressable>
+        <Pressable onPress={onLoginTab} style={[styles.segment, activeMode === 'login' && styles.segmentActive]}>
+          <Text style={[styles.segmentText, noScroll && styles.segmentTextCompact, activeMode === 'login' && styles.segmentTextActive]}>התחברות</Text>
         </Pressable>
       </View>
 

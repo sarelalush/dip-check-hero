@@ -77,6 +77,10 @@ assert(
   /segmented:\s*\{[\s\S]*?flexDirection:\s*'row-reverse'/.test(authScreenShell),
   'Auth login/signup tabs must keep login on the right and signup on the left in RTL.',
 );
+assert(
+  authScreenShell.indexOf('>הרשמה<') < authScreenShell.indexOf('>התחברות<'),
+  'Auth segmented tabs should render signup before login so row-reverse places login on the right.',
+);
 
 for (const screen of requiredScreens) {
   const screenPath = path.join(root, 'src', 'screens', screen);
