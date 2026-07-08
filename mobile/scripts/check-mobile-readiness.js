@@ -45,6 +45,7 @@ function assert(condition, message) {
 
 const appJson = JSON.parse(read('app.json'));
 const appTsx = read('App.tsx');
+const indexJs = read('index.js');
 const theme = read('src/theme.ts');
 const appShell = read('src/components/AppShell.tsx');
 const webPhoneFrame = read('src/components/WebPhoneFrame.tsx');
@@ -61,6 +62,8 @@ assert(appJson.expo.plugins?.includes('./plugins/withAndroidRtl'), 'Android RTL 
 assert(appTsx.includes('I18nManager.allowRTL(true)'), 'App must enable RTL.');
 assert(appTsx.includes('I18nManager.forceRTL(true)'), 'App must force RTL for Hebrew-first Android builds.');
 assert(appTsx.includes("Platform.OS !== 'web'") && appTsx.includes('I18nManager.swapLeftAndRightInRTL(true)'), 'RTL left/right swapping must be enabled on native and guarded on web.');
+assert(indexJs.includes('I18nManager.forceRTL(true)') && indexJs.indexOf('I18nManager.forceRTL(true)') < indexJs.indexOf("require('./App')"), 'RTL must be forced in index.js before App is loaded.');
+assert(appTsx.includes("direction: 'rtl'"), 'Root app wrapper must set direction rtl for Android release builds.');
 assert(androidRtlPlugin.includes("android:supportsRtl'] = 'true'"), 'Android manifest must support RTL.');
 assert(androidRtlPlugin.includes('I18nUtil.getInstance().forceRTL'), 'Android native startup must force RTL before React Native renders.');
 assert(theme.includes("writingDirection: 'rtl'"), 'Theme RTL helper must include writingDirection rtl.');

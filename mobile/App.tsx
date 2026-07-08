@@ -102,19 +102,21 @@ export default function App() {
   }
 
   return (
-    <AuthProvider>
-      <PoolsProvider>
-        <ReminderProvider>
-          <AppPreferencesProvider>
-            <ScanSessionProvider>
-              <ResultsHistoryProvider>
-                <AppNavigator />
-              </ResultsHistoryProvider>
-            </ScanSessionProvider>
-          </AppPreferencesProvider>
-        </ReminderProvider>
-      </PoolsProvider>
-    </AuthProvider>
+    <View style={styles.rtlRoot}>
+      <AuthProvider>
+        <PoolsProvider>
+          <ReminderProvider>
+            <AppPreferencesProvider>
+              <ScanSessionProvider>
+                <ResultsHistoryProvider>
+                  <AppNavigator />
+                </ResultsHistoryProvider>
+              </ScanSessionProvider>
+            </AppPreferencesProvider>
+          </ReminderProvider>
+        </PoolsProvider>
+      </AuthProvider>
+    </View>
   );
 }
 
@@ -179,6 +181,10 @@ function AppNavigator() {
 }
 
 const styles = StyleSheet.create({
+  rtlRoot: {
+    direction: 'rtl',
+    flex: 1,
+  },
   loadingScreen: {
     alignItems: 'center',
     backgroundColor: colors.background,
