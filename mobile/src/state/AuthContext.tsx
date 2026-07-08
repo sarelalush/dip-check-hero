@@ -20,6 +20,7 @@ interface AuthContextValue {
   isConfigured: boolean;
   signInWithEmail: (email: string, password: string) => Promise<AuthResult>;
   signUpWithEmail: (email: string, password: string, displayName?: string, phone?: string) => Promise<AuthResult>;
+  resetPasswordForEmail: (email: string) => Promise<AuthResult>;
   signInWithGoogle: () => Promise<AuthResult>;
   updateDisplayName: (displayName: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
@@ -46,6 +47,13 @@ function getOAuthRedirectTo() {
   return makeRedirectUri({
     scheme: 'aquasense',
     path: 'auth/callback',
+  });
+}
+
+function getPasswordResetRedirectTo() {
+  return makeRedirectUri({
+    scheme: 'aquasense',
+    path: 'auth/reset-password',
   });
 }
 
@@ -166,6 +174,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 phone: phone?.trim() || null,
               },
             },
+          });
+
+          return error ? { error: toHebrewAuthError(error.message) } : {};
+        } catch (error) {
+          return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };
+        }
+      },
+      async resetPasswordForEmail(email) {
+        if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
+
+        try {
+          const { error } = await getSupabaseClient().auth.resetPasswordForEmail(email.trim(), {
+            redirectTo: getPasswordResetRedirectTo(),
           });
 
           return error ? { error: toHebrewAuthError(error.message) } : {};

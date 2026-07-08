@@ -27,6 +27,7 @@ const requiredScreens = [
   'HistoryScreen.tsx',
   'SettingsScreen.tsx',
   'PlanUsageScreen.tsx',
+  'ForgotPasswordScreen.tsx',
 ];
 
 function read(relativePath) {

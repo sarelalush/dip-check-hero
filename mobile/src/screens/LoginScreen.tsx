@@ -72,7 +72,7 @@ export function LoginScreen({ navigation }: Props) {
       <AuthField compact icon="mail" keyboardType="email-address" label="אימייל" onChangeText={setEmail} placeholder="הכנס כתובת אימייל" value={email} />
       <AuthField compact icon="lock" label="סיסמה" onChangeText={setPassword} placeholder="הכנס סיסמה" secure sideIcon="eye" value={password} />
 
-      <Pressable onPress={() => setError('איפוס סיסמה יהיה זמין בקרוב.')} style={styles.forgotButton}>
+      <Pressable onPress={() => navigation.navigate('ForgotPassword')} style={styles.forgotButton}>
         <Text style={styles.forgotText}>שכחתי סיסמה</Text>
       </Pressable>
 
