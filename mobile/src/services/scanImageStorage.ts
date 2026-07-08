@@ -1,8 +1,10 @@
 // Mobile scan-image storage parity source:
 // src/lib/cloudSync.ts uploads scan images to the "scan-images" bucket and
 // stores the resulting storage path in tests.image_url. This native version
-// uses Expo/RN-compatible fetch(imageUri) -> ArrayBuffer, without FileReader,
+// uses expo-file-system for Android/iOS file/content URIs, without FileReader,
 // DOM image elements, canvas, or browser file inputs.
+import * as FileSystem from 'expo-file-system/legacy';
+import { Platform } from 'react-native';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
 
 export const SCAN_IMAGES_BUCKET = 'scan-images';
@@ -95,23 +97,84 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
   return output;
 }
 
-export async function readLocalImageAsDataUrl(imageUri: string): Promise<LocalImageDataUrl | undefined> {
-  if (!isLocalUploadCandidate(imageUri)) return undefined;
-  if (imageUri.startsWith('data:image/')) {
-    const contentType = /^data:([^;]+);base64,/.exec(imageUri)?.[1] ?? contentTypeFromUri(imageUri);
-    return { contentType, dataUrl: imageUri };
+function base64ToArrayBuffer(base64: string) {
+  const clean = base64.replace(/\s/g, '');
+  const lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const bytes: number[] = [];
+  let buffer = 0;
+  let bits = 0;
+
+  for (const char of clean) {
+    if (char === '=') break;
+    const value = lookup.indexOf(char);
+    if (value < 0) continue;
+
+    buffer = (buffer << 6) | value;
+    bits += 6;
+
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((buffer >> bits) & 0xff);
+    }
+  }
+
+  return new Uint8Array(bytes).buffer;
+}
+
+function parseDataUrl(dataUrl: string): { contentType: string; base64: string } | undefined {
+  const match = /^data:([^;]+);base64,(.*)$/s.exec(dataUrl);
+  if (!match) return undefined;
+  return {
+    contentType: match[1] || 'image/jpeg',
+    base64: match[2] || '',
+  };
+}
+
+async function readLocalImageBytes(imageUri: string): Promise<{ body: ArrayBuffer; contentType: string }> {
+  const parsedDataUrl = parseDataUrl(imageUri);
+  if (parsedDataUrl) {
+    return {
+      body: base64ToArrayBuffer(parsedDataUrl.base64),
+      contentType: parsedDataUrl.contentType,
+    };
   }
 
   const fallbackContentType = contentTypeFromUri(imageUri);
+
+  if (Platform.OS !== 'web' && (imageUri.startsWith('file:') || imageUri.startsWith('content:'))) {
+    const base64 = await FileSystem.readAsStringAsync(imageUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    return {
+      body: base64ToArrayBuffer(base64),
+      contentType: fallbackContentType,
+    };
+  }
+
   const response = await fetch(imageUri);
 
   if (!response.ok) {
-    throw new Error(`Failed to read scan image for remote analysis: ${response.status}`);
+    throw new Error(`Failed to read scan image: ${response.status}`);
   }
 
   const responseContentType = response.headers.get('content-type');
   const contentType = responseContentType?.startsWith('image/') ? responseContentType : fallbackContentType;
-  const body = await response.arrayBuffer();
+
+  return {
+    body: await response.arrayBuffer(),
+    contentType,
+  };
+}
+
+export async function readLocalImageAsDataUrl(imageUri: string): Promise<LocalImageDataUrl | undefined> {
+  if (!isLocalUploadCandidate(imageUri)) return undefined;
+  if (imageUri.startsWith('data:image/')) {
+    const contentType = parseDataUrl(imageUri)?.contentType ?? contentTypeFromUri(imageUri);
+    return { contentType, dataUrl: imageUri };
+  }
+
+  const { body, contentType } = await readLocalImageBytes(imageUri);
 
   return {
     contentType,
@@ -124,16 +187,7 @@ export async function uploadScanImage({ accountId, imageUri, testId, userId }: U
     return undefined;
   }
 
-  const fallbackContentType = contentTypeFromUri(imageUri);
-  const response = await fetch(imageUri);
-
-  if (!response.ok) {
-    throw new Error(`Failed to read scan image: ${response.status}`);
-  }
-
-  const responseContentType = response.headers.get('content-type');
-  const contentType = responseContentType?.startsWith('image/') ? responseContentType : fallbackContentType;
-  const body = await response.arrayBuffer();
+  const { body, contentType } = await readLocalImageBytes(imageUri);
   const path = buildScanImagePath(accountId, userId, testId, contentType);
 
   const { error } = await getSupabaseClient().storage.from(SCAN_IMAGES_BUCKET).upload(path, body, {

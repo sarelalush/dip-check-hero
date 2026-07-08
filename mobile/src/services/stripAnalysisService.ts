@@ -194,10 +194,10 @@ async function analyzeStripImageRemote(
       imageUrl = uploadedImage?.publicUrl;
     } catch (error) {
       console.warn('Remote strip analysis image upload failed', error);
-      throw new StripAnalysisServiceError(
-        'unavailable',
-        'לא הצלחנו להעלות את תמונת הסטיק לניתוח. השירות אינו זמין כרגע.',
-      );
+      logAnalysisDebug('image upload failed; trying direct data-url analysis fallback', {
+        error: error instanceof Error ? error.message : String(error),
+        testId,
+      });
     }
   }
 
