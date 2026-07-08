@@ -1465,13 +1465,10 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
       source: aiResult.source,
       testId: body.testId,
     });
-    if (authenticatedUserId) {
-      try {
-        await persistAnalysisResult(body, aiResult, authenticatedUserId, request);
-      } catch (error) {
-        console.warn('Persisting AI analysis failed', error);
-      }
-    }
+    // Keep persistence in the mobile save flow only. The app enriches the AI
+    // result with dosage recommendations before upserting tests/readings and
+    // registering usage. Writing here as well can create duplicate history
+    // rows when a mobile save follows the remote analysis response.
     return aiResult;
   }
 
