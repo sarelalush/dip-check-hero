@@ -4,13 +4,17 @@
 import type { User } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
 import type { Database, Json } from '../integrations/supabase/types';
-import type { ScanResultParameter, StripAnalysisResult } from '../domain/scanResults';
+import type { ScanParameterStatusKind, ScanResultParameter, StripAnalysisResult } from '../domain/scanResults';
 import type { Pool } from '../domain/pool';
+import type { StripParameter } from '../domain/strip';
+import { PARAM_LABEL_HE } from '../domain/strip';
+import { getTargetRange } from '../config/targetRanges';
 import type { SavedHistoryRecord } from '../state/ResultsHistoryContext';
 import { getPublicScanImageUrl, uploadScanImage } from './scanImageStorage';
 
 type TestRow = Database['public']['Tables']['tests']['Row'];
 type TestUpsert = Database['public']['Tables']['tests']['Insert'];
+type TestReadingRow = Database['public']['Tables']['test_readings']['Row'];
 type TestReadingInsert = Database['public']['Tables']['test_readings']['Insert'];
 type TestRecommendationInsert = Database['public']['Tables']['test_recommendations']['Insert'];
 
@@ -124,6 +128,115 @@ function isStripAnalysisResult(value: unknown): value is StripAnalysisResult {
       Array.isArray((value as { parameters?: unknown }).parameters) &&
       'overallStatus' in value,
   );
+}
+
+function isScanResultParameter(value: unknown): value is ScanResultParameter {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      'key' in value &&
+      'value' in value &&
+      'idealRange' in value &&
+      'status' in value,
+  );
+}
+
+function isStripParameter(value: string): value is StripParameter {
+  return value in PARAM_LABEL_HE;
+}
+
+function statusFromReading(status?: string | null, value?: number | null, min?: number | null, max?: number | null): ScanParameterStatusKind {
+  if (status === 'ok' || status === 'low' || status === 'high') return status;
+  if (typeof value === 'number' && typeof min === 'number' && value < min) return 'low';
+  if (typeof value === 'number' && typeof max === 'number' && value > max) return 'high';
+  return 'ok';
+}
+
+function statusMeta(kind: ScanParameterStatusKind) {
+  if (kind === 'low') return { label: 'נמוך', tone: 'warning' as const };
+  if (kind === 'high') return { label: 'גבוה', tone: 'warning' as const };
+  return { label: 'תקין', tone: 'success' as const };
+}
+
+function progressFor(value: number, min: number, max: number) {
+  if (max <= min) return 50;
+  return Math.max(0, Math.min(100, Math.round(((value - min) / (max - min)) * 100)));
+}
+
+function mapReadingToParameter(row: TestReadingRow): ScanResultParameter | undefined {
+  if (isScanResultParameter(row.raw)) return row.raw;
+  if (!isStripParameter(row.parameter_key) || row.value == null) return undefined;
+
+  const fallbackMeta = PARAM_LABEL_HE[row.parameter_key];
+  const targetRange = getTargetRange(row.parameter_key);
+  const min = row.min_value ?? targetRange?.min ?? row.value;
+  const max = row.max_value ?? targetRange?.max ?? row.value;
+  const status = statusFromReading(row.status, row.value, min, max);
+
+  return {
+    key: row.parameter_key,
+    name: row.label ?? fallbackMeta.labelHe,
+    value: row.value,
+    unit: row.unit ?? fallbackMeta.unit,
+    idealRange: {
+      min,
+      max,
+      label: `${min} - ${max}`,
+    },
+    status: {
+      kind: status,
+      ...statusMeta(status),
+    },
+    recommendation: status === 'ok' ? 'הערך בטווח התקין.' : 'נדרשת התאמה לפי המלצת הטיפול.',
+    progress: progressFor(row.value, min, max),
+  };
+}
+
+async function rebuildAnalysisResultFromReadings(record: SavedHistoryRecord, row: TestRow): Promise<SavedHistoryRecord> {
+  const { data, error } = await getSupabaseClient()
+    .from('test_readings')
+    .select('*')
+    .eq('account_id', row.account_id)
+    .eq('test_id', row.id)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+
+  const parameters = (data ?? [])
+    .map((reading) => mapReadingToParameter(reading as TestReadingRow))
+    .filter((parameter): parameter is ScanResultParameter => Boolean(parameter));
+
+  if (!parameters.length) return record;
+
+  const hasWarning = parameters.some((parameter) => parameter.status.kind !== 'ok');
+  const analysisResult: StripAnalysisResult = {
+    id: row.id,
+    analyzedAt: record.testedAt,
+    brandId: record.brandId,
+    imageUri: record.imageUri,
+    imagePath: record.imagePath,
+    imageUrl: record.imageUrl,
+    poolId: record.poolId,
+    source: row.source === 'ai' || row.source === 'cv' || row.source === 'remote-v1' || row.source === 'remote-mock' ? row.source : undefined,
+    provider: row.provider === 'gemini' ? 'gemini' : undefined,
+    model: row.model ?? undefined,
+    confidence: row.confidence ?? undefined,
+    lowConfidence: row.low_confidence,
+    isValidStrip: true,
+    failureReason: 'none',
+    overallStatus: {
+      label: row.overall_status ?? (hasWarning ? 'נדרש תיקון קל' : 'המים מאוזנים'),
+      tone: hasWarning ? 'warning' : 'success',
+    },
+    parameters,
+    recommendation: row.recommendation ?? (hasWarning ? 'נדרשת התאמה לפי תוצאות הבדיקה.' : 'המים מאוזנים.'),
+  };
+
+  return {
+    ...record,
+    analysisResult,
+    dosageResult: record.dosageResult ?? analysisResult.dosage,
+  };
 }
 
 export function mapCloudTestToLocal(row: TestRow, pools: Pool[]): SavedHistoryRecord {
@@ -342,7 +455,11 @@ export async function fetchCloudTestById(testId: string, accountId: string, pool
     .maybeSingle();
 
   if (error) throw error;
-  return data ? mapCloudTestToLocal(data as TestRow, pools) : undefined;
+  if (!data) return undefined;
+
+  const row = data as TestRow;
+  const record = mapCloudTestToLocal(row, pools);
+  return record.analysisResult ? record : rebuildAnalysisResultFromReadings(record, row);
 }
 
 export async function upsertTestToCloud(
