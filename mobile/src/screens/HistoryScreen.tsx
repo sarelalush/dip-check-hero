@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
 import { HistoryItem } from '../components/HistoryItem';
@@ -12,9 +13,15 @@ type Props = NativeStackScreenProps<RootStackParamList, 'History'>;
 type HistoryFilter = 'all' | 'balanced' | 'needsCare';
 
 export function HistoryScreen({ navigation }: Props) {
-  const { historyRecords, syncError, syncing } = useResultsHistory();
+  const { historyRecords, refreshHistory, syncError, syncing } = useResultsHistory();
   const [filterOpen, setFilterOpen] = useState(false);
   const [filter, setFilter] = useState<HistoryFilter>('all');
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshHistory();
+    }, [refreshHistory]),
+  );
 
   const allHistoryItems = useMemo(
     () =>

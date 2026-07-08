@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { StatusTone } from '../components/StatusBadge';
 import { getBrand } from '../config/stripBrands';
 import type { DosageCalculationResult } from '../domain/dosage';
@@ -40,6 +40,7 @@ interface ResultsHistoryContextValue {
   syncError?: string;
   getHistoryRecord: (testId: string) => SavedHistoryRecord | undefined;
   getPoolHistoryRecords: (poolId: string, limit?: number) => SavedHistoryRecord[];
+  refreshHistory: () => Promise<void>;
   saveAnalysisResult: (analysisResult: StripAnalysisResult) => SavedHistoryRecord;
 }
 
@@ -119,6 +120,12 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | undefined>();
+  const historyRecordsRef = useRef<SavedHistoryRecord[]>([]);
+  const syncInFlightRef = useRef(false);
+
+  useEffect(() => {
+    historyRecordsRef.current = historyRecords;
+  }, [historyRecords]);
 
   useEffect(() => {
     let isMounted = true;
@@ -163,39 +170,35 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
     persistHistoryRecords();
   }, [hydrated, historyRecords]);
 
-  useEffect(() => {
-    if (!hydrated || authLoading || !user || !accountId) return;
+  const syncAuthenticatedHistory = useCallback(
+    async (localRecords: SavedHistoryRecord[]) => {
+      if (!hydrated || authLoading || !user || !accountId || syncInFlightRef.current) return;
 
-    let isMounted = true;
-    const currentUser = user;
-    const currentAccountId = accountId;
-    const currentPools = pools;
-
-    async function syncAuthenticatedHistory() {
+      syncInFlightRef.current = true;
       setSyncing(true);
       setSyncError(undefined);
 
       try {
-        const result = await syncTestsWithCloud(historyRecords, currentUser, currentAccountId, currentPools);
-        if (!isMounted) return;
+        const result = await syncTestsWithCloud(localRecords, user, accountId, pools);
         setHistoryRecords(result.records.map(normalizeHistoryRecord));
       } catch (error) {
-        if (!isMounted) return;
         console.warn('Failed to sync history with cloud', error);
         setSyncError('סנכרון היסטוריית הבדיקות לענן נכשל. הנתונים המקומיים נשמרו.');
       } finally {
-        if (isMounted) {
-          setSyncing(false);
-        }
+        syncInFlightRef.current = false;
+        setSyncing(false);
       }
-    }
+    },
+    [accountId, authLoading, hydrated, pools, user],
+  );
 
-    syncAuthenticatedHistory();
+  useEffect(() => {
+    syncAuthenticatedHistory(historyRecords);
+  }, [accountId, authLoading, hydrated, pools, syncAuthenticatedHistory, user?.id]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [accountId, authLoading, hydrated, user?.id, pools]);
+  const refreshHistory = useCallback(async () => {
+    await syncAuthenticatedHistory(historyRecordsRef.current);
+  }, [syncAuthenticatedHistory]);
 
   async function syncRecordToCloud(record: SavedHistoryRecord) {
     if (!user || !accountId) return;
@@ -234,6 +237,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
           .sort((a, b) => b.testedAt - a.testedAt)
           .slice(0, limit);
       },
+      refreshHistory,
       saveAnalysisResult(analysisResult) {
         const pool = analysisResult.poolId ? getPool(analysisResult.poolId) : undefined;
         const createdAt = Date.now();
@@ -276,7 +280,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         return record;
       },
     }),
-    [accountId, getPool, historyRecords, hydrated, pools, syncError, syncing, user],
+    [accountId, getPool, historyRecords, hydrated, pools, refreshHistory, syncError, syncing, user],
   );
 
   return <ResultsHistoryContext.Provider value={value}>{children}</ResultsHistoryContext.Provider>;

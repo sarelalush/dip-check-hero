@@ -30,7 +30,7 @@ export function AppShell({
 }: AppShellProps) {
   const showDevicePreview = Platform.OS === 'web';
   const insets = useSafeAreaInsets();
-  const bottomInset = showDevicePreview ? 0 : Math.max(insets.bottom, Platform.OS === 'android' ? 18 : 10);
+  const bottomInset = showDevicePreview ? 0 : Math.max(insets.bottom, Platform.OS === 'android' ? 28 : 16);
   const contentBottomPadding = layout.tabHeight + bottomInset + 26;
   const content = (
     <SafeAreaView style={[styles.safe, { paddingBottom: contentBottomPadding }, contentStyle]} edges={['top']}>

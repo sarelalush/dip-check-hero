@@ -26,7 +26,7 @@ const rightTabs: { key: Extract<TabKey, 'pools' | 'home'>; label: string; icon: 
 export function BottomTabBar({ active, navigation }: Props) {
   const startScanFlow = useStartScanFlow(navigation);
   const insets = useSafeAreaInsets();
-  const bottomOffset = Math.max(insets.bottom, Platform.OS === 'android' ? 18 : 10);
+  const bottomOffset = Math.max(insets.bottom, Platform.OS === 'android' ? 28 : 16);
 
   function go(tab: TabKey) {
     if (tab === 'home') navigation.navigate('Home');
