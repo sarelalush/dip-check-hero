@@ -78,8 +78,8 @@ assert(
   'Auth login/signup tabs must keep login on the right and signup on the left in RTL.',
 );
 assert(
-  authScreenShell.indexOf('>הרשמה<') < authScreenShell.indexOf('>התחברות<'),
-  'Auth segmented tabs should render signup before login so row-reverse places login on the right.',
+  authScreenShell.indexOf('>התחברות<') < authScreenShell.indexOf('>הרשמה<'),
+  'Auth segmented tabs should render login before signup so login appears on the right.',
 );
 
 for (const screen of requiredScreens) {

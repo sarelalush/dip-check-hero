@@ -58,19 +58,21 @@ export function AuthScreenShell({
   const body = (
     <>
       <View style={styles.heroSpacer} />
-      <BrandMark />
+      <View style={[styles.heroTextPanel, noScroll && styles.heroTextPanelCompact]}>
+        <BrandMark />
 
-      <View style={[styles.welcomeCopy, noScroll && styles.welcomeCopyCompact]}>
-        <Text style={[styles.title, noScroll && styles.titleCompact]}>{title}</Text>
-        <Text style={[styles.subtitle, noScroll && styles.subtitleCompact]}>{subtitle}</Text>
+        <View style={[styles.welcomeCopy, noScroll && styles.welcomeCopyCompact]}>
+          <Text style={[styles.title, noScroll && styles.titleCompact]}>{title}</Text>
+          <Text style={[styles.subtitle, noScroll && styles.subtitleCompact]}>{subtitle}</Text>
+        </View>
       </View>
 
       <View style={[styles.segmented, noScroll && styles.segmentedCompact]}>
-        <Pressable onPress={onSignupTab} style={[styles.segment, activeMode === 'signup' && styles.segmentActive]}>
-          <Text style={[styles.segmentText, noScroll && styles.segmentTextCompact, activeMode === 'signup' && styles.segmentTextActive]}>הרשמה</Text>
-        </Pressable>
         <Pressable onPress={onLoginTab} style={[styles.segment, activeMode === 'login' && styles.segmentActive]}>
           <Text style={[styles.segmentText, noScroll && styles.segmentTextCompact, activeMode === 'login' && styles.segmentTextActive]}>התחברות</Text>
+        </Pressable>
+        <Pressable onPress={onSignupTab} style={[styles.segment, activeMode === 'signup' && styles.segmentActive]}>
+          <Text style={[styles.segmentText, noScroll && styles.segmentTextCompact, activeMode === 'signup' && styles.segmentTextActive]}>הרשמה</Text>
         </Pressable>
       </View>
 
@@ -242,16 +244,32 @@ const styles = StyleSheet.create({
   webPhone: { position: 'absolute', top: 0, left: 0, borderRadius: 36, overflow: 'hidden' },
   background: { flex: 1 },
   backgroundImage: { width: '100%', height: '100%' },
-  topShade: { position: 'absolute', top: 0, left: 0, right: 0, height: 260, backgroundColor: 'rgba(232,249,255,0.04)' },
-  whiteWash: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 642, backgroundColor: 'rgba(255,255,255,0.78)' },
+  topShade: { position: 'absolute', top: 0, left: 0, right: 0, height: 260, backgroundColor: 'rgba(232,249,255,0.14)' },
+  whiteWash: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 642, backgroundColor: 'rgba(255,255,255,0.8)' },
   content: { minHeight: 812, paddingHorizontal: 30, paddingTop: 262, paddingBottom: 28 },
   fixedContent: { flex: 1, paddingHorizontal: 30, paddingTop: 74, paddingBottom: 10 },
   heroSpacer: { height: 0 },
+  heroTextPanel: {
+    alignItems: 'stretch',
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.42)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
+  },
+  heroTextPanelCompact: {
+    borderRadius: 23,
+    paddingHorizontal: 10,
+    paddingTop: 9,
+    paddingBottom: 11,
+  },
   brandWrap: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 12 },
   brandRow: { flexDirection: 'row', alignItems: 'center' },
-  brandDip: { color: '#0A3D78', fontFamily: typography.fontFamilyExtraBold, fontSize: 38, fontWeight: '900' },
-  brandCheck: { color: colors.primary, fontFamily: typography.fontFamilyExtraBold, fontSize: 38, fontWeight: '900' },
-  brandSub: { marginTop: -8, color: '#153C6E', fontFamily: typography.fontFamilyRegular, fontSize: 19, fontWeight: '700', ...rtl.text },
+  brandDip: { color: '#073669', fontFamily: typography.fontFamilyExtraBold, fontSize: 38, fontWeight: '900', textShadowColor: 'rgba(255,255,255,0.72)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  brandCheck: { color: colors.primary, fontFamily: typography.fontFamilyExtraBold, fontSize: 38, fontWeight: '900', textShadowColor: 'rgba(255,255,255,0.72)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  brandSub: { marginTop: -8, color: '#11345F', fontFamily: typography.fontFamilyRegular, fontSize: 19, fontWeight: '800', textShadowColor: 'rgba(255,255,255,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3, ...rtl.text },
   dropLogo: {
     width: 56,
     height: 66,
@@ -263,11 +281,11 @@ const styles = StyleSheet.create({
     borderWidth: 4,
     borderColor: 'rgba(114,216,233,0.84)',
   },
-  welcomeCopy: { marginTop: 45, alignItems: 'flex-end' },
-  welcomeCopyCompact: { marginTop: 20 },
-  title: { color: '#0A3D78', fontFamily: typography.fontFamilyExtraBold, fontSize: 37, fontWeight: '900', ...rtl.text },
+  welcomeCopy: { marginTop: 34, alignItems: 'flex-end' },
+  welcomeCopyCompact: { marginTop: 15 },
+  title: { color: '#073669', fontFamily: typography.fontFamilyExtraBold, fontSize: 37, fontWeight: '900', textShadowColor: 'rgba(255,255,255,0.88)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 5, ...rtl.text },
   titleCompact: { fontSize: 34 },
-  subtitle: { marginTop: 12, color: '#253447', fontFamily: typography.fontFamilyRegular, fontSize: 18, fontWeight: '600', lineHeight: 27, ...rtl.text },
+  subtitle: { marginTop: 12, color: '#142437', fontFamily: typography.fontFamilyRegular, fontSize: 18, fontWeight: '800', lineHeight: 27, textShadowColor: 'rgba(255,255,255,0.86)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4, ...rtl.text },
   subtitleCompact: { marginTop: 6, fontSize: 16, lineHeight: 23 },
   segmented: {
     marginTop: 30,
