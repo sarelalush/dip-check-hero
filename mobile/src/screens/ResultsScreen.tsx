@@ -184,6 +184,7 @@ export function ResultsScreen({ navigation, route }: Props) {
   const poolId = savedRecord?.poolId ?? (savedTestId ? route.params?.poolId : session.selectedPoolId ?? route.params?.poolId);
   const pool = poolId ? getPool(poolId) : undefined;
   const poolName = savedRecord?.poolName ?? pool?.name ?? FALLBACK_POOL_NAME;
+  const savedRecordAccountId = savedRecord?.accountId;
   const isSavedResult = Boolean(savedTestId);
 
   useEffect(() => {
@@ -206,12 +207,14 @@ export function ResultsScreen({ navigation, route }: Props) {
           } else if (authLoading) {
             setIsAnalyzing(true);
             return;
-          } else if (accountId) {
+          } else if (accountId || savedRecordAccountId) {
             const candidateIds = uniqueIds([savedRecord?.cloudId, savedTestId]);
+            const lookupAccountId = accountId ?? savedRecordAccountId;
             let cloudResult: StripAnalysisResult | null = null;
 
             for (const candidateId of candidateIds) {
-              const fullRecord = await fetchCloudTestById(candidateId, accountId, pools);
+              if (!lookupAccountId) break;
+              const fullRecord = await fetchCloudTestById(candidateId, lookupAccountId, pools);
               if (fullRecord?.analysisResult) {
                 cloudResult = {
                   ...fullRecord.analysisResult,
@@ -344,6 +347,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     pools,
     retryKey,
     savedRecord,
+    savedRecordAccountId,
     savedTestId,
     session.analysisResult,
     session.confirmedImageUri,
