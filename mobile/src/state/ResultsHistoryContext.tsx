@@ -46,6 +46,7 @@ interface ResultsHistoryContextValue {
 
 const ResultsHistoryContext = createContext<ResultsHistoryContextValue | null>(null);
 const HISTORY_STORAGE_KEY = '@aquasense/history-records';
+const HISTORY_STORAGE_LIMIT = 200;
 const FALLBACK_POOL_NAME = 'הבריכה שלי';
 
 function formatDateTime(timestamp: number) {
@@ -104,6 +105,41 @@ function normalizeHistoryRecord(record: SavedHistoryRecord): SavedHistoryRecord 
   };
 }
 
+function recordKey(record: SavedHistoryRecord) {
+  return record.cloudId ?? record.testId ?? record.id;
+}
+
+function recordUpdatedAt(record: SavedHistoryRecord) {
+  return record.updatedAt ?? record.testedAt ?? record.createdAt ?? 0;
+}
+
+function dedupeHistoryRecords(records: SavedHistoryRecord[]) {
+  const unique = new Map<string, SavedHistoryRecord>();
+
+  for (const record of records.map(normalizeHistoryRecord)) {
+    const key = recordKey(record);
+    const existing = unique.get(key);
+
+    if (!existing || recordUpdatedAt(record) >= recordUpdatedAt(existing)) {
+      unique.set(key, record);
+    }
+  }
+
+  return Array.from(unique.values())
+    .sort((a, b) => b.testedAt - a.testedAt)
+    .slice(0, HISTORY_STORAGE_LIMIT);
+}
+
+function compactHistoryRecordForStorage(record: SavedHistoryRecord): SavedHistoryRecord {
+  const normalized = normalizeHistoryRecord(record);
+  const isHeavyTransientUri = normalized.imageUri?.startsWith('data:') || normalized.imageUri?.startsWith('blob:');
+
+  return {
+    ...normalized,
+    imageUri: isHeavyTransientUri ? undefined : normalized.imageUri,
+  };
+}
+
 function poolIdsFor(poolId: string, pools: ReturnType<typeof usePools>['pools']) {
   const pool = pools.find((item) => item.id === poolId || item.cloudId === poolId);
   return new Set([poolId, pool?.id, pool?.cloudId].filter((id): id is string => Boolean(id)));
@@ -137,7 +173,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         if (storedRecords) {
           const parsedRecords = JSON.parse(storedRecords) as SavedHistoryRecord[];
           if (Array.isArray(parsedRecords)) {
-            setHistoryRecords(parsedRecords.map(normalizeHistoryRecord));
+            setHistoryRecords(dedupeHistoryRecords(parsedRecords));
           }
         }
       } catch (error) {
@@ -161,7 +197,8 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
 
     async function persistHistoryRecords() {
       try {
-        await AsyncStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(historyRecords));
+        const compactRecords = dedupeHistoryRecords(historyRecords).map(compactHistoryRecordForStorage);
+        await AsyncStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(compactRecords));
       } catch (error) {
         console.warn('Failed to persist history records to storage', error);
       }
@@ -180,7 +217,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
 
       try {
         const result = await syncTestsWithCloud(localRecords, user, accountId, pools);
-        setHistoryRecords(result.records.map(normalizeHistoryRecord));
+        setHistoryRecords(dedupeHistoryRecords(result.records));
       } catch (error) {
         console.warn('Failed to sync history with cloud', error);
         setSyncError('סנכרון היסטוריית הבדיקות לענן נכשל. הנתונים המקומיים נשמרו.');
@@ -208,11 +245,11 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
       if (!syncedRecord) return;
 
       setHistoryRecords((current) =>
-        current.map((item) =>
+        dedupeHistoryRecords(current.map((item) =>
           item.testId === syncedRecord.testId || item.id === syncedRecord.id || item.cloudId === syncedRecord.cloudId
             ? normalizeHistoryRecord({ ...item, ...syncedRecord })
             : item,
-        ),
+        )),
       );
       setSyncError(undefined);
     } catch (error) {
@@ -274,7 +311,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
           if (current.some((item) => item.testId === record.testId || item.id === record.id || item.cloudId === record.cloudId)) {
             return current;
           }
-          return [record, ...current];
+          return dedupeHistoryRecords([record, ...current]);
         });
         syncRecordToCloud(record);
         return record;

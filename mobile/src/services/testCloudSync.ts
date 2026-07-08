@@ -14,6 +14,12 @@ type TestUpsert = Database['public']['Tables']['tests']['Insert'];
 type TestReadingInsert = Database['public']['Tables']['test_readings']['Insert'];
 type TestRecommendationInsert = Database['public']['Tables']['test_recommendations']['Insert'];
 
+const TEST_HISTORY_LIMIT = 200;
+const FULL_TEST_SELECT =
+  'id,account_id,user_id,pool_id,strip_brand_id,image_path,image_url,analysis_status,source,provider,model,confidence,low_confidence,overall_status,recommendation,raw_result,error_message,is_billable,analyzed_at,created_at,updated_at';
+const SUMMARY_TEST_SELECT =
+  'id,account_id,user_id,pool_id,strip_brand_id,image_path,image_url,analysis_status,source,provider,model,confidence,low_confidence,overall_status,recommendation,error_message,is_billable,analyzed_at,created_at,updated_at';
+
 interface MobileTestResultsPayload {
   source: 'aquasense-mobile';
   schemaVersion: 2;
@@ -281,24 +287,48 @@ async function upsertRecommendationsToCloud(record: SavedHistoryRecord, testId: 
   if (error) throw error;
 }
 
+function describeSupabaseError(error: unknown) {
+  if (!error || typeof error !== 'object') return error;
+  const typed = error as { code?: string; details?: string; hint?: string; message?: string };
+  return {
+    code: typed.code,
+    details: typed.details,
+    hint: typed.hint,
+    message: typed.message,
+  };
+}
+
 export async function fetchCloudTests(accountId: string, pools: Pool[], userId?: string): Promise<SavedHistoryRecord[]> {
   if (!isSupabaseConfigured) return [];
 
-  let query = getSupabaseClient()
+  const fullQuery = getSupabaseClient()
     .from('tests')
-    .select('*')
-    .order('created_at', { ascending: false });
+    .select(FULL_TEST_SELECT)
+    .eq('account_id', accountId)
+    .order('created_at', { ascending: false })
+    .limit(TEST_HISTORY_LIMIT);
 
-  if (userId) {
-    query = query.or(`account_id.eq.${accountId},user_id.eq.${userId}`);
-  } else {
-    query = query.eq('account_id', accountId);
+  const { data, error } = await fullQuery;
+
+  if (!error) {
+    return (data ?? []).map((row) => mapCloudTestToLocal(row as TestRow, pools));
   }
 
-  const { data, error } = await query;
+  console.warn('Failed to fetch full cloud tests; retrying summary query', {
+    accountId,
+    userId,
+    error: describeSupabaseError(error),
+  });
 
-  if (error) throw error;
-  return (data ?? []).map((row) => mapCloudTestToLocal(row, pools));
+  const { data: summaryData, error: summaryError } = await getSupabaseClient()
+    .from('tests')
+    .select(SUMMARY_TEST_SELECT)
+    .eq('account_id', accountId)
+    .order('created_at', { ascending: false })
+    .limit(TEST_HISTORY_LIMIT);
+
+  if (summaryError) throw summaryError;
+  return (summaryData ?? []).map((row) => mapCloudTestToLocal({ raw_result: {}, ...row } as TestRow, pools));
 }
 
 export async function upsertTestToCloud(
