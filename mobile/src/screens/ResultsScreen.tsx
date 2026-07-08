@@ -15,6 +15,7 @@ import type { ScanResultParameter, StripAnalysisResult } from '../domain/scanRes
 import { useStartScanFlow } from '../hooks/useStartScanFlow';
 import { analyzeStripImage, getStripAnalysisConfig, StripAnalysisServiceError } from '../services/stripAnalysisService';
 import { prepareScanImageForRemoteAnalysis } from '../services/scanImageStorage';
+import { fetchCloudTestById } from '../services/testCloudSync';
 import { useAuth } from '../state/AuthContext';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory } from '../state/ResultsHistoryContext';
@@ -132,7 +133,7 @@ function SafetyCard({ text }: { text?: string }) {
 export function ResultsScreen({ navigation, route }: Props) {
   const { accountId, user } = useAuth();
   const { getHistoryRecord, isHydrated, saveAnalysisResult } = useResultsHistory();
-  const { getPool } = usePools();
+  const { getPool, pools } = usePools();
   const {
     ensureTestId,
     resetScanSession,
@@ -177,6 +178,16 @@ export function ResultsScreen({ navigation, route }: Props) {
               ...savedRecord.analysisResult,
               dosage: savedRecord.dosageResult ?? savedRecord.analysisResult.dosage,
             });
+          } else if (accountId) {
+            const fullRecord = await fetchCloudTestById(savedRecord?.cloudId ?? savedTestId, accountId, pools);
+            if (fullRecord?.analysisResult) {
+              setAnalysisResult({
+                ...fullRecord.analysisResult,
+                dosage: fullRecord.dosageResult ?? fullRecord.analysisResult.dosage,
+              });
+            } else {
+              setAnalysisResult(null);
+            }
           } else {
             setAnalysisResult(null);
           }
@@ -295,6 +306,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     isHydrated,
     pool,
     poolId,
+    pools,
     retryKey,
     savedRecord,
     savedTestId,

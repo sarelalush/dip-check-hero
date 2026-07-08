@@ -331,6 +331,20 @@ export async function fetchCloudTests(accountId: string, pools: Pool[], userId?:
   return (summaryData ?? []).map((row) => mapCloudTestToLocal({ raw_result: {}, ...row } as TestRow, pools));
 }
 
+export async function fetchCloudTestById(testId: string, accountId: string, pools: Pool[]): Promise<SavedHistoryRecord | undefined> {
+  if (!isSupabaseConfigured || !isUuid(testId)) return undefined;
+
+  const { data, error } = await getSupabaseClient()
+    .from('tests')
+    .select(FULL_TEST_SELECT)
+    .eq('account_id', accountId)
+    .eq('id', testId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? mapCloudTestToLocal(data as TestRow, pools) : undefined;
+}
+
 export async function upsertTestToCloud(
   record: SavedHistoryRecord,
   userId: string,
