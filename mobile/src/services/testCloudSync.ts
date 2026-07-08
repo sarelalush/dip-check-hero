@@ -14,7 +14,7 @@ type TestUpsert = Database['public']['Tables']['tests']['Insert'];
 type TestReadingInsert = Database['public']['Tables']['test_readings']['Insert'];
 type TestRecommendationInsert = Database['public']['Tables']['test_recommendations']['Insert'];
 
-const TEST_HISTORY_LIMIT = 200;
+const TEST_HISTORY_LIMIT = 15;
 const FULL_TEST_SELECT =
   'id,account_id,user_id,pool_id,strip_brand_id,image_path,image_url,analysis_status,source,provider,model,confidence,low_confidence,overall_status,recommendation,raw_result,error_message,is_billable,analyzed_at,created_at,updated_at';
 const SUMMARY_TEST_SELECT =

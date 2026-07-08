@@ -46,7 +46,7 @@ interface ResultsHistoryContextValue {
 
 const ResultsHistoryContext = createContext<ResultsHistoryContextValue | null>(null);
 const HISTORY_STORAGE_KEY = '@aquasense/history-records';
-const HISTORY_STORAGE_LIMIT = 200;
+const HISTORY_STORAGE_LIMIT = 15;
 const FALLBACK_POOL_NAME = 'הבריכה שלי';
 
 function formatDateTime(timestamp: number) {
