@@ -12,7 +12,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'History'>;
 type HistoryFilter = 'all' | 'balanced' | 'needsCare';
 
 export function HistoryScreen({ navigation }: Props) {
-  const { historyRecords } = useResultsHistory();
+  const { historyRecords, syncError, syncing } = useResultsHistory();
   const [filterOpen, setFilterOpen] = useState(false);
   const [filter, setFilter] = useState<HistoryFilter>('all');
 
@@ -56,6 +56,18 @@ export function HistoryScreen({ navigation }: Props) {
           <FilterChip label="הכל" selected={filter === 'all'} onPress={() => setFilter('all')} />
           <FilterChip label="מים מאוזנים" selected={filter === 'balanced'} onPress={() => setFilter('balanced')} />
           <FilterChip label="נדרש תיקון" selected={filter === 'needsCare'} onPress={() => setFilter('needsCare')} />
+        </View>
+      ) : null}
+
+      {syncError ? (
+        <View style={styles.syncNotice}>
+          <Text style={styles.syncNoticeTitle}>ההיסטוריה המקומית זמינה</Text>
+          <Text style={styles.syncNoticeText}>{syncError}</Text>
+        </View>
+      ) : syncing ? (
+        <View style={styles.syncNotice}>
+          <Text style={styles.syncNoticeTitle}>מסנכרן היסטוריה...</Text>
+          <Text style={styles.syncNoticeText}>בודקים אם יש בדיקות שמורות בענן.</Text>
         </View>
       ) : null}
 
@@ -141,6 +153,32 @@ const styles = StyleSheet.create({
     marginTop: 14,
     flexDirection: 'row-reverse',
     gap: 8,
+  },
+  syncNotice: {
+    marginTop: 14,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    ...shadows.soft,
+  },
+  syncNoticeTitle: {
+    color: colors.text,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 13,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  syncNoticeText: {
+    marginTop: 4,
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 11,
+    fontWeight: '800',
+    lineHeight: 17,
+    ...rtl.text,
   },
   filterChip: {
     flex: 1,

@@ -87,6 +87,15 @@ function logAnalysisDebug(message: string, details?: Record<string, unknown>) {
   }
 }
 
+function describeInvokeFailure(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message) return message;
+  }
+  return undefined;
+}
+
 function isDirectRemoteImageCandidate(uri?: string) {
   return Boolean(uri && (uri.startsWith('data:image/') || /^https?:\/\//i.test(uri)));
 }
@@ -262,6 +271,16 @@ async function analyzeStripImageRemote(
 
   if (error) {
     const errorPayload = await readFunctionInvokeErrorPayload(error);
+    const invokeFailure = describeInvokeFailure(error);
+    console.warn('Remote strip analysis function failed', {
+      functionName: config.remoteFunctionName,
+      hasImagePath: Boolean(imagePath),
+      hasImageUrl: Boolean(imageUrl),
+      hasDirectImageUri: hasRemoteReadableImageUri,
+      message: invokeFailure,
+      testId,
+    });
+
     if (isRemoteAnalysisErrorResponse(errorPayload)) {
       throw new StripAnalysisServiceError(
         errorPayload.code === 'invalid_strip' ? 'invalid_strip' : 'unavailable',
@@ -269,7 +288,12 @@ async function analyzeStripImageRemote(
       );
     }
 
-    throw new StripAnalysisServiceError('unavailable', 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה דקות.');
+    throw new StripAnalysisServiceError(
+      'unavailable',
+      invokeFailure
+        ? `שירות הניתוח אינו זמין כרגע. פרטי תקלה: ${invokeFailure}`
+        : 'שירות הניתוח אינו זמין כרגע. בדקו חיבור אינטרנט ונסו שוב בעוד כמה דקות.',
+    );
   }
 
   if (isRemoteAnalysisErrorResponse(data)) {

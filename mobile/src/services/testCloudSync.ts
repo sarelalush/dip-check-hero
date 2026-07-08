@@ -281,14 +281,21 @@ async function upsertRecommendationsToCloud(record: SavedHistoryRecord, testId: 
   if (error) throw error;
 }
 
-export async function fetchCloudTests(accountId: string, pools: Pool[]): Promise<SavedHistoryRecord[]> {
+export async function fetchCloudTests(accountId: string, pools: Pool[], userId?: string): Promise<SavedHistoryRecord[]> {
   if (!isSupabaseConfigured) return [];
 
-  const { data, error } = await getSupabaseClient()
+  let query = getSupabaseClient()
     .from('tests')
     .select('*')
-    .eq('account_id', accountId)
     .order('created_at', { ascending: false });
+
+  if (userId) {
+    query = query.or(`account_id.eq.${accountId},user_id.eq.${userId}`);
+  } else {
+    query = query.eq('account_id', accountId);
+  }
+
+  const { data, error } = await query;
 
   if (error) throw error;
   return (data ?? []).map((row) => mapCloudTestToLocal(row, pools));
@@ -396,7 +403,7 @@ export async function syncTestsWithCloud(
     return { records: localRecords, pushedCount: 0, pulledCount: 0 };
   }
 
-  const remoteRecords = await fetchCloudTests(accountId, pools);
+  const remoteRecords = await fetchCloudTests(accountId, pools, user.id);
   const remoteByCloudId = new Map(remoteRecords.map((record) => [record.cloudId ?? record.testId, record]));
   const merged: SavedHistoryRecord[] = [];
   let pushedCount = 0;
