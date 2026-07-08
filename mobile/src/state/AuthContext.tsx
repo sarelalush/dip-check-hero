@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Platform } from 'react-native';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as QueryParams from 'expo-auth-session/build/QueryParams';
 import * as Linking from 'expo-linking';
@@ -45,6 +46,10 @@ function toHebrewAuthError(message: string) {
 }
 
 function getOAuthRedirectTo() {
+  if (Platform.OS !== 'web') {
+    return 'aquasense://auth/callback';
+  }
+
   return makeRedirectUri({
     scheme: 'aquasense',
     path: 'auth/callback',
@@ -52,6 +57,10 @@ function getOAuthRedirectTo() {
 }
 
 function getPasswordResetRedirectTo() {
+  if (Platform.OS !== 'web') {
+    return 'aquasense://auth/reset-password';
+  }
+
   return makeRedirectUri({
     scheme: 'aquasense',
     path: 'auth/reset-password',
