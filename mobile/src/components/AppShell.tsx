@@ -31,9 +31,10 @@ export function AppShell({
   const showDevicePreview = Platform.OS === 'web';
   const insets = useSafeAreaInsets();
   const bottomInset = showDevicePreview ? 0 : Math.max(insets.bottom, Platform.OS === 'android' ? 28 : 16);
+  const topContentPadding = showDevicePreview ? 12 : Math.max(insets.top + 12, Platform.OS === 'android' ? 38 : 32);
   const contentBottomPadding = layout.tabHeight + bottomInset + 26;
   const content = (
-    <SafeAreaView style={[styles.safe, { paddingBottom: contentBottomPadding }, contentStyle]} edges={['top']}>
+    <SafeAreaView style={[styles.safe, contentStyle, { paddingTop: topContentPadding, paddingBottom: contentBottomPadding }]} edges={[]}>
       {children}
     </SafeAreaView>
   );
@@ -44,7 +45,14 @@ export function AppShell({
       {showDevicePreview ? <DeviceStatusBar light={waterMode === 'full'} /> : null}
       {scroll ? (
         <SafeAreaView style={styles.safeScroll} edges={[]}>
-          <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomPadding }, contentStyle]} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            contentContainerStyle={[
+              styles.scrollContent,
+              contentStyle,
+              { paddingTop: topContentPadding, paddingBottom: contentBottomPadding },
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
             {children}
           </ScrollView>
         </SafeAreaView>
