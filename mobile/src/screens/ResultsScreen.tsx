@@ -350,21 +350,6 @@ export function ResultsScreen({ navigation, route }: Props) {
     startScanFlow(poolId);
   }
 
-  if (savedTestId && isHydrated && !analysisResult) {
-    return (
-      <AppShell activeTab="history" navigation={navigation}>
-        <View style={styles.emptyHeader}>
-          <Text style={styles.title}>תוצאות הבדיקה</Text>
-          <Text style={styles.subtitle}>בדיקה לא נמצאה</Text>
-        </View>
-        <Card compact style={styles.messageCard}>
-          <Text style={styles.messageTitle}>אין תוצאה שמורה</Text>
-          <Text style={styles.messageText}>ייתכן שהרשומה נמחקה או שעדיין לא נשמרה מקומית.</Text>
-        </Card>
-      </AppShell>
-    );
-  }
-
   if (!savedTestId && !inputImageUri && !analysisResult) {
     return (
       <AppShell activeTab="scan" navigation={navigation}>
@@ -405,6 +390,28 @@ export function ResultsScreen({ navigation, route }: Props) {
     );
   }
 
+  if (isAnalyzing || !isHydrated) {
+    return (
+      <AppShell activeTab={isSavedResult ? 'history' : 'scan'} navigation={navigation}>
+        <View style={styles.emptyHeader}>
+          <Text style={styles.title}>תוצאות הבדיקה</Text>
+          <Text style={styles.subtitle}>{isSavedResult ? 'טוען בדיקה שמורה...' : 'מנתח את תמונת הסטיק...'}</Text>
+        </View>
+        <Card compact style={styles.analyzingCard}>
+          <View style={styles.analyzingIcon}>
+            <ActivityIndicator color={colors.primaryDark} size="small" />
+          </View>
+          <View style={styles.analyzingCopy}>
+            <Text style={styles.messageTitle}>{isSavedResult ? 'פותח בדיקה מההיסטוריה' : 'ניתוח בדיקה בפעולה'}</Text>
+            <Text style={styles.messageText}>
+              {isSavedResult ? 'אנחנו טוענים את פרטי הבדיקה השמורה מהענן.' : 'אנחנו מנתחים את תמונת הסטיק ומכינים את תוצאות הבדיקה.'}
+            </Text>
+          </View>
+        </Card>
+      </AppShell>
+    );
+  }
+
   if (analysisResult && isInvalidStripResult(analysisResult)) {
     return (
       <AppShell activeTab="scan" navigation={navigation}>
@@ -431,20 +438,35 @@ export function ResultsScreen({ navigation, route }: Props) {
     );
   }
 
-  if (isAnalyzing || !analysisResult) {
+  if (savedTestId && !analysisResult) {
+    return (
+      <AppShell activeTab="history" navigation={navigation}>
+        <View style={styles.emptyHeader}>
+          <Text style={styles.title}>תוצאות הבדיקה</Text>
+          <Text style={styles.subtitle}>בדיקה לא נמצאה</Text>
+        </View>
+        <Card compact style={styles.messageCard}>
+          <Text style={styles.messageTitle}>אין תוצאה שמורה</Text>
+          <Text style={styles.messageText}>ייתכן שהרשומה נמחקה או שעדיין לא נשמרה מקומית.</Text>
+        </Card>
+      </AppShell>
+    );
+  }
+
+  if (!analysisResult) {
     return (
       <AppShell activeTab={isSavedResult ? 'history' : 'scan'} navigation={navigation}>
         <View style={styles.emptyHeader}>
           <Text style={styles.title}>תוצאות הבדיקה</Text>
-          <Text style={styles.subtitle}>מנתח את תמונת הסטיק...</Text>
+          <Text style={styles.subtitle}>טוען תוצאות...</Text>
         </View>
         <Card compact style={styles.analyzingCard}>
           <View style={styles.analyzingIcon}>
             <ActivityIndicator color={colors.primaryDark} size="small" />
           </View>
           <View style={styles.analyzingCopy}>
-            <Text style={styles.messageTitle}>ניתוח בדיקה בפעולה</Text>
-            <Text style={styles.messageText}>אנחנו מנתחים את תמונת הסטיק ומכינים את תוצאות הבדיקה.</Text>
+            <Text style={styles.messageTitle}>מכינים את התוצאה</Text>
+            <Text style={styles.messageText}>אנחנו טוענים את פרטי הבדיקה.</Text>
           </View>
         </Card>
       </AppShell>
