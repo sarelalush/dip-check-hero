@@ -414,6 +414,15 @@ function describeSupabaseError(error: unknown) {
 export async function fetchCloudTests(accountId: string, pools: Pool[], userId?: string): Promise<SavedHistoryRecord[]> {
   if (!isSupabaseConfigured) return [];
 
+  async function mapRows(rows: TestRow[]) {
+    return Promise.all(
+      rows.map(async (row) => {
+        const record = mapCloudTestToLocal(row, pools);
+        return record.analysisResult ? record : rebuildAnalysisResultFromReadings(record, row);
+      }),
+    );
+  }
+
   const fullQuery = getSupabaseClient()
     .from('tests')
     .select(FULL_TEST_SELECT)
@@ -424,7 +433,7 @@ export async function fetchCloudTests(accountId: string, pools: Pool[], userId?:
   const { data, error } = await fullQuery;
 
   if (!error) {
-    return (data ?? []).map((row) => mapCloudTestToLocal(row as TestRow, pools));
+    return mapRows((data ?? []) as TestRow[]);
   }
 
   console.warn('Failed to fetch full cloud tests; retrying summary query', {
@@ -441,7 +450,7 @@ export async function fetchCloudTests(accountId: string, pools: Pool[], userId?:
     .limit(TEST_HISTORY_LIMIT);
 
   if (summaryError) throw summaryError;
-  return (summaryData ?? []).map((row) => mapCloudTestToLocal({ raw_result: {}, ...row } as TestRow, pools));
+  return mapRows((summaryData ?? []).map((row) => ({ raw_result: {}, ...row }) as TestRow));
 }
 
 export async function fetchCloudTestById(testId: string, accountId: string, pools: Pool[]): Promise<SavedHistoryRecord | undefined> {
@@ -490,6 +499,13 @@ export async function upsertTestToCloud(
   pools: Pool[],
 ): Promise<SavedHistoryRecord | undefined> {
   if (!isSupabaseConfigured) return record;
+  if (!record.analysisResult) {
+    console.warn('Skipping cloud test upsert because the local record has no analysis result', {
+      cloudId: record.cloudId,
+      testId: record.testId,
+    });
+    return record;
+  }
 
   const cloudId = getTestCloudId(record);
   let recordForCloud: SavedHistoryRecord = {
@@ -607,7 +623,7 @@ export async function syncTestsWithCloud(
     const localUpdatedAt = localRecord.updatedAt ?? localRecord.testedAt ?? localRecord.createdAt;
     const remoteUpdatedAt = remoteRecord.updatedAt ?? remoteRecord.testedAt ?? remoteRecord.createdAt;
 
-    if (localUpdatedAt >= remoteUpdatedAt) {
+    if (localUpdatedAt >= remoteUpdatedAt && localRecord.analysisResult) {
       const pushed = await upsertTestToCloud({ ...localRecord, cloudId: remoteRecord.cloudId ?? remoteRecord.testId }, user.id, accountId, pools);
       if (pushed) {
         pushedCount += 1;
