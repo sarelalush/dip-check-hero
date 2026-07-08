@@ -138,12 +138,12 @@ const styles = StyleSheet.create({
   },
   waveOne: {
     position: 'absolute',
-    top: 68,
+    top: 118,
     right: -72,
     width: 230,
     height: 230,
     borderRadius: 115,
-    backgroundColor: 'rgba(255,255,255,0.34)',
+    backgroundColor: 'rgba(255,255,255,0.24)',
   },
   waveTwo: {
     position: 'absolute',
