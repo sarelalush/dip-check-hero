@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as QueryParams from 'expo-auth-session/build/QueryParams';
+import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import type { Session, User } from '@supabase/supabase-js';
 import { getSupabaseClient, isSupabaseConfigured, supabase, supabaseConfigMessage } from '../integrations/supabase/client';
@@ -57,6 +58,11 @@ function getPasswordResetRedirectTo() {
   });
 }
 
+function isOAuthCallbackUrl(url?: string | null) {
+  if (!url) return false;
+  return url.includes('auth/callback') && (url.includes('access_token=') || url.includes('code='));
+}
+
 async function setSessionFromOAuthUrl(url: string) {
   const { params, errorCode } = QueryParams.getQueryParams(url);
 
@@ -94,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [accountId, setAccountId] = useState<string | undefined>();
   const [loading, setLoading] = useState(true);
+  const handledOAuthUrls = useRef(new Set<string>());
 
   async function hydrateSession(nextSession: Session | null) {
     setSession(nextSession);
@@ -120,12 +127,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return undefined;
     }
 
-    const { data: subscription } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const client = supabase;
+
+    async function handleOAuthCallback(url?: string | null) {
+      if (!isOAuthCallbackUrl(url) || typeof url !== 'string' || handledOAuthUrls.current.has(url)) {
+        return false;
+      }
+
+      handledOAuthUrls.current.add(url);
+      await setSessionFromOAuthUrl(url);
+      return true;
+    }
+
+    const urlSubscription = Linking.addEventListener('url', ({ url }) => {
+      handleOAuthCallback(url).catch((error) => {
+        console.warn('Failed to complete OAuth callback', error);
+      });
+    });
+
+    const { data: subscription } = client.auth.onAuthStateChange((_event, nextSession) => {
       hydrateSession(nextSession);
     });
 
-    supabase.auth
-      .getSession()
+    Promise.resolve()
+      .then(async () => {
+        const initialUrl = await Linking.getInitialURL();
+        await handleOAuthCallback(initialUrl);
+        return client.auth.getSession();
+      })
       .then(({ data }) => {
         return hydrateSession(data.session);
       })
@@ -136,7 +165,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .finally(() => setLoading(false));
 
-    return () => subscription.subscription.unsubscribe();
+    return () => {
+      urlSubscription.remove();
+      subscription.subscription.unsubscribe();
+    };
   }, []);
 
   const value = useMemo<AuthContextValue>(

@@ -1,20 +1,59 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  cancelPoolReminderNotification,
+  schedulePoolReminderNotification,
+  type ReminderNotificationFrequency,
+} from '../services/notificationService';
 
-export type ReminderFrequency = 'off' | 'weekly' | 'biweekly' | 'monthly';
+export type ReminderFrequency = ReminderNotificationFrequency;
+
+interface ReminderEntry {
+  error?: string;
+  frequency: ReminderFrequency;
+  notificationId?: string;
+  updatedAt: number;
+}
 
 interface ReminderContextValue {
   hydrated: boolean;
   getReminder: (poolId: string) => ReminderFrequency;
-  setReminder: (poolId: string, frequency: ReminderFrequency) => void;
+  getReminderError: (poolId: string) => string | undefined;
+  setReminder: (poolId: string, frequency: ReminderFrequency, poolName?: string) => Promise<void>;
 }
 
 const ReminderContext = createContext<ReminderContextValue | null>(null);
 const REMINDER_STORAGE_KEY = '@aquasense/pool-reminders';
 
+function normalizeStoredReminders(stored: string) {
+  const parsed = JSON.parse(stored) as Record<string, ReminderFrequency | Partial<ReminderEntry>>;
+  const normalized: Record<string, ReminderEntry> = {};
+
+  for (const [poolId, value] of Object.entries(parsed)) {
+    if (typeof value === 'string') {
+      normalized[poolId] = {
+        frequency: value,
+        updatedAt: Date.now(),
+      };
+      continue;
+    }
+
+    if (value && typeof value === 'object' && value.frequency) {
+      normalized[poolId] = {
+        error: value.error,
+        frequency: value.frequency,
+        notificationId: value.notificationId,
+        updatedAt: typeof value.updatedAt === 'number' ? value.updatedAt : Date.now(),
+      };
+    }
+  }
+
+  return normalized;
+}
+
 export function ReminderProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
-  const [reminders, setReminders] = useState<Record<string, ReminderFrequency>>({});
+  const [reminders, setReminders] = useState<Record<string, ReminderEntry>>({});
 
   useEffect(() => {
     let mounted = true;
@@ -24,10 +63,7 @@ export function ReminderProvider({ children }: { children: ReactNode }) {
         const stored = await AsyncStorage.getItem(REMINDER_STORAGE_KEY);
         if (!mounted) return;
         if (stored) {
-          const parsed = JSON.parse(stored) as Record<string, ReminderFrequency>;
-          if (parsed && typeof parsed === 'object') {
-            setReminders(parsed);
-          }
+          setReminders(normalizeStoredReminders(stored));
         }
       } catch (error) {
         console.warn('Failed to restore pool reminders', error);
@@ -55,12 +91,40 @@ export function ReminderProvider({ children }: { children: ReactNode }) {
     () => ({
       hydrated,
       getReminder(poolId) {
-        return reminders[poolId] ?? 'off';
+        return reminders[poolId]?.frequency ?? 'off';
       },
-      setReminder(poolId, frequency) {
+      getReminderError(poolId) {
+        return reminders[poolId]?.error;
+      },
+      async setReminder(poolId, frequency, poolName) {
+        const current = reminders[poolId];
+        await cancelPoolReminderNotification(current?.notificationId);
+
+        if (frequency === 'off') {
+          setReminders((state) => ({
+            ...state,
+            [poolId]: {
+              frequency,
+              updatedAt: Date.now(),
+            },
+          }));
+          return;
+        }
+
+        const result = await schedulePoolReminderNotification({
+          frequency,
+          poolId,
+          poolName: poolName?.trim() || 'הבריכה שלך',
+        });
+
         setReminders((current) => ({
           ...current,
-          [poolId]: frequency,
+          [poolId]: {
+            error: result.error,
+            frequency,
+            notificationId: result.notificationId,
+            updatedAt: Date.now(),
+          },
         }));
       },
     }),

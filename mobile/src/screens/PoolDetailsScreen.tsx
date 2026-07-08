@@ -22,9 +22,10 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
   const { deletePool, getPool } = usePools();
   const { getPoolHistoryRecords } = useResultsHistory();
   const { startScanSession } = useScanSession();
-  const { getReminder, setReminder } = useReminders();
+  const { getReminder, getReminderError, setReminder } = useReminders();
   const pool = getPool(route.params.poolId);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [reminderBusy, setReminderBusy] = useState(false);
   const recentTests = pool ? getPoolHistoryRecords(pool.id, 3) : [];
   const poolName = pool?.name ?? 'בריכה ללא שם';
   const poolVolume = pool ? `${pool.volumeLiters.toLocaleString('he-IL')} ליטר` : 'לא הוגדר נפח';
@@ -34,6 +35,7 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
   const tabletsLabel = pool?.tabletsActive ? `${pool.tabletsCount ?? 1} טבליות · ${pool.tabletWeightGrams ?? 200} גרם` : 'אין טבליות פעילות';
   const coverUri = pool?.imageUri ?? pool?.imageUrl;
   const reminder = pool ? getReminder(pool.id) : 'off';
+  const reminderError = pool ? getReminderError(pool.id) : undefined;
 
   function handleDelete() {
     if (!pool) return;
@@ -53,6 +55,17 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
   function startPoolScan() {
     startScanSession({ brandId: pool?.stripBrandId, poolId: route.params.poolId });
     navigation.navigate('SelectStrip', { poolId: route.params.poolId });
+  }
+
+  async function handleReminderChange(frequency: ReminderFrequency) {
+    if (!pool || reminderBusy) return;
+
+    setReminderBusy(true);
+    try {
+      await setReminder(pool.id, frequency, pool.name);
+    } finally {
+      setReminderBusy(false);
+    }
   }
 
   return (
@@ -106,14 +119,25 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
             {REMINDER_OPTIONS.map((option) => (
               <Pressable
                 key={option.value}
-                onPress={() => setReminder(pool.id, option.value)}
-                style={[styles.reminderOption, reminder === option.value && styles.reminderOptionSelected]}
+                disabled={reminderBusy}
+                onPress={() => handleReminderChange(option.value)}
+                style={[
+                  styles.reminderOption,
+                  reminder === option.value && styles.reminderOptionSelected,
+                  reminderBusy && styles.reminderOptionDisabled,
+                ]}
               >
                 <Text style={[styles.reminderOptionText, reminder === option.value && styles.reminderOptionTextSelected]}>{option.label}</Text>
               </Pressable>
             ))}
           </View>
-          <Text style={styles.reminderHint}>התזכורת נשמרת מקומית. התראות אמיתיות יתווספו בשלב הבא.</Text>
+          <Text style={[styles.reminderHint, reminderError && styles.reminderError]}>
+            {reminderError
+              ? reminderError
+              : reminder === 'off'
+                ? 'התזכורות כבויות עבור הבריכה הזו.'
+                : 'התזכורת פעילה ותישלח מהמכשיר לפי התדירות שנבחרה.'}
+          </Text>
         </Card>
       ) : null}
 
@@ -350,6 +374,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
+  reminderOptionDisabled: {
+    opacity: 0.72,
+  },
   reminderOptionText: {
     color: colors.textSoft,
     fontFamily: typography.fontFamilySemiBold,
@@ -367,6 +394,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     lineHeight: 16,
     ...rtl.text,
+  },
+  reminderError: {
+    color: colors.warning,
   },
   recentHeader: {
     flexDirection: 'row-reverse',
