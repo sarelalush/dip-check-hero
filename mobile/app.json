@@ -27,6 +27,7 @@
       }
     },
     "plugins": [
+      "./plugins/withAndroidRtl",
       "expo-font",
       [
         "expo-image-picker",

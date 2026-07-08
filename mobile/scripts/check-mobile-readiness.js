@@ -49,16 +49,20 @@ const theme = read('src/theme.ts');
 const appShell = read('src/components/AppShell.tsx');
 const webPhoneFrame = read('src/components/WebPhoneFrame.tsx');
 const authScreenShell = read('src/components/AuthScreenShell.tsx');
+const androidRtlPlugin = read('plugins/withAndroidRtl.js');
 const supabaseClient = read('src/integrations/supabase/client.ts');
 const stripAnalysisService = read('src/services/stripAnalysisService.ts');
 const packageJson = JSON.parse(read('package.json'));
 
 assert(appJson.expo.android?.package === 'com.stickcheck.app', 'Android package must stay com.stickcheck.app.');
 assert(appJson.expo.extra?.eas?.projectId, 'EAS project id is missing.');
+assert(appJson.expo.plugins?.includes('./plugins/withAndroidRtl'), 'Android RTL config plugin must stay enabled for release builds.');
 
 assert(appTsx.includes('I18nManager.allowRTL(true)'), 'App must enable RTL.');
 assert(appTsx.includes('I18nManager.forceRTL(true)'), 'App must force RTL for Hebrew-first Android builds.');
 assert(appTsx.includes("Platform.OS !== 'web'") && appTsx.includes('I18nManager.swapLeftAndRightInRTL(true)'), 'RTL left/right swapping must be enabled on native and guarded on web.');
+assert(androidRtlPlugin.includes("android:supportsRtl'] = 'true'"), 'Android manifest must support RTL.');
+assert(androidRtlPlugin.includes('I18nUtil.getInstance().forceRTL'), 'Android native startup must force RTL before React Native renders.');
 assert(theme.includes("writingDirection: 'rtl'"), 'Theme RTL helper must include writingDirection rtl.');
 assert(theme.includes("textAlign: 'right'"), 'Theme RTL helper must include right text alignment.');
 assert(
