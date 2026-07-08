@@ -57,15 +57,16 @@ const packageJson = JSON.parse(read('package.json'));
 
 assert(appJson.expo.android?.package === 'com.stickcheck.app', 'Android package must stay com.stickcheck.app.');
 assert(appJson.expo.extra?.eas?.projectId, 'EAS project id is missing.');
-assert(appJson.expo.plugins?.includes('./plugins/withAndroidRtl'), 'Android RTL config plugin must stay enabled for release builds.');
+assert(appJson.expo.plugins?.includes('./plugins/withAndroidRtl'), 'Android layout-direction config plugin must stay enabled for release builds.');
 
-assert(appTsx.includes('I18nManager.allowRTL(true)'), 'App must enable RTL.');
-assert(appTsx.includes('I18nManager.forceRTL(true)'), 'App must force RTL for Hebrew-first Android builds.');
-assert(appTsx.includes("Platform.OS !== 'web'") && appTsx.includes('I18nManager.swapLeftAndRightInRTL(true)'), 'RTL left/right swapping must be enabled on native and guarded on web.');
-assert(indexJs.includes('I18nManager.forceRTL(true)') && indexJs.indexOf('I18nManager.forceRTL(true)') < indexJs.indexOf("require('./App')"), 'RTL must be forced in index.js before App is loaded.');
-assert(appTsx.includes("direction: 'rtl'"), 'Root app wrapper must set direction rtl for Android release builds.');
-assert(androidRtlPlugin.includes("android:supportsRtl'] = 'true'"), 'Android manifest must support RTL.');
-assert(androidRtlPlugin.includes('I18nUtil.getInstance().forceRTL'), 'Android native startup must force RTL before React Native renders.');
+assert(!appTsx.includes('I18nManager.forceRTL(true)'), 'App must not force native RTL mirroring; layout is manually RTL.');
+assert(!indexJs.includes('I18nManager.forceRTL(true)'), 'index.js must not force native RTL mirroring before App is loaded.');
+assert(indexJs.includes('I18nManager.forceRTL(false)') && indexJs.indexOf('I18nManager.forceRTL(false)') < indexJs.indexOf("require('./App')"), 'Native RTL mirroring must be disabled before App is loaded.');
+assert(indexJs.includes('I18nManager.swapLeftAndRightInRTL(false)'), 'Native left/right swapping must stay disabled so Android matches web.');
+assert(!appTsx.includes("direction: 'rtl'"), 'Root app wrapper must not force native/web RTL mirroring.');
+assert(!appTsx.includes("direction: 'ltr'"), 'Root app wrapper should avoid direction style; layout stays structural LTR by default.');
+assert(androidRtlPlugin.includes("android:supportsRtl'] = 'false'"), 'Android manifest must avoid native layout mirroring.');
+assert(!androidRtlPlugin.includes('I18nUtil.getInstance().forceRTL'), 'Android native startup must not force RTL mirroring.');
 assert(theme.includes("writingDirection: 'rtl'"), 'Theme RTL helper must include writingDirection rtl.');
 assert(theme.includes("textAlign: 'right'"), 'Theme RTL helper must include right text alignment.');
 assert(
