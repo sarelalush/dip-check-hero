@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { ImageBackground, Platform, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NavigationProp } from '@react-navigation/native';
 import { BottomTabBar, type TabKey } from './BottomTabBar';
 import { DeviceStatusBar } from './DeviceStatusBar';
@@ -28,8 +29,11 @@ export function AppShell({
   contentStyle,
 }: AppShellProps) {
   const showDevicePreview = Platform.OS === 'web';
+  const insets = useSafeAreaInsets();
+  const bottomInset = showDevicePreview ? 0 : Math.max(insets.bottom, Platform.OS === 'android' ? 18 : 10);
+  const contentBottomPadding = layout.tabHeight + bottomInset + 26;
   const content = (
-    <SafeAreaView style={[styles.safe, contentStyle]} edges={['top']}>
+    <SafeAreaView style={[styles.safe, { paddingBottom: contentBottomPadding }, contentStyle]} edges={['top']}>
       {children}
     </SafeAreaView>
   );
@@ -40,7 +44,7 @@ export function AppShell({
       {showDevicePreview ? <DeviceStatusBar light={waterMode === 'full'} /> : null}
       {scroll ? (
         <SafeAreaView style={styles.safeScroll} edges={[]}>
-          <ScrollView contentContainerStyle={[styles.scrollContent, contentStyle]} showsVerticalScrollIndicator={false}>
+          <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomPadding }, contentStyle]} showsVerticalScrollIndicator={false}>
             {children}
           </ScrollView>
         </SafeAreaView>
@@ -90,7 +94,6 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     paddingHorizontal: 20,
-    paddingBottom: layout.tabHeight + 26,
   },
   safeScroll: {
     flex: 1,
@@ -98,7 +101,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 20,
     paddingTop: 2,
-    paddingBottom: layout.tabHeight + 26,
   },
   topWaterImage: {
     position: 'absolute',

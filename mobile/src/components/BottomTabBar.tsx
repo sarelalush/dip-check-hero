@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NavigationProp } from '@react-navigation/native';
 import { colors, layout, radius, rtl, shadows, typography } from '../theme';
 import { LineIcon, type LineIconName } from './LineIcon';
@@ -24,6 +25,8 @@ const rightTabs: { key: Extract<TabKey, 'pools' | 'home'>; label: string; icon: 
 
 export function BottomTabBar({ active, navigation }: Props) {
   const startScanFlow = useStartScanFlow(navigation);
+  const insets = useSafeAreaInsets();
+  const bottomOffset = Math.max(insets.bottom, Platform.OS === 'android' ? 18 : 10);
 
   function go(tab: TabKey) {
     if (tab === 'home') navigation.navigate('Home');
@@ -35,7 +38,7 @@ export function BottomTabBar({ active, navigation }: Props) {
   }
 
   return (
-    <View pointerEvents="box-none" style={styles.safeArea}>
+    <View pointerEvents="box-none" style={[styles.safeArea, { paddingBottom: bottomOffset }]}>
       <View style={styles.shell}>
         <View style={styles.group}>
           {leftTabs.map((tab) => (
