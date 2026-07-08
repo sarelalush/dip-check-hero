@@ -18,7 +18,7 @@ import { prepareScanImageForRemoteAnalysis } from '../services/scanImageStorage'
 import { fetchCloudTestById } from '../services/testCloudSync';
 import { useAuth } from '../state/AuthContext';
 import { usePools } from '../state/PoolsContext';
-import { useResultsHistory } from '../state/ResultsHistoryContext';
+import { useResultsHistory, type SavedHistoryRecord } from '../state/ResultsHistoryContext';
 import { useScanSession } from '../state/ScanSessionContext';
 import type { RootStackParamList } from '../../App';
 
@@ -116,6 +116,31 @@ function invalidStripMessage(result?: StripAnalysisResult | null) {
   return normalizeRepeatedMessage(result.notes) || 'לא זוהה סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.';
 }
 
+function uniqueIds(ids: Array<string | undefined | null>) {
+  return Array.from(new Set(ids.filter((id): id is string => Boolean(id))));
+}
+
+function fallbackAnalysisResultFromRecord(record: SavedHistoryRecord): StripAnalysisResult {
+  return {
+    id: record.cloudId ?? record.testId,
+    analyzedAt: record.testedAt,
+    brandId: record.brandId,
+    imagePath: record.imagePath,
+    imageUri: record.imageUri,
+    imageUrl: record.imageUrl,
+    poolId: record.poolId,
+    lowConfidence: true,
+    notes: 'הבדיקה נשמרה, אך פירוט המדדים אינו זמין כרגע. נסו לרענן את ההיסטוריה או לפתוח שוב בעוד רגע.',
+    overallStatus: {
+      label: record.status,
+      tone: record.tone,
+    },
+    parameters: [],
+    recommendation: record.resultSummary,
+    dosage: record.dosageResult,
+  };
+}
+
 function SafetyCard({ text }: { text?: string }) {
   return (
     <View style={styles.safetyCard}>
@@ -131,7 +156,7 @@ function SafetyCard({ text }: { text?: string }) {
 }
 
 export function ResultsScreen({ navigation, route }: Props) {
-  const { accountId, user } = useAuth();
+  const { accountId, loading: authLoading, user } = useAuth();
   const { getHistoryRecord, isHydrated, saveAnalysisResult } = useResultsHistory();
   const { getPool, pools } = usePools();
   const {
@@ -178,18 +203,27 @@ export function ResultsScreen({ navigation, route }: Props) {
               ...savedRecord.analysisResult,
               dosage: savedRecord.dosageResult ?? savedRecord.analysisResult.dosage,
             });
+          } else if (authLoading) {
+            setIsAnalyzing(true);
+            return;
           } else if (accountId) {
-            const fullRecord = await fetchCloudTestById(savedRecord?.cloudId ?? savedTestId, accountId, pools);
-            if (fullRecord?.analysisResult) {
-              setAnalysisResult({
-                ...fullRecord.analysisResult,
-                dosage: fullRecord.dosageResult ?? fullRecord.analysisResult.dosage,
-              });
-            } else {
-              setAnalysisResult(null);
+            const candidateIds = uniqueIds([savedRecord?.cloudId, savedTestId]);
+            let cloudResult: StripAnalysisResult | null = null;
+
+            for (const candidateId of candidateIds) {
+              const fullRecord = await fetchCloudTestById(candidateId, accountId, pools);
+              if (fullRecord?.analysisResult) {
+                cloudResult = {
+                  ...fullRecord.analysisResult,
+                  dosage: fullRecord.dosageResult ?? fullRecord.analysisResult.dosage,
+                };
+                break;
+              }
             }
+
+            setAnalysisResult(cloudResult ?? (savedRecord ? fallbackAnalysisResultFromRecord(savedRecord) : null));
           } else {
-            setAnalysisResult(null);
+            setAnalysisResult(savedRecord ? fallbackAnalysisResultFromRecord(savedRecord) : null);
           }
           setIsAnalyzing(false);
           return;
@@ -298,6 +332,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     };
   }, [
     accountId,
+    authLoading,
     ensureTestId,
     inputBrandId,
     inputImagePath,

@@ -454,7 +454,28 @@ export async function fetchCloudTestById(testId: string, accountId: string, pool
     .eq('id', testId)
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) {
+    console.warn('Failed to fetch full cloud test; retrying summary query', {
+      accountId,
+      error: describeSupabaseError(error),
+      testId,
+    });
+
+    const { data: summaryData, error: summaryError } = await getSupabaseClient()
+      .from('tests')
+      .select(SUMMARY_TEST_SELECT)
+      .eq('account_id', accountId)
+      .eq('id', testId)
+      .maybeSingle();
+
+    if (summaryError) throw summaryError;
+    if (!summaryData) return undefined;
+
+    const summaryRow = { raw_result: {}, ...summaryData } as TestRow;
+    const summaryRecord = mapCloudTestToLocal(summaryRow, pools);
+    return rebuildAnalysisResultFromReadings(summaryRecord, summaryRow);
+  }
+
   if (!data) return undefined;
 
   const row = data as TestRow;

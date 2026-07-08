@@ -90,7 +90,7 @@ export function HistoryScreen({ navigation }: Props) {
             <HistoryItem
               key={item.testId}
               date={item.date}
-              onPress={() => navigation.navigate('Results', { testId: item.cloudId ?? item.testId })}
+              onPress={() => navigation.navigate('Results', { testId: item.testId })}
               poolName={item.poolName}
               status={item.status}
               time={item.time}
