@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AuthDivider,
@@ -93,7 +93,9 @@ export function SignupScreen({ navigation }: Props) {
 
       <AuthPrimaryButton compact busy={busy} disabled={googleBusy} label="הרשמה" onPress={submit} />
       <AuthDivider compact />
-      <SocialButton compact disabled={busy || googleBusy} label="המשך עם Apple" mark="apple" onPress={() => setError('הרשמה עם Apple תהיה זמינה בקרוב.')} />
+      {Platform.OS === 'ios' ? (
+        <SocialButton compact disabled={busy || googleBusy} label="המשך עם Apple" mark="apple" onPress={() => setError('הרשמה עם Apple תהיה זמינה בקרוב.')} />
+      ) : null}
       <SocialButton compact disabled={busy || googleBusy} label={googleBusy ? 'מתחבר עם Google...' : 'המשך עם Google'} mark="google" onPress={google} />
     </AuthScreenShell>
   );
