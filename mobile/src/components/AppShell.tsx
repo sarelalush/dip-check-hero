@@ -76,11 +76,6 @@ function WaterBackdrop({ full }: { full: boolean }) {
       <ImageBackground source={APP_POOL_IMAGE} resizeMode="cover" style={[styles.topWaterImage, full && styles.fullWaterImage]}>
         <View style={[styles.topWaterTint, full && styles.fullWaterTint]} />
       </ImageBackground>
-      {!full ? <View style={styles.softWaterWash} /> : null}
-      <View style={styles.waveOne} />
-      <View style={styles.waveTwo} />
-      <View style={styles.waveThree} />
-      <View style={styles.softGlow} />
     </View>
   );
 }
@@ -131,45 +126,5 @@ const styles = StyleSheet.create({
   },
   fullWaterTint: {
     backgroundColor: 'rgba(255,255,255,0.10)',
-  },
-  softWaterWash: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(238,251,254,0.18)',
-  },
-  waveOne: {
-    position: 'absolute',
-    top: 118,
-    right: -72,
-    width: 230,
-    height: 230,
-    borderRadius: 115,
-    backgroundColor: 'rgba(255,255,255,0.24)',
-  },
-  waveTwo: {
-    position: 'absolute',
-    top: 142,
-    left: -96,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: 'rgba(102,210,229,0.24)',
-  },
-  waveThree: {
-    position: 'absolute',
-    bottom: 78,
-    right: -120,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: 'rgba(255,255,255,0.24)',
-  },
-  softGlow: {
-    position: 'absolute',
-    bottom: -90,
-    left: -90,
-    width: 240,
-    height: 240,
-    borderRadius: 120,
-    backgroundColor: 'rgba(8,175,203,0.12)',
   },
 });
