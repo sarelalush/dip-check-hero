@@ -86,16 +86,16 @@ export function PoolsScreen({ navigation }: Props) {
 
   return (
     <AppShell activeTab="pools" navigation={navigation}>
+      <View pointerEvents="none" style={styles.waterHeader}>
+        <View style={styles.waterCircleOne} />
+        <View style={styles.waterCircleTwo} />
+      </View>
+
       <AppHeader />
 
       <View style={styles.header}>
         <Text style={styles.title}>הבריכות שלי</Text>
         <Text style={styles.subtitle}>בחר בריכה לבדיקה או ניהול</Text>
-      </View>
-
-      <View style={styles.waterHeader}>
-        <View style={styles.waterCircleOne} />
-        <View style={styles.waterCircleTwo} />
       </View>
 
       <View style={styles.list}>

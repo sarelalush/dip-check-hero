@@ -34,6 +34,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: 48,
+    position: 'relative',
+    zIndex: 5,
   },
   iconButton: {
     width: 36,
