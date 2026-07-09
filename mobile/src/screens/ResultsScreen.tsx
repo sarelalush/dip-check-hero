@@ -11,6 +11,7 @@ import { ResultCard } from '../components/ResultCard';
 import { colors, radius, rtl, shadows, typography } from '../theme';
 import type { DosageRecommendation } from '../domain/dosage';
 import { calculateDosage } from '../domain/dosage';
+import type { Pool } from '../domain/pool';
 import type { ScanResultParameter, StripAnalysisResult } from '../domain/scanResults';
 import { useStartScanFlow } from '../hooks/useStartScanFlow';
 import { analyzeStripImage, getStripAnalysisConfig, StripAnalysisServiceError } from '../services/stripAnalysisService';
@@ -80,6 +81,27 @@ function getResultCards(result: StripAnalysisResult): DosageRecommendation[] {
 function isInvalidStripResult(result?: StripAnalysisResult | null) {
   if (!result) return false;
   return result.isValidStrip === false || result.failureReason === 'not_strip' || result.failureReason === 'unsupported_strip';
+}
+
+function enrichResultWithDosage(result: StripAnalysisResult, pool?: Pool, savedDosage?: StripAnalysisResult['dosage']): StripAnalysisResult {
+  const dosage = savedDosage ?? result.dosage ?? (isInvalidStripResult(result) ? undefined : calculateDosage(result, pool));
+
+  if (!dosage || isInvalidStripResult(result)) {
+    return {
+      ...result,
+      dosage,
+    };
+  }
+
+  return {
+    ...result,
+    dosage,
+    overallStatus: {
+      label: dosage.primaryRecommendation ? 'נדרש תיקון קל' : 'המים מאוזנים',
+      tone: dosage.primaryRecommendation ? 'warning' : 'success',
+    },
+    recommendation: dosage.summary ?? result.recommendation,
+  };
 }
 
 function normalizeRepeatedMessage(message?: string) {
@@ -210,10 +232,7 @@ export function ResultsScreen({ navigation, route }: Props) {
           }
 
           if (savedRecord?.analysisResult) {
-            setAnalysisResult({
-              ...savedRecord.analysisResult,
-              dosage: savedRecord.dosageResult ?? savedRecord.analysisResult.dosage,
-            });
+            setAnalysisResult(enrichResultWithDosage(savedRecord.analysisResult, pool, savedRecord.dosageResult));
           } else if (authLoading) {
             setIsAnalyzing(true);
             return;
@@ -226,10 +245,7 @@ export function ResultsScreen({ navigation, route }: Props) {
               if (!lookupAccountId) break;
               const fullRecord = await fetchCloudTestById(candidateId, lookupAccountId, pools);
               if (fullRecord?.analysisResult) {
-                cloudResult = {
-                  ...fullRecord.analysisResult,
-                  dosage: fullRecord.dosageResult ?? fullRecord.analysisResult.dosage,
-                };
+                cloudResult = enrichResultWithDosage(fullRecord.analysisResult, pool, fullRecord.dosageResult);
                 break;
               }
             }
@@ -243,10 +259,7 @@ export function ResultsScreen({ navigation, route }: Props) {
         }
 
         if (session.analysisResult) {
-          setAnalysisResult({
-            ...session.analysisResult,
-            dosage: session.dosageResult ?? session.analysisResult.dosage,
-          });
+          setAnalysisResult(enrichResultWithDosage(session.analysisResult, pool, session.dosageResult));
           setIsAnalyzing(false);
           return;
         }
