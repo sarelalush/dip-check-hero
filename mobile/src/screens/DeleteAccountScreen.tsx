@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ImageBackground, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ImageBackground, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
@@ -8,6 +8,7 @@ import { colors, radius, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DeleteAccount'>;
+const DELETE_ACCOUNT_URL = 'https://sarelalush.github.io/dip-check-hero/delete-account/';
 const DELETE_POOL_IMAGE = require('../../assets/images/home-pool.png');
 
 export function DeleteAccountScreen({ navigation }: Props) {
@@ -23,6 +24,17 @@ export function DeleteAccountScreen({ navigation }: Props) {
     }
 
     setMessage('מחיקת חשבון מלאה עדיין דורשת טיפול מאובטח בצד השרת. פנה לתמיכה למחיקת חשבון: support@dipcheck.app');
+  }
+
+  async function openDeletionPage() {
+    const canOpen = await Linking.canOpenURL(DELETE_ACCOUNT_URL);
+
+    if (canOpen) {
+      await Linking.openURL(DELETE_ACCOUNT_URL);
+      return;
+    }
+
+    setMessage(`אפשר להגיש בקשת מחיקה בקישור: ${DELETE_ACCOUNT_URL}`);
   }
 
   return (
@@ -62,6 +74,9 @@ export function DeleteAccountScreen({ navigation }: Props) {
             placeholderTextColor={colors.muted}
           />
           {message ? <Text style={styles.message}>{message}</Text> : null}
+          <Pressable onPress={openDeletionPage} style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}>
+            <Text style={styles.linkButtonText}>פתיחת עמוד מחיקת חשבון</Text>
+          </Pressable>
           <Pressable onPress={requestDeletion} style={({ pressed }) => [styles.dangerButton, !canRequestDeletion && styles.disabled, pressed && styles.pressed]}>
             <Text style={styles.dangerButtonText}>בקשת מחיקת חשבון</Text>
           </Pressable>
@@ -89,6 +104,8 @@ const styles = StyleSheet.create({
   fieldLabel: { color: colors.text, fontFamily: typography.fontFamilySemiBold, fontSize: 13, fontWeight: '900', ...rtl.text },
   input: { backgroundColor: '#F5FAFD', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: colors.text, borderWidth: 1, borderColor: colors.border, textAlign: 'right', writingDirection: 'rtl', fontFamily: typography.fontFamily },
   message: { color: colors.warning, fontFamily: typography.fontFamilyRegular, fontSize: 12, fontWeight: '800', lineHeight: 18, ...rtl.text },
+  linkButton: { borderRadius: radius.round, backgroundColor: colors.primarySoft, paddingVertical: 13, alignItems: 'center' },
+  linkButtonText: { color: colors.primaryDark, fontFamily: typography.fontFamilyBold, fontSize: 14, fontWeight: '900' },
   dangerButton: { borderRadius: radius.round, backgroundColor: colors.danger, paddingVertical: 13, alignItems: 'center', ...shadows.soft },
   dangerButtonText: { color: colors.white, fontFamily: typography.fontFamilyBold, fontSize: 14, fontWeight: '900' },
   disabled: { opacity: 0.55 },

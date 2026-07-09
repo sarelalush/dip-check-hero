@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Delete account and data - AquaSense</title>
+    <meta
+      name="description"
+      content="Request deletion of your AquaSense account and associated data."
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #eef9fc;
+        --card: #ffffff;
+        --text: #12313a;
+        --muted: #5b727a;
+        --primary: #0891b2;
+        --primary-dark: #075985;
+        --danger: #dc2626;
+        --border: #d9edf3;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: linear-gradient(180deg, var(--bg), #ffffff);
+        color: var(--text);
+        font-family:
+          Arial,
+          Helvetica,
+          sans-serif;
+        line-height: 1.6;
+      }
+
+      main {
+        width: min(720px, 100%);
+        margin: 0 auto;
+        padding: 40px 20px;
+      }
+
+      .brand {
+        color: var(--primary);
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        margin: 0 0 8px;
+      }
+
+      h1 {
+        font-size: clamp(30px, 6vw, 44px);
+        line-height: 1.08;
+        margin: 0;
+      }
+
+      h2 {
+        font-size: 20px;
+        margin: 0 0 10px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        box-shadow: 0 20px 50px rgba(8, 145, 178, 0.12);
+        margin-top: 24px;
+        padding: 24px;
+      }
+
+      .lead {
+        color: var(--muted);
+        font-size: 17px;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      .button {
+        align-items: center;
+        background: var(--primary);
+        border-radius: 999px;
+        color: #ffffff;
+        display: inline-flex;
+        font-weight: 800;
+        justify-content: center;
+        margin-top: 22px;
+        padding: 14px 22px;
+        text-decoration: none;
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        margin-top: 18px;
+      }
+
+      .info {
+        background: rgba(255, 255, 255, 0.74);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 18px;
+      }
+
+      .info p {
+        color: var(--muted);
+        font-weight: 600;
+        margin: 0;
+      }
+
+      a {
+        color: var(--primary-dark);
+      }
+
+      .warning {
+        color: var(--danger);
+        font-weight: 800;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="brand">AquaSense</p>
+      <h1>Delete account and data</h1>
+
+      <section class="card">
+        <p class="lead">
+          You can request deletion of your AquaSense account and the personal
+          data associated with it at any time. This page is available from the
+          web so you can submit a request even if the app is no longer installed
+          on your device.
+        </p>
+
+        <a
+          class="button"
+          href="mailto:support@dipcheck.app?subject=AquaSense%20account%20deletion%20request"
+        >
+          Email deletion request
+        </a>
+      </section>
+
+      <section class="grid" aria-label="Deletion request details">
+        <article class="info">
+          <h2>What to include</h2>
+          <p>
+            Send the request from the email address connected to your AquaSense
+            account, or include the account email/user ID in your message.
+          </p>
+        </article>
+
+        <article class="info">
+          <h2>Processing time</h2>
+          <p>
+            We will process verified deletion requests within 30 days and may
+            contact you if we need to confirm account ownership.
+          </p>
+        </article>
+
+        <article class="info">
+          <h2>Data we delete</h2>
+          <p>
+            Deletion includes your app account, saved pools, water test history,
+            uploaded scan images, and app data linked to your account.
+          </p>
+        </article>
+
+        <article class="info">
+          <h2>Limited retention</h2>
+          <p>
+            Some records may be retained when required for legal, security,
+            fraud-prevention, billing, or tax obligations.
+          </p>
+        </article>
+      </section>
+
+      <section class="card">
+        <h2>Delete from inside the app</h2>
+        <p>
+          If you still have access to the app, open AquaSense and go to
+          <strong>Settings &gt; Delete account</strong>.
+        </p>
+        <p>
+          You can also contact us directly at
+          <a href="mailto:support@dipcheck.app">support@dipcheck.app</a>.
+        </p>
+        <p class="warning">
+          Deleting your account is permanent and cannot be undone.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>
