@@ -11,19 +11,38 @@ import { getBrand } from '../config/stripBrands';
 import { getPoolShapeLabel, getPoolTypeLabel } from '../domain/pool';
 import { colors, rtl, typography } from '../theme';
 import { usePools } from '../state/PoolsContext';
+import { useReminders, type ReminderFrequency } from '../state/ReminderContext';
 import { useResultsHistory, type SavedHistoryRecord } from '../state/ResultsHistoryContext';
 import { useScanSession } from '../state/ScanSessionContext';
+import { schedulePoolReminderTestNotification } from '../services/notificationService';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PoolDetails'>;
 
+const REMINDER_OPTIONS: Array<{ label: string; value: ReminderFrequency }> = [
+  { label: 'כבוי', value: 'off' },
+  { label: 'כל 3 שעות', value: 'every3h' },
+  { label: 'כל 6 שעות', value: 'every6h' },
+  { label: 'כל 12 שעות', value: 'every12h' },
+  { label: 'יומי', value: 'daily' },
+];
+
+function reminderLabel(frequency: ReminderFrequency) {
+  return REMINDER_OPTIONS.find((option) => option.value === frequency)?.label ?? 'כבוי';
+}
+
 export function PoolDetailsScreen({ navigation, route }: Props) {
   const { deletePool, getPool } = usePools();
+  const { getReminder, getReminderError, setReminder } = useReminders();
   const { getPoolHistoryRecords } = useResultsHistory();
   const { startScanSession } = useScanSession();
   const pool = getPool(route.params.poolId);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [reminderSaving, setReminderSaving] = useState(false);
+  const [testReminderStatus, setTestReminderStatus] = useState('');
   const recentTests = pool ? getPoolHistoryRecords(pool.id, 3) : [];
+  const reminder = pool ? getReminder(pool.id) : 'off';
+  const reminderError = pool ? getReminderError(pool.id) : undefined;
   const poolName = pool?.name ?? 'בריכה ללא שם';
   const poolVolume = pool ? `${pool.volumeLiters.toLocaleString('he-IL')} ליטר` : 'לא הוגדר נפח';
   const brand = getBrand(pool?.stripBrandId);
@@ -50,6 +69,31 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
   function startPoolScan() {
     startScanSession({ brandId: pool?.stripBrandId, poolId: route.params.poolId });
     navigation.navigate('SelectStrip', { poolId: route.params.poolId });
+  }
+
+  async function handleReminderChange(frequency: ReminderFrequency) {
+    if (!pool || reminderSaving) return;
+
+    setReminderSaving(true);
+    setTestReminderStatus('');
+    try {
+      await setReminder(pool.id, frequency, pool.name);
+    } finally {
+      setReminderSaving(false);
+    }
+  }
+
+  async function handleTestReminder() {
+    if (!pool || reminderSaving) return;
+
+    setReminderSaving(true);
+    setTestReminderStatus('');
+    try {
+      const result = await schedulePoolReminderTestNotification(pool.name);
+      setTestReminderStatus(result.error ?? 'התראת בדיקה נשלחה ותופיע בעוד כ־10 שניות.');
+    } finally {
+      setReminderSaving(false);
+    }
   }
 
   return (
@@ -92,6 +136,47 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
           onPress={startPoolScan}
         />
       </View>
+
+      {pool ? (
+        <Card compact style={styles.reminderCard}>
+          <View style={styles.recentHeader}>
+            <Text style={styles.recentTitle}>תזכורת לבדיקה</Text>
+            <LineIcon name="bell" color={colors.primaryDark} size={16} />
+          </View>
+          <Text style={styles.reminderDescription}>בחר מתי לקבל תזכורת לבדוק שוב את הבריכה הזו.</Text>
+          <View style={styles.reminderOptions}>
+            {REMINDER_OPTIONS.map((option) => {
+              const active = reminder === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  disabled={reminderSaving}
+                  onPress={() => handleReminderChange(option.value)}
+                  style={({ pressed }) => [
+                    styles.reminderOption,
+                    active && styles.reminderOptionActive,
+                    (pressed || reminderSaving) && styles.reminderOptionPressed,
+                  ]}
+                >
+                  <Text style={[styles.reminderOptionText, active && styles.reminderOptionTextActive]}>{option.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Text style={styles.reminderStatus}>
+            {reminderSaving ? 'מעדכן תזכורת...' : reminder === 'off' ? 'התזכורת כבויה לבריכה הזו.' : `תזכורת פעילה: ${reminderLabel(reminder)}.`}
+          </Text>
+          <Pressable
+            disabled={reminderSaving}
+            onPress={handleTestReminder}
+            style={({ pressed }) => [styles.testReminderButton, (pressed || reminderSaving) && styles.reminderOptionPressed]}
+          >
+            <Text style={styles.testReminderText}>שלח בדיקת התראה בעוד 10 שניות</Text>
+          </Pressable>
+          {testReminderStatus ? <Text style={styles.reminderStatus}>{testReminderStatus}</Text> : null}
+          {reminderError ? <Text style={styles.warningText}>{reminderError}</Text> : null}
+        </Card>
+      ) : null}
 
       <Card compact style={styles.recentCard}>
         <View style={styles.recentHeader}>
@@ -290,6 +375,74 @@ const styles = StyleSheet.create({
   },
   cta: {
     marginTop: 16,
+  },
+  reminderCard: {
+    marginTop: 16,
+    gap: 10,
+  },
+  reminderDescription: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 18,
+    ...rtl.text,
+  },
+  reminderOptions: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  reminderOption: {
+    minHeight: 38,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: colors.surfaceSoft,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reminderOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary,
+  },
+  reminderOptionPressed: {
+    opacity: 0.75,
+  },
+  reminderOptionText: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
+    ...rtl.textCenter,
+  },
+  reminderOptionTextActive: {
+    color: colors.white,
+  },
+  reminderStatus: {
+    color: colors.primaryDark,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  testReminderButton: {
+    minHeight: 42,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+  },
+  testReminderText: {
+    color: colors.primaryDark,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
+    ...rtl.textCenter,
   },
   recentCard: {
     marginTop: 16,

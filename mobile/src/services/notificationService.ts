@@ -9,6 +9,39 @@ interface ScheduleReminderInput {
   poolName: string;
 }
 
+export async function schedulePoolReminderTestNotification(poolName: string): Promise<ScheduleReminderResult> {
+  try {
+    const permission = await ensureNotificationPermission();
+    if (!permission.granted) {
+      return { error: permission.error };
+    }
+
+    await ensureReminderChannel();
+
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'בדיקת התראה',
+        body: `זו תזכורת בדיקה עבור ${poolName}.`,
+        data: {
+          type: 'pool-test-reminder-preview',
+        },
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: 10,
+        repeats: false,
+        channelId: REMINDER_CHANNEL_ID,
+      },
+    });
+
+    return { notificationId };
+  } catch (error) {
+    console.warn('Failed to schedule pool reminder test notification', error);
+    return { error: 'לא הצלחנו לשלוח התראת בדיקה במכשיר הזה.' };
+  }
+}
+
 export interface ScheduleReminderResult {
   error?: string;
   notificationId?: string;
