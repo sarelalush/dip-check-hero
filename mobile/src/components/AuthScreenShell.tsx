@@ -25,6 +25,7 @@ interface AuthFieldProps {
   keyboardType?: KeyboardTypeOptions;
   label: string;
   onChangeText: (value: string) => void;
+  onSideIconPress?: () => void;
   placeholder: string;
   secure?: boolean;
   sideIcon?: LineIconName;
@@ -132,7 +133,7 @@ export function AuthScreenShell({
   );
 }
 
-export function AuthField({ compact, icon, keyboardType, label, onChangeText, placeholder, secure, sideIcon, value }: AuthFieldProps) {
+export function AuthField({ compact, icon, keyboardType, label, onChangeText, onSideIconPress, placeholder, secure, sideIcon, value }: AuthFieldProps) {
   return (
     <View style={[styles.fieldWrap, compact && styles.fieldWrapCompact]}>
       <Text style={[styles.fieldLabel, compact && styles.fieldLabelCompact]}>{label}</Text>
@@ -148,7 +149,19 @@ export function AuthField({ compact, icon, keyboardType, label, onChangeText, pl
           style={[styles.input, compact && styles.inputCompact]}
           value={value}
         />
-        {sideIcon ? <LineIcon name={sideIcon} color="#657789" size={compact ? 19 : 23} /> : <View style={[styles.sideIconSpacer, compact && styles.sideIconSpacerCompact]} />}
+        {sideIcon ? (
+          <Pressable
+            accessibilityLabel={secure ? 'הצג סיסמה' : 'הסתר סיסמה'}
+            disabled={!onSideIconPress}
+            hitSlop={8}
+            onPress={onSideIconPress}
+            style={({ pressed }) => [styles.sideIconButton, compact && styles.sideIconButtonCompact, pressed && styles.pressed]}
+          >
+            <LineIcon name={sideIcon} color="#657789" size={compact ? 19 : 23} />
+          </Pressable>
+        ) : (
+          <View style={[styles.sideIconSpacer, compact && styles.sideIconSpacerCompact]} />
+        )}
       </View>
     </View>
   );
@@ -334,6 +347,8 @@ const styles = StyleSheet.create({
   inputShellCompact: { minHeight: 39, borderRadius: 11, paddingHorizontal: 11, gap: 6 },
   input: { flex: 1, color: colors.text, fontFamily: typography.fontFamilyRegular, fontSize: 16, fontWeight: '600', textAlign: 'right', writingDirection: 'rtl' },
   inputCompact: { fontSize: 13 },
+  sideIconButton: { width: 31, height: 31, alignItems: 'center', justifyContent: 'center' },
+  sideIconButtonCompact: { width: 27, height: 27 },
   sideIconSpacer: { width: 31, height: 31 },
   sideIconSpacerCompact: { width: 27, height: 27 },
   primaryButton: { minHeight: 63, borderRadius: 14, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', ...shadows.button },

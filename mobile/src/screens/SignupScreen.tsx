@@ -22,6 +22,7 @@ export function SignupScreen({ navigation }: Props) {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [busy, setBusy] = useState(false);
@@ -86,7 +87,7 @@ export function SignupScreen({ navigation }: Props) {
       <AuthField compact icon="user" label="שם מלא" onChangeText={setName} placeholder="הכנס שם מלא" value={name} />
       <AuthField compact icon="user" keyboardType="phone-pad" label="טלפון" onChangeText={setPhone} placeholder="050..." value={phone} />
       <AuthField compact icon="mail" keyboardType="email-address" label="אימייל" onChangeText={setEmail} placeholder="הכנס כתובת אימייל" value={email} />
-      <AuthField compact icon="lock" label="סיסמה" onChangeText={setPassword} placeholder="בחר סיסמה" secure sideIcon="eye" value={password} />
+      <AuthField compact icon="lock" label="סיסמה" onChangeText={setPassword} onSideIconPress={() => setPasswordVisible((visible) => !visible)} placeholder="בחר סיסמה" secure={!passwordVisible} sideIcon="eye" value={password} />
 
       <AuthMessage text={error} tone="error" />
       <AuthMessage text={success} tone="success" />

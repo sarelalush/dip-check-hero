@@ -20,6 +20,7 @@ export function LoginScreen({ navigation }: Props) {
   const { signInWithEmail, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
@@ -70,7 +71,7 @@ export function LoginScreen({ navigation }: Props) {
       }
     >
       <AuthField compact icon="mail" keyboardType="email-address" label="אימייל" onChangeText={setEmail} placeholder="הכנס כתובת אימייל" value={email} />
-      <AuthField compact icon="lock" label="סיסמה" onChangeText={setPassword} placeholder="הכנס סיסמה" secure sideIcon="eye" value={password} />
+      <AuthField compact icon="lock" label="סיסמה" onChangeText={setPassword} onSideIconPress={() => setPasswordVisible((visible) => !visible)} placeholder="הכנס סיסמה" secure={!passwordVisible} sideIcon="eye" value={password} />
 
       <Pressable onPress={() => navigation.navigate('ForgotPassword')} style={styles.forgotButton}>
         <Text style={styles.forgotText}>שכחתי סיסמה</Text>
