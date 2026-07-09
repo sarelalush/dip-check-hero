@@ -102,7 +102,7 @@ export function SignupScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  accountRow: { marginTop: -1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  accountRow: { marginTop: 2, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4 },
   accountText: { color: '#1D2530', fontFamily: typography.fontFamilyRegular, fontSize: 13, fontWeight: '700' },
   accountLink: { color: colors.primary, fontFamily: typography.fontFamilySemiBold, fontSize: 13, fontWeight: '900', ...rtl.text },
 });

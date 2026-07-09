@@ -89,9 +89,9 @@ export function LoginScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  forgotButton: { alignSelf: 'flex-start', marginTop: -4, paddingVertical: 0 },
+  forgotButton: { alignSelf: 'flex-start', marginTop: -1, paddingVertical: 2 },
   forgotText: { color: colors.primary, fontFamily: typography.fontFamilyRegular, fontSize: 14, fontWeight: '700', ...rtl.text },
-  accountRow: { marginTop: -1, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  accountRow: { marginTop: 2, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4 },
   accountText: { color: '#1D2530', fontFamily: typography.fontFamilyRegular, fontSize: 13, fontWeight: '700' },
   accountLink: { color: colors.primary, fontFamily: typography.fontFamilySemiBold, fontSize: 13, fontWeight: '900' },
 });
