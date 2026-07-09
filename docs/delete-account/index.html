@@ -110,6 +110,24 @@
         margin: 0;
       }
 
+      .steps {
+        counter-reset: deletion-step;
+        display: grid;
+        gap: 12px;
+        margin: 18px 0 0;
+        padding: 0;
+      }
+
+      .steps li {
+        background: #f4fbfd;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        color: var(--text);
+        font-weight: 700;
+        list-style: none;
+        padding: 14px 16px;
+      }
+
       a {
         color: var(--primary-dark);
       }
@@ -127,10 +145,9 @@
 
       <section class="card">
         <p class="lead">
-          You can request deletion of your AquaSense account and the personal
-          data associated with it at any time. This page is available from the
-          web so you can submit a request even if the app is no longer installed
-          on your device.
+          This page explains how users can request deletion of their
+          StickCheck Water account and the data associated with it. StickCheck
+          Water is published by the developer account shown on Google Play.
         </p>
 
         <a
@@ -139,6 +156,30 @@
         >
           Email deletion request
         </a>
+      </section>
+
+      <section class="card">
+        <h2>Steps to request account deletion</h2>
+        <ol class="steps">
+          <li>
+            Email us at
+            <a href="mailto:support@dipcheck.app">support@dipcheck.app</a>
+            with the subject “Account deletion request”.
+          </li>
+          <li>
+            Send the request from the email address connected to your
+            StickCheck Water account, or include the account email/user ID in
+            the message.
+          </li>
+          <li>
+            We may contact you to verify account ownership before deleting the
+            account.
+          </li>
+          <li>
+            After verification, we will delete your account and associated data
+            within 30 days, unless retention is legally required.
+          </li>
+        </ol>
       </section>
 
       <section class="grid" aria-label="Deletion request details">
