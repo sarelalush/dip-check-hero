@@ -25,6 +25,8 @@ import type { RootStackParamList } from '../../App';
 type Props = NativeStackScreenProps<RootStackParamList, 'Results'>;
 const FALLBACK_POOL_NAME = 'הבריכה שלי';
 const autoSavedResultIds = new Set<string>();
+const CORE_RESULT_PARAMETER_ORDER: DosageRecommendation['paramKey'][] = ['alkalinity', 'ph', 'freeChlorine'];
+const CORE_RESULT_PARAMETER_KEYS = new Set<DosageRecommendation['paramKey']>(CORE_RESULT_PARAMETER_ORDER);
 
 function formatAnalysisDate(timestamp: number) {
   return new Intl.DateTimeFormat('he-IL', {
@@ -60,11 +62,19 @@ function mapParameterToRecommendation(parameter: ScanResultParameter): DosageRec
 }
 
 function getResultCards(result: StripAnalysisResult): DosageRecommendation[] {
-  if (result.dosage?.recommendations?.length) {
-    return result.dosage.recommendations;
+  const recommendations = result.dosage?.recommendations?.length
+    ? result.dosage.recommendations
+    : result.parameters.map(mapParameterToRecommendation);
+
+  const coreRecommendations = CORE_RESULT_PARAMETER_ORDER
+    .map((paramKey) => recommendations.find((recommendation) => recommendation.paramKey === paramKey))
+    .filter((recommendation): recommendation is DosageRecommendation => Boolean(recommendation));
+
+  if (coreRecommendations.length) {
+    return coreRecommendations;
   }
 
-  return result.parameters.map(mapParameterToRecommendation);
+  return recommendations.filter((recommendation) => CORE_RESULT_PARAMETER_KEYS.has(recommendation.paramKey)).slice(0, 3);
 }
 
 function isInvalidStripResult(result?: StripAnalysisResult | null) {
