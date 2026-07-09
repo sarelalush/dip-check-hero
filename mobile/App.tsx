@@ -26,6 +26,7 @@ import { LandingScreen } from './src/screens/LandingScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { SignupScreen } from './src/screens/SignupScreen';
 import { ForgotPasswordScreen } from './src/screens/ForgotPasswordScreen';
+import { ResetPasswordScreen } from './src/screens/ResetPasswordScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { PlanUsageScreen } from './src/screens/PlanUsageScreen';
 import { PrivacyPolicyScreen } from './src/screens/PrivacyPolicyScreen';
@@ -63,6 +64,7 @@ export type RootStackParamList = {
   Login: undefined;
   Signup: undefined;
   ForgotPassword: undefined;
+  ResetPassword: undefined;
   Dashboard: undefined;
   PoolsList: undefined;
   AddPool: undefined;
@@ -123,10 +125,11 @@ function LoadingScreen() {
 }
 
 function AppNavigator() {
-  const { loading, isAuthenticated } = useAuth();
+  const { loading, isAuthenticated, passwordRecoveryExpiresAt } = useAuth();
   const { hydrated: poolsHydrated } = usePools();
+  const isPasswordRecovery = Boolean(passwordRecoveryExpiresAt);
 
-  if (loading || (isAuthenticated && !poolsHydrated)) {
+  if (loading || (isAuthenticated && !isPasswordRecovery && !poolsHydrated)) {
     return (
       <View style={styles.loadingScreen}>
         <LoadingScreen />
@@ -135,12 +138,19 @@ function AppNavigator() {
   }
 
   return (
-    <NavigationContainer key={isAuthenticated ? 'app' : 'auth'}>
+    <NavigationContainer key={isPasswordRecovery ? 'recovery' : isAuthenticated ? 'app' : 'auth'}>
       <Stack.Navigator
-        initialRouteName={isAuthenticated ? 'Home' : 'Welcome'}
+        initialRouteName={isPasswordRecovery ? 'ResetPassword' : isAuthenticated ? 'Home' : 'Welcome'}
         screenOptions={{ headerShown: false }}
       >
-        {isAuthenticated ? (
+        {isPasswordRecovery ? (
+          <>
+            <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Signup" component={SignupScreen} />
+          </>
+        ) : isAuthenticated ? (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="Pools" component={PoolsScreen} />
@@ -167,6 +177,7 @@ function AppNavigator() {
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Signup" component={SignupScreen} />
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+            <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
           </>
         )}
       </Stack.Navigator>

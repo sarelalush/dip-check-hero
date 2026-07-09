@@ -23,12 +23,17 @@ interface AuthContextValue {
   signInWithEmail: (email: string, password: string) => Promise<AuthResult>;
   signUpWithEmail: (email: string, password: string, displayName?: string, phone?: string) => Promise<AuthResult>;
   resetPasswordForEmail: (email: string) => Promise<AuthResult>;
+  passwordRecoveryExpiresAt?: number;
+  passwordRecoveryPending: boolean;
   signInWithGoogle: () => Promise<AuthResult>;
+  completePasswordReset: (password: string) => Promise<AuthResult>;
+  clearPasswordRecovery: () => void;
   updateDisplayName: (displayName: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const PASSWORD_RECOVERY_WINDOW_MS = 5 * 60 * 1000;
 
 function toHebrewAuthError(message: string) {
   const lower = message.toLowerCase();
@@ -67,9 +72,15 @@ function getPasswordResetRedirectTo() {
   });
 }
 
-function isOAuthCallbackUrl(url?: string | null) {
+function isAuthCallbackUrl(url?: string | null) {
   if (!url) return false;
-  return url.includes('auth/callback') && (url.includes('access_token=') || url.includes('code='));
+  const isAuthPath = url.includes('auth/callback') || url.includes('auth/reset-password');
+  return isAuthPath && (url.includes('access_token=') || url.includes('code='));
+}
+
+function isPasswordRecoveryUrl(url?: string | null) {
+  if (!url) return false;
+  return url.includes('auth/reset-password') || url.includes('type=recovery');
 }
 
 async function setSessionFromOAuthUrl(url: string) {
@@ -108,8 +119,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [accountId, setAccountId] = useState<string | undefined>();
+  const [passwordRecoveryExpiresAt, setPasswordRecoveryExpiresAt] = useState<number | undefined>();
   const [loading, setLoading] = useState(true);
   const handledOAuthUrls = useRef(new Set<string>());
+
+  const passwordRecoveryPending = Boolean(passwordRecoveryExpiresAt && Date.now() < passwordRecoveryExpiresAt);
 
   async function hydrateSession(nextSession: Session | null) {
     setSession(nextSession);
@@ -139,12 +153,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const client = supabase;
 
     async function handleOAuthCallback(url?: string | null) {
-      if (!isOAuthCallbackUrl(url) || typeof url !== 'string' || handledOAuthUrls.current.has(url)) {
+      if (!isAuthCallbackUrl(url) || typeof url !== 'string' || handledOAuthUrls.current.has(url)) {
         return false;
       }
 
       handledOAuthUrls.current.add(url);
       await setSessionFromOAuthUrl(url);
+      if (isPasswordRecoveryUrl(url)) {
+        setPasswordRecoveryExpiresAt(Date.now() + PASSWORD_RECOVERY_WINDOW_MS);
+      }
       return true;
     }
 
@@ -155,6 +172,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     const { data: subscription } = client.auth.onAuthStateChange((_event, nextSession) => {
+      if (_event === 'PASSWORD_RECOVERY') {
+        setPasswordRecoveryExpiresAt(Date.now() + PASSWORD_RECOVERY_WINDOW_MS);
+      }
       hydrateSession(nextSession);
     });
 
@@ -185,6 +205,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       session,
       accountId,
+      passwordRecoveryExpiresAt,
+      passwordRecoveryPending,
       loading,
       isAuthenticated: Boolean(user),
       isConfigured: isSupabaseConfigured,
@@ -264,6 +286,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };
         }
       },
+      async completePasswordReset(password) {
+        if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
+        const recoveryStillValid = Boolean(passwordRecoveryExpiresAt && Date.now() < passwordRecoveryExpiresAt);
+        if (!recoveryStillValid) {
+          return { error: 'קישור האיפוס פג תוקף. יש לשלוח קישור חדש.' };
+        }
+        if (password.length < 6) {
+          return { error: 'הסיסמה חייבת להכיל לפחות 6 תווים.' };
+        }
+
+        try {
+          const { error } = await getSupabaseClient().auth.updateUser({ password });
+          if (error) return { error: toHebrewAuthError(error.message) };
+          setPasswordRecoveryExpiresAt(undefined);
+          return {};
+        } catch (error) {
+          return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };
+        }
+      },
+      clearPasswordRecovery() {
+        setPasswordRecoveryExpiresAt(undefined);
+      },
       async updateDisplayName(displayName) {
         if (!isSupabaseConfigured || !user) return { error: supabaseConfigMessage };
 
@@ -306,10 +350,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(null);
           setUser(null);
           setAccountId(undefined);
+          setPasswordRecoveryExpiresAt(undefined);
         }
       },
     }),
-    [accountId, loading, session, user],
+    [accountId, loading, passwordRecoveryExpiresAt, passwordRecoveryPending, session, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
