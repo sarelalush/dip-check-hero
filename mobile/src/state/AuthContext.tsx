@@ -35,9 +35,21 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 const PASSWORD_RECOVERY_WINDOW_MS = 5 * 60 * 1000;
 
+function normalizeEmail(email: string) {
+  return email
+    .normalize('NFKC')
+    .replace(/[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g, '')
+    .replace(/\s+/g, '')
+    .trim()
+    .toLowerCase();
+}
+
 function toHebrewAuthError(message: string) {
   const lower = message.toLowerCase();
 
+  if (lower.includes('rate limit') || lower.includes('too many') || lower.includes('over email send rate limit')) {
+    return 'נשלחו יותר מדי בקשות בזמן קצר. נסה שוב בעוד כמה דקות.';
+  }
   if (lower.includes('cancel')) return 'ההתחברות עם Google בוטלה.';
   if (lower.includes('provider') || lower.includes('oauth')) return 'התחברות Google אינה מוגדרת עדיין ב-Supabase.';
   if (lower.includes('redirect')) return 'כתובת החזרה של Google אינה מוגדרת נכון.';
@@ -215,7 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         try {
           const { error } = await getSupabaseClient().auth.signInWithPassword({
-            email: email.trim(),
+            email: normalizeEmail(email),
             password,
           });
 
@@ -229,7 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         try {
           const { error } = await getSupabaseClient().auth.signUp({
-            email: email.trim(),
+            email: normalizeEmail(email),
             password,
             options: {
               data: {
@@ -248,7 +260,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
 
         try {
-          const { error } = await getSupabaseClient().auth.resetPasswordForEmail(email.trim(), {
+          const normalizedEmail = normalizeEmail(email);
+          if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+            return { error: 'כתובת האימייל אינה תקינה.' };
+          }
+
+          const { error } = await getSupabaseClient().auth.resetPasswordForEmail(normalizedEmail, {
             redirectTo: getPasswordResetRedirectTo(),
           });
 

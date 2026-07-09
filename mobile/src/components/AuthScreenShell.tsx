@@ -141,6 +141,9 @@ export function AuthField({ compact, icon, keyboardType, label, onChangeText, on
         <LineIcon name={icon} color="#657789" size={compact ? 19 : 23} />
         <TextInput
           autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete={keyboardType === 'email-address' ? 'email' : undefined}
+          inputMode={keyboardType === 'email-address' ? 'email' : undefined}
           keyboardType={keyboardType}
           onChangeText={onChangeText}
           placeholder={placeholder}
