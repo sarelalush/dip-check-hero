@@ -68,8 +68,11 @@ export function SelectStripScreen({ navigation, route }: Props) {
     setSelectedBrand(brandId);
   }
 
-  async function handleContinue() {
-    if (!selectedBrand.supported) return;
+  async function continueWithBrand(brand: StripBrand) {
+    if (!brand.supported || checkingQuota) return;
+
+    setSelectedBrandId(brand.id);
+    setSelectedBrand(brand.id);
     setCheckingQuota(true);
     const allowed = await canCreateScan(accountId);
     setCheckingQuota(false);
@@ -78,8 +81,20 @@ export function SelectStripScreen({ navigation, route }: Props) {
       return;
     }
 
-    setSelectedBrand(selectedBrand.id);
-    navigation.navigate('Scan', { brandId: selectedBrand.id, poolId: selectedPoolId });
+    navigation.navigate('Scan', { brandId: brand.id, poolId: selectedPoolId });
+  }
+
+  async function handleContinue() {
+    await continueWithBrand(selectedBrand);
+  }
+
+  function handleBrandPress(brand: StripBrand) {
+    if (!brand.supported) {
+      selectBrand(brand.id);
+      return;
+    }
+
+    void continueWithBrand(brand);
   }
 
   return (
@@ -100,7 +115,7 @@ export function SelectStripScreen({ navigation, route }: Props) {
             key={brand.id}
             brand={brand}
             selected={selectedBrand.id === brand.id}
-            onPress={() => selectBrand(brand.id)}
+            onPress={() => handleBrandPress(brand)}
           />
         ))}
       </View>
