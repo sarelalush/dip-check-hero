@@ -90,9 +90,9 @@ export function LoginScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  forgotButton: { alignSelf: 'flex-start', marginTop: -1, paddingVertical: 2 },
+  forgotButton: { alignSelf: 'flex-start', marginTop: Platform.OS === 'android' ? 1 : -1, marginBottom: Platform.OS === 'android' ? 3 : 0, paddingVertical: 2 },
   forgotText: { color: colors.primary, fontFamily: typography.fontFamilyRegular, fontSize: 14, fontWeight: '700', ...rtl.text },
-  accountRow: { marginTop: 2, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  accountRow: { marginTop: Platform.OS === 'android' ? 8 : 2, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4 },
   accountText: { color: '#1D2530', fontFamily: typography.fontFamilyRegular, fontSize: 13, fontWeight: '700' },
   accountLink: { color: colors.primary, fontFamily: typography.fontFamilySemiBold, fontSize: 13, fontWeight: '900' },
 });
