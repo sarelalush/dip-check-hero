@@ -8,7 +8,7 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.sarelalush.aquasense",
+      "bundleIdentifier": "com.stickcheck.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "אפשר ל-AquaSense לבחור תמונת סטיק מהגלריה.",
