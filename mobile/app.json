@@ -38,6 +38,7 @@
         }
       ],
       "expo-notifications",
+      "expo-iap",
       "expo-web-browser"
     ],
     "owner": "sarelalush1"

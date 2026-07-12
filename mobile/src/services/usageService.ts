@@ -20,7 +20,7 @@ export const PLAN_ADDONS = {
   },
 };
 
-const PLAN_ADDONS_ENABLED = false;
+const PLAN_ADDONS_ENABLED = true;
 
 export interface PlanUsageInfo {
   activePoolLimit: number;

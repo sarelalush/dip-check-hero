@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
+import { BillingPurchasePanel } from '../components/BillingPurchasePanel';
 import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
 import { PLAN_ADDONS, fetchPlanUsage, getFallbackPlanUsage, type PlanUsageInfo } from '../services/usageService';
@@ -29,23 +30,16 @@ export function PlanUsageScreen({ navigation, route }: Props) {
   const [loading, setLoading] = useState(true);
   const reason = route.params?.reason;
 
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadUsage() {
-      setLoading(true);
-      const nextUsage = await fetchPlanUsage(accountId, pools.length);
-      if (!mounted) return;
-      setUsage(nextUsage);
-      setLoading(false);
-    }
-
-    loadUsage();
-
-    return () => {
-      mounted = false;
-    };
+  const loadUsage = useCallback(async () => {
+    setLoading(true);
+    const nextUsage = await fetchPlanUsage(accountId, pools.length);
+    setUsage(nextUsage);
+    setLoading(false);
   }, [accountId, pools.length]);
+
+  useEffect(() => {
+    loadUsage();
+  }, [loadUsage]);
 
   const scanPercent = pct(usage.scansUsed, usage.scansLimit);
   const poolPercent = pct(usage.activePoolsUsed, usage.activePoolLimit);
@@ -111,8 +105,10 @@ export function PlanUsageScreen({ navigation, route }: Props) {
       <Card compact style={styles.includedCard}>
         <Text style={styles.sectionTitle}>תוספות</Text>
         <AddonRow title={PLAN_ADDONS.extraPool.name} subtitle={`+${PLAN_ADDONS.extraPool.priceIls} ₪ לחודש`} button="הוסף בריכה נוספת" />
-        <AddonRow title={PLAN_ADDONS.extraScans.name} subtitle={`+${PLAN_ADDONS.extraScans.priceIls} ₪ לחודש`} button="רכוש עוד 200 סריקות" />
+        <AddonRow title={PLAN_ADDONS.extraScans.name} subtitle={`+${PLAN_ADDONS.extraScans.priceIls} ₪ לחודש הנוכחי`} button="רכוש עוד 200 סריקות" />
       </Card>
+
+      <BillingPurchasePanel accountId={accountId} onPurchaseVerified={loadUsage} />
 
       <Pressable style={styles.backButton} onPress={() => navigation.navigate('Settings')}>
         <Text style={styles.backText}>חזרה להגדרות</Text>
