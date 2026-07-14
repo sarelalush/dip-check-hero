@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
-import { BillingPurchasePanel } from '../components/BillingPurchasePanel';
 import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
 import { PLAN_ADDONS, fetchPlanUsage, getFallbackPlanUsage, type PlanUsageInfo } from '../services/usageService';
@@ -12,6 +11,7 @@ import { colors, radius, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PlanUsage'>;
+type PurchaseReason = NonNullable<RootStackParamList['Purchase']>['reason'];
 
 function pct(used: number, limit: number) {
   if (limit <= 0) return 0;
@@ -19,8 +19,8 @@ function pct(used: number, limit: number) {
 }
 
 function formatUsageValue(used: number, limit: number, unit: string) {
-  const count = `${used.toLocaleString('he-IL')} / ${limit.toLocaleString('he-IL')}`;
-  return `‪${count}‬ ${unit}`;
+  const count = `${used.toLocaleString('en-US')} / ${limit.toLocaleString('en-US')}`;
+  return `‎${count}‎ ${unit}`;
 }
 
 export function PlanUsageScreen({ navigation, route }: Props) {
@@ -29,6 +29,7 @@ export function PlanUsageScreen({ navigation, route }: Props) {
   const [usage, setUsage] = useState<PlanUsageInfo>(() => getFallbackPlanUsage(pools.length));
   const [loading, setLoading] = useState(true);
   const reason = route.params?.reason;
+  const purchaseReason: PurchaseReason = reason ?? 'subscriptionRequired';
 
   const loadUsage = useCallback(async () => {
     setLoading(true);
@@ -75,6 +76,20 @@ export function PlanUsageScreen({ navigation, route }: Props) {
         </Card>
       ) : null}
 
+      <Pressable
+        style={({ pressed }) => [styles.purchaseButton, pressed && styles.pressed]}
+        onPress={() => navigation.navigate('Purchase', { reason: purchaseReason })}
+      >
+        <View style={styles.purchaseIcon}>
+          <LineIcon name="drop" color={colors.primaryDark} size={20} />
+        </View>
+        <View style={styles.purchaseCopy}>
+          <Text style={styles.purchaseTitle}>רכישת מנוי ושדרוגים</Text>
+          <Text style={styles.purchaseSubtitle}>פתח את מסך הרכישה ובחר מנוי או תוספת</Text>
+        </View>
+        <LineIcon name="chevronLeft" color={colors.white} size={18} />
+      </Pressable>
+
       <Card style={styles.planCard}>
         <View style={styles.planTop}>
           <View style={styles.planIcon}>
@@ -90,16 +105,8 @@ export function PlanUsageScreen({ navigation, route }: Props) {
       </Card>
 
       <View style={styles.metrics}>
-        <UsageMeter
-          label="סריקות החודש"
-          value={formatUsageValue(usage.scansUsed, usage.scansLimit, 'סריקות')}
-          percent={scanPercent}
-        />
-        <UsageMeter
-          label="בריכות פעילות"
-          value={formatUsageValue(usage.activePoolsUsed, usage.activePoolLimit, 'בריכות פעילות')}
-          percent={poolPercent}
-        />
+        <UsageMeter label="סריקות החודש" value={formatUsageValue(usage.scansUsed, usage.scansLimit, 'סריקות')} percent={scanPercent} />
+        <UsageMeter label="בריכות פעילות" value={formatUsageValue(usage.activePoolsUsed, usage.activePoolLimit, 'בריכות פעילות')} percent={poolPercent} />
       </View>
 
       <Card compact style={styles.includedCard}>
@@ -109,12 +116,10 @@ export function PlanUsageScreen({ navigation, route }: Props) {
       </Card>
 
       <Card compact style={styles.includedCard}>
-        <Text style={styles.sectionTitle}>תוספות</Text>
-        <AddonRow title={PLAN_ADDONS.extraPool.name} subtitle={`+${PLAN_ADDONS.extraPool.priceIls} ₪ לחודש`} button="הוסף בריכה נוספת" />
-        <AddonRow title={PLAN_ADDONS.extraScans.name} subtitle={`+${PLAN_ADDONS.extraScans.priceIls} ₪ לחודש הנוכחי`} button="רכוש עוד 200 סריקות" />
+        <Text style={styles.sectionTitle}>תוספות זמינות</Text>
+        <AddonRow title={PLAN_ADDONS.extraPool.name} subtitle={`+${PLAN_ADDONS.extraPool.priceIls} ₪ לחודש`} />
+        <AddonRow title={PLAN_ADDONS.extraScans.name} subtitle={`+${PLAN_ADDONS.extraScans.priceIls} ₪ לחודש הנוכחי`} />
       </Card>
-
-      <BillingPurchasePanel accountId={accountId} onPurchaseVerified={loadUsage} />
 
       <Pressable style={styles.backButton} onPress={() => navigation.navigate('Settings')}>
         <Text style={styles.backText}>חזרה להגדרות</Text>
@@ -144,24 +149,22 @@ function IncludedRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function AddonRow({ button, subtitle, title }: { button: string; subtitle: string; title: string }) {
+function AddonRow({ subtitle, title }: { subtitle: string; title: string }) {
   return (
     <View style={styles.addonRow}>
       <View style={styles.addonCopy}>
         <Text style={styles.addonTitle}>{title}</Text>
         <Text style={styles.addonSubtitle}>{subtitle}</Text>
       </View>
-      <View style={styles.comingSoonButton}>
-        <Text style={styles.comingSoonText}>{button} · בקרוב</Text>
-      </View>
+      <LineIcon name="chevronLeft" color={colors.primaryDark} size={18} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
-    marginTop: 18,
     alignItems: 'center',
+    marginTop: 18,
   },
   title: {
     color: colors.text,
@@ -171,29 +174,29 @@ const styles = StyleSheet.create({
     ...rtl.textCenter,
   },
   subtitle: {
-    marginTop: 6,
     color: colors.textSoft,
     fontFamily: typography.fontFamilyRegular,
     fontSize: 12,
     fontWeight: '800',
+    marginTop: 6,
     ...rtl.textCenter,
   },
   alertCard: {
-    marginTop: 16,
-    flexDirection: 'row-reverse',
     alignItems: 'flex-start',
-    gap: 10,
     backgroundColor: colors.warningSoft,
     borderColor: 'rgba(240,165,41,0.35)',
     borderWidth: 1,
+    flexDirection: 'row-reverse',
+    gap: 10,
+    marginTop: 16,
   },
   alertIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.white,
     alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 17,
+    height: 34,
     justifyContent: 'center',
+    width: 34,
   },
   alertCopy: { flex: 1 },
   alertTitle: {
@@ -204,30 +207,67 @@ const styles = StyleSheet.create({
     ...rtl.text,
   },
   alertText: {
-    marginTop: 4,
     color: colors.textSoft,
     fontFamily: typography.fontFamilyRegular,
     fontSize: 12,
-    lineHeight: 18,
     fontWeight: '800',
+    lineHeight: 18,
+    marginTop: 4,
+    ...rtl.text,
+  },
+  purchaseButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.xl,
+    flexDirection: 'row-reverse',
+    gap: 12,
+    marginTop: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    ...shadows.button,
+  },
+  purchaseIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 22,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  purchaseCopy: {
+    flex: 1,
+  },
+  purchaseTitle: {
+    color: colors.white,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 16,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  purchaseSubtitle: {
+    color: colors.whiteMuted,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 3,
     ...rtl.text,
   },
   planCard: {
-    marginTop: 16,
     gap: 12,
+    marginTop: 16,
   },
   planTop: {
-    flexDirection: 'row-reverse',
     alignItems: 'center',
+    flexDirection: 'row-reverse',
     gap: 14,
   },
   planIcon: {
-    width: 58,
-    height: 58,
-    borderRadius: 24,
-    backgroundColor: colors.primary,
     alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 24,
+    height: 58,
     justifyContent: 'center',
+    width: 58,
     ...shadows.button,
   },
   planCopy: { flex: 1 },
@@ -239,24 +279,24 @@ const styles = StyleSheet.create({
     ...rtl.text,
   },
   planName: {
-    marginTop: 4,
     color: colors.text,
     fontFamily: typography.fontFamilyBold,
     fontSize: 20,
     fontWeight: '900',
+    marginTop: 4,
     ...rtl.text,
   },
   planPrice: {
-    marginTop: 3,
     color: colors.primaryDark,
     fontFamily: typography.fontFamilySemiBold,
     fontSize: 13,
     fontWeight: '900',
+    marginTop: 3,
     ...rtl.text,
   },
   metrics: {
-    marginTop: 14,
     gap: 12,
+    marginTop: 14,
   },
   usageCard: { gap: 9 },
   usageLabel: {
@@ -274,19 +314,19 @@ const styles = StyleSheet.create({
     ...rtl.text,
   },
   progressTrack: {
-    height: 8,
-    borderRadius: 4,
-    overflow: 'hidden',
     backgroundColor: colors.borderSoft,
+    borderRadius: 4,
+    height: 8,
+    overflow: 'hidden',
   },
   progressFill: {
-    height: '100%',
-    borderRadius: 4,
     backgroundColor: colors.primary,
+    borderRadius: 4,
+    height: '100%',
   },
   includedCard: {
-    marginTop: 14,
     gap: 10,
+    marginTop: 14,
   },
   sectionTitle: {
     color: colors.text,
@@ -296,18 +336,18 @@ const styles = StyleSheet.create({
     ...rtl.text,
   },
   includedRow: {
-    flexDirection: 'row-reverse',
-    justifyContent: 'space-between',
-    borderRadius: 14,
     backgroundColor: colors.surfaceSoft,
-    borderWidth: 1,
     borderColor: colors.borderSoft,
-    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
     gap: 10,
+    justifyContent: 'space-between',
+    padding: 12,
   },
   includedLabel: {
-    flex: 1,
     color: colors.text,
+    flex: 1,
     fontFamily: typography.fontFamilySemiBold,
     fontSize: 12,
     fontWeight: '900',
@@ -320,14 +360,19 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   addonRow: {
-    borderRadius: 16,
+    alignItems: 'center',
     backgroundColor: colors.surfaceSoft,
-    borderWidth: 1,
     borderColor: colors.borderSoft,
-    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
     gap: 10,
+    padding: 12,
   },
-  addonCopy: { gap: 3 },
+  addonCopy: {
+    flex: 1,
+    gap: 3,
+  },
   addonTitle: {
     color: colors.text,
     fontFamily: typography.fontFamilyBold,
@@ -342,21 +387,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     ...rtl.text,
   },
-  comingSoonButton: {
-    borderRadius: radius.round,
-    backgroundColor: colors.primarySoft,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  comingSoonText: {
-    color: colors.primaryDark,
-    fontFamily: typography.fontFamilySemiBold,
-    fontSize: 12,
-    fontWeight: '900',
-  },
   backButton: {
-    marginTop: 14,
     alignItems: 'center',
+    marginTop: 14,
     paddingVertical: 12,
   },
   backText: {
@@ -365,5 +398,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
     ...rtl.textCenter,
+  },
+  pressed: {
+    opacity: 0.86,
   },
 });
