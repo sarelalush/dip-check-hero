@@ -1,11 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.108.0';
 
-type ProductId = 'basic_monthly' | 'extra_pool_monthly' | 'extra_scan_pack_200';
+type InternalProductId = 'basic_monthly' | 'extra_pool_monthly' | 'extra_scan_pack_200';
 
 interface VerifyPurchaseRequest {
   accountId?: string;
   platform?: 'android';
-  productId?: ProductId;
+  productId?: string;
   purchase?: Record<string, unknown>;
   purchaseToken?: string;
 }
@@ -16,10 +16,18 @@ interface GoogleServiceAccount {
 }
 
 const ANDROID_PACKAGE_NAME = Deno.env.get('ANDROID_PACKAGE_NAME') ?? 'com.stickcheck.app';
-const SCAN_PACK_PRODUCT_ID: ProductId = 'extra_scan_pack_200';
-const BASIC_PRODUCT_ID: ProductId = 'basic_monthly';
-const EXTRA_POOL_PRODUCT_ID: ProductId = 'extra_pool_monthly';
+const SCAN_PACK_PRODUCT_ID: InternalProductId = 'extra_scan_pack_200';
+const BASIC_PRODUCT_ID: InternalProductId = 'basic_monthly';
+const EXTRA_POOL_PRODUCT_ID: InternalProductId = 'extra_pool_monthly';
 const GOOGLE_SCOPE = 'https://www.googleapis.com/auth/androidpublisher';
+const STORE_PRODUCT_ALIASES: Record<string, InternalProductId> = {
+  'basic-monthly': BASIC_PRODUCT_ID,
+  basic_monthly: BASIC_PRODUCT_ID,
+  'extra-pool-monthly': EXTRA_POOL_PRODUCT_ID,
+  extra_pool_monthly: EXTRA_POOL_PRODUCT_ID,
+  'extra-scan-pack-200': SCAN_PACK_PRODUCT_ID,
+  extra_scan_pack_200: SCAN_PACK_PRODUCT_ID,
+};
 
 const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -138,13 +146,17 @@ async function googleApiGet(path: string, accessToken: string) {
   return data as Record<string, unknown>;
 }
 
-async function verifyGooglePurchase(productId: ProductId, purchaseToken: string) {
+function normalizeProductId(productId: string) {
+  return STORE_PRODUCT_ALIASES[productId];
+}
+
+async function verifyGooglePurchase(storeProductId: string, internalProductId: InternalProductId, purchaseToken: string) {
   const accessToken = await createGoogleAccessToken();
   const encodedPackage = encodeURIComponent(ANDROID_PACKAGE_NAME);
-  const encodedProduct = encodeURIComponent(productId);
+  const encodedProduct = encodeURIComponent(storeProductId);
   const encodedToken = encodeURIComponent(purchaseToken);
 
-  if (productId === SCAN_PACK_PRODUCT_ID) {
+  if (internalProductId === SCAN_PACK_PRODUCT_ID) {
     const data = await googleApiGet(
       `applications/${encodedPackage}/purchases/products/${encodedProduct}/tokens/${encodedToken}`,
       accessToken,
@@ -228,10 +240,15 @@ async function refreshUsage(supabase: ReturnType<typeof getAdminClient>, account
 
 async function processVerifiedPurchase(
   supabase: ReturnType<typeof getAdminClient>,
-  body: Required<Pick<VerifyPurchaseRequest, 'accountId' | 'productId' | 'purchaseToken'>>,
+  body: {
+    accountId: string;
+    internalProductId: InternalProductId;
+    purchaseToken: string;
+    storeProductId: string;
+  },
   verification: Awaited<ReturnType<typeof verifyGooglePurchase>>,
 ) {
-  const providerEventId = `${body.productId}:${body.purchaseToken}`;
+  const providerEventId = `${body.storeProductId}:${body.purchaseToken}`;
   const { data: existingEvent, error: existingError } = await supabase
     .from('billing_events')
     .select('id,processed')
@@ -250,7 +267,8 @@ async function processVerifiedPurchase(
       event_type: 'purchase_verified',
       payload: {
         google: verification.raw,
-        productId: body.productId,
+        internalProductId: body.internalProductId,
+        productId: body.storeProductId,
         purchaseToken: body.purchaseToken,
       },
       processed: false,
@@ -261,7 +279,7 @@ async function processVerifiedPurchase(
   );
   if (eventError) throw eventError;
 
-  if (body.productId === BASIC_PRODUCT_ID) {
+  if (body.internalProductId === BASIC_PRODUCT_ID) {
     const { error } = await supabase.from('subscriptions').insert({
       account_id: body.accountId,
       current_period_end: verification.currentPeriodEnd,
@@ -278,7 +296,7 @@ async function processVerifiedPurchase(
       throw new Error('A base subscription is required before purchasing add-ons.');
     }
 
-    if (body.productId === EXTRA_POOL_PRODUCT_ID) {
+    if (body.internalProductId === EXTRA_POOL_PRODUCT_ID) {
       const { error } = await supabase.from('subscription_addons').insert({
         account_id: body.accountId,
         addon_id: EXTRA_POOL_PRODUCT_ID,
@@ -291,7 +309,7 @@ async function processVerifiedPurchase(
       if (error) throw error;
     }
 
-    if (body.productId === SCAN_PACK_PRODUCT_ID) {
+    if (body.internalProductId === SCAN_PACK_PRODUCT_ID) {
       const range = currentMonthRange();
       const { error } = await supabase.from('subscription_addons').insert({
         account_id: body.accountId,
@@ -328,7 +346,8 @@ Deno.serve(async (request) => {
       return json({ error: 'missing_purchase_fields' }, 400);
     }
 
-    if (![BASIC_PRODUCT_ID, EXTRA_POOL_PRODUCT_ID, SCAN_PACK_PRODUCT_ID].includes(body.productId)) {
+    const internalProductId = normalizeProductId(body.productId);
+    if (!internalProductId) {
       return json({ error: 'unsupported_product' }, 400);
     }
 
@@ -340,16 +359,18 @@ Deno.serve(async (request) => {
     if (userError || !userData.user) return json({ error: 'invalid_auth' }, 401);
 
     await ensureMembership(supabase, body.accountId, userData.user.id);
-    const verification = await verifyGooglePurchase(body.productId, body.purchaseToken);
+    const verification = await verifyGooglePurchase(body.productId, internalProductId, body.purchaseToken);
     const result = await processVerifiedPurchase(supabase, {
       accountId: body.accountId,
-      productId: body.productId,
+      internalProductId,
       purchaseToken: body.purchaseToken,
+      storeProductId: body.productId,
     }, verification);
 
     return json({
       ok: true,
       alreadyProcessed: result.alreadyProcessed,
+      internalProductId,
       productId: body.productId,
       usage: result.usage,
     });

@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -6,15 +5,12 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { LineIcon, type LineIconName } from '../components/LineIcon';
 import { WebPhoneFrame } from '../components/WebPhoneFrame';
-import { getRecommendedBrand } from '../config/stripBrands';
 import { useAuth } from '../state/AuthContext';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
-type UnitsPreference = 'liters' | 'cubic';
 
-const UNITS_KEY = '@aquasense/preferences/volume-units';
 const SETTINGS_POOL_IMAGE = require('../../assets/images/home-pool.png');
 
 export function SettingsScreen({ navigation }: Props) {
@@ -22,7 +18,6 @@ export function SettingsScreen({ navigation }: Props) {
   const [busy, setBusy] = useState(false);
   const [savingName, setSavingName] = useState(false);
   const [message, setMessage] = useState('');
-  const [unitsPreference, setUnitsPreference] = useState<UnitsPreference>('liters');
 
   const displayName = useMemo(() => {
     return (
@@ -36,31 +31,10 @@ export function SettingsScreen({ navigation }: Props) {
   const [nameInput, setNameInput] = useState(displayName);
   const email = user?.email ?? 'לא מחובר';
   const initial = displayName.trim().charAt(0).toUpperCase() || 'ד';
-  const recommendedBrand = getRecommendedBrand();
 
   useEffect(() => {
     setNameInput(displayName);
   }, [displayName]);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function restorePreferences() {
-      try {
-        const storedUnits = await AsyncStorage.getItem(UNITS_KEY);
-        if (!mounted) return;
-        setUnitsPreference(storedUnits === 'cubic' ? 'cubic' : 'liters');
-      } catch (error) {
-        console.warn('Failed to restore settings preferences', error);
-      }
-    }
-
-    restorePreferences();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   async function handleSaveName() {
     const trimmedName = nameInput.trim();
@@ -82,15 +56,6 @@ export function SettingsScreen({ navigation }: Props) {
     setBusy(false);
   }
 
-  async function setUnits(nextUnits: UnitsPreference) {
-    setUnitsPreference(nextUnits);
-    try {
-      await AsyncStorage.setItem(UNITS_KEY, nextUnits);
-    } catch (error) {
-      console.warn('Failed to save units preference', error);
-    }
-  }
-
   return (
     <WebPhoneFrame>
     <ImageBackground source={SETTINGS_POOL_IMAGE} resizeMode="cover" style={styles.root}>
@@ -99,7 +64,7 @@ export function SettingsScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <Text style={styles.kicker}>התאמה אישית</Text>
         <Text style={styles.title}>הגדרות</Text>
-        <Text style={styles.subtitle}>ניהול חשבון, מנוי, העדפות סריקה ותמיכה באפליקציה.</Text>
+        <Text style={styles.subtitle}>ניהול חשבון, מנוי, בריכות, תזכורות ותמיכה.</Text>
 
         <Section title="פרטי חשבון">
           <View style={styles.profileCard}>
@@ -145,40 +110,25 @@ export function SettingsScreen({ navigation }: Props) {
           />
         </Section>
 
-        <Section title="העדפות אפליקציה">
+        <Section title="בריכות ותזכורות">
           <SettingsRow
-            icon="history"
-            label="תזכורות"
-            value="הגדרה לפי בריכה במסך פרטי הבריכה"
+            icon="bell"
+            label="תזכורות בדיקה"
+            value="ניהול תזכורות לכל בריכה"
+            onPress={() => navigation.navigate('Reminders')}
+          />
+          <SettingsRow
+            icon="scan"
+            label="ניהול בריכות"
+            value="עריכת פרטי בריכה, נפח וסוג סטיק"
             onPress={() => navigation.navigate('Pools')}
           />
-          <InfoRow icon="scan" label="סטיק ברירת מחדל" value={recommendedBrand.nameHe} />
-          <View style={styles.preferenceRow}>
-            <View style={styles.preferenceCopy}>
-              <Text style={styles.preferenceLabel}>יחידות נפח</Text>
-              <Text style={styles.preferenceValue}>{unitsPreference === 'liters' ? 'ליטרים' : 'קוב'}</Text>
-            </View>
-            <View style={styles.segmented}>
-              <SegmentButton label="ליטרים" selected={unitsPreference === 'liters'} onPress={() => setUnits('liters')} />
-              <SegmentButton label="קוב" selected={unitsPreference === 'cubic'} onPress={() => setUnits('cubic')} />
-            </View>
-          </View>
-          <InfoRow icon="help" label="שפה" value="עברית · בקרוב אפשרויות נוספות" muted />
         </Section>
 
         <Section title="עזרה ומשפטי">
           <SettingsRow icon="help" label="עזרה ותמיכה" value="שאלות נפוצות ויצירת קשר" onPress={() => navigation.navigate('Support')} />
           <SettingsRow icon="results" label="מדיניות פרטיות" value="איזה מידע נשמר ואיך משתמשים בו" onPress={() => navigation.navigate('PrivacyPolicy')} />
           <SettingsRow icon="history" label="תנאי שימוש" value="המלצות, אחריות ושימוש בטוח" onPress={() => navigation.navigate('Terms')} />
-        </Section>
-
-        <Section title="מוכנות לפרסום">
-          <SettingsRow
-            icon="check"
-            label="בדיקות לפני פרסום"
-            value="רשימת מצב פנימית לפני App Store"
-            onPress={() => navigation.navigate('ReleaseChecklist')}
-          />
         </Section>
       </ScrollView>
       <BottomTabBar active="settings" navigation={navigation} />
@@ -196,22 +146,6 @@ function Section({ children, title }: { children: ReactNode; title: string }) {
   );
 }
 
-function InfoRow({ icon, label, muted, value }: { icon: LineIconName; label: string; muted?: boolean; value: string }) {
-  return (
-    <View style={styles.infoRow}>
-      <View style={styles.infoIcon}>
-        <LineIcon name={icon} color={muted ? colors.muted : colors.primaryDark} size={18} />
-      </View>
-      <View style={styles.preferenceCopy}>
-        <Text style={styles.preferenceLabel}>{label}</Text>
-        <Text style={[styles.preferenceValue, muted && styles.mutedText]} numberOfLines={2}>
-          {value}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
 function SettingsRow({ danger, icon, label, onPress, value }: { danger?: boolean; icon: LineIconName; label: string; onPress: () => void; value: string }) {
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.infoRow, pressed && styles.pressed]}>
@@ -223,43 +157,6 @@ function SettingsRow({ danger, icon, label, onPress, value }: { danger?: boolean
         <Text style={styles.preferenceValue} numberOfLines={2}>{value}</Text>
       </View>
       <LineIcon name="chevronLeft" color={colors.muted} size={16} />
-    </Pressable>
-  );
-}
-
-function ToggleRow({
-  enabled,
-  icon,
-  label,
-  onToggle,
-  value,
-}: {
-  enabled: boolean;
-  icon: LineIconName;
-  label: string;
-  onToggle: () => void;
-  value: string;
-}) {
-  return (
-    <Pressable onPress={onToggle} style={({ pressed }) => [styles.infoRow, pressed && styles.pressed]}>
-      <View style={styles.infoIcon}>
-        <LineIcon name={icon} color={colors.primaryDark} size={18} />
-      </View>
-      <View style={styles.preferenceCopy}>
-        <Text style={styles.preferenceLabel}>{label}</Text>
-        <Text style={styles.preferenceValue} numberOfLines={2}>{value}</Text>
-      </View>
-      <View style={[styles.switch, enabled && styles.switchOn]}>
-        <View style={[styles.switchKnob, enabled && styles.switchKnobOn]} />
-      </View>
-    </Pressable>
-  );
-}
-
-function SegmentButton({ label, onPress, selected }: { label: string; onPress: () => void; selected: boolean }) {
-  return (
-    <Pressable onPress={onPress} style={[styles.segmentButton, selected && styles.segmentButtonSelected]}>
-      <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{label}</Text>
     </Pressable>
   );
 }
@@ -306,20 +203,9 @@ const styles = StyleSheet.create({
   infoIcon: { width: 38, height: 38, borderRadius: 15, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
   dangerIcon: { backgroundColor: colors.dangerSoft },
   dangerText: { color: colors.danger },
-  preferenceRow: { gap: 10, borderRadius: 16, backgroundColor: colors.surfaceSoft, padding: 12, borderWidth: 1, borderColor: colors.borderSoft },
   preferenceCopy: { flex: 1 },
   preferenceLabel: { color: colors.muted, fontSize: 11, fontWeight: '900', fontFamily: typography.fontFamilyRegular, ...rtl.text },
   preferenceValue: { marginTop: 3, color: colors.text, fontSize: 13, fontWeight: '900', fontFamily: typography.fontFamilySemiBold, ...rtl.text },
-  mutedText: { color: colors.muted },
-  segmented: { flexDirection: 'row-reverse', gap: 8 },
-  segmentButton: { flex: 1, borderRadius: radius.round, paddingVertical: 9, alignItems: 'center', backgroundColor: colors.white, borderWidth: 1, borderColor: colors.borderSoft },
-  segmentButtonSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  segmentText: { color: colors.textSoft, fontSize: 12, fontWeight: '900', fontFamily: typography.fontFamilySemiBold },
-  segmentTextSelected: { color: colors.white },
-  switch: { width: 48, height: 28, borderRadius: 14, padding: 3, backgroundColor: colors.borderStrong, justifyContent: 'center' },
-  switchOn: { backgroundColor: colors.primary },
-  switchKnob: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.white, alignSelf: 'flex-start' },
-  switchKnobOn: { alignSelf: 'flex-end' },
   pressed: { opacity: 0.9, transform: [{ scale: 0.99 }] },
   disabled: { opacity: 0.62 },
 });

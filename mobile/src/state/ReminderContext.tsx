@@ -15,10 +15,17 @@ interface ReminderEntry {
   updatedAt: number;
 }
 
+export interface ReminderInfo {
+  error?: string;
+  frequency: ReminderFrequency;
+  updatedAt?: number;
+}
+
 interface ReminderContextValue {
   hydrated: boolean;
   getReminder: (poolId: string) => ReminderFrequency;
   getReminderError: (poolId: string) => string | undefined;
+  getReminderInfo: (poolId: string) => ReminderInfo;
   setReminder: (poolId: string, frequency: ReminderFrequency, poolName?: string) => Promise<void>;
 }
 
@@ -107,6 +114,14 @@ export function ReminderProvider({ children }: { children: ReactNode }) {
       },
       getReminderError(poolId) {
         return reminders[poolId]?.error;
+      },
+      getReminderInfo(poolId) {
+        const entry = reminders[poolId];
+        return {
+          error: entry?.error,
+          frequency: entry?.frequency ?? 'off',
+          updatedAt: entry?.updatedAt,
+        };
       },
       async setReminder(poolId, frequency, poolName) {
         const current = reminders[poolId];

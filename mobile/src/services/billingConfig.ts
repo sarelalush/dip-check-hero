@@ -2,13 +2,13 @@ export type BillingProductKind = 'subscription' | 'consumable';
 
 export const BILLING_PRODUCTS = {
   basicMonthly: {
-    id: 'basic_monthly',
+    id: 'basic-monthly',
     kind: 'subscription' as BillingProductKind,
     labelHe: 'מנוי בסיסי',
     fallbackPriceHe: '30 ₪ לחודש',
   },
   extraPoolMonthly: {
-    id: 'extra_pool_monthly',
+    id: 'extra-pool-monthly',
     kind: 'subscription' as BillingProductKind,
     labelHe: 'בריכה נוספת',
     fallbackPriceHe: '10 ₪ לחודש',

@@ -43,6 +43,18 @@ export function PlanUsageScreen({ navigation, route }: Props) {
 
   const scanPercent = pct(usage.scansUsed, usage.scansLimit);
   const poolPercent = pct(usage.activePoolsUsed, usage.activePoolLimit);
+  const reasonTitle =
+    reason === 'subscriptionRequired'
+      ? 'נדרש מנוי פעיל'
+      : reason === 'scanQuota'
+        ? 'הגעת למכסת הסריקות החודשית'
+        : 'הגעת למכסת הבריכות הפעילות';
+  const reasonText =
+    reason === 'subscriptionRequired'
+      ? 'כדי ליצור בריכה, לסרוק סטיק ולקבל המלצות צריך להפעיל מנוי חודשי.'
+      : reason === 'scanQuota'
+        ? 'המנוי כולל 200 סריקות בחודש. ניתן לרכוש חבילת סריקות נוספת.'
+        : 'המנוי הנוכחי כולל בריכה פעילה אחת. ניתן להוסיף בריכות נוספות דרך שדרוג.';
 
   return (
     <AppShell activeTab="settings" navigation={navigation}>
@@ -57,14 +69,8 @@ export function PlanUsageScreen({ navigation, route }: Props) {
             <LineIcon name="help" color={colors.warning} size={17} />
           </View>
           <View style={styles.alertCopy}>
-            <Text style={styles.alertTitle}>
-              {reason === 'scanQuota' ? 'הגעת למכסת הסריקות החודשית' : 'הגעת למכסת הבריכות הפעילות'}
-            </Text>
-            <Text style={styles.alertText}>
-              {reason === 'scanQuota'
-                ? 'המנוי כולל 200 סריקות בחודש. בקרוב ניתן יהיה לרכוש חבילת סריקות נוספת.'
-                : 'המנוי הנוכחי כולל בריכה פעילה אחת. בקרוב ניתן יהיה להוסיף בריכות נוספות.'}
-            </Text>
+            <Text style={styles.alertTitle}>{reasonTitle}</Text>
+            <Text style={styles.alertText}>{reasonText}</Text>
           </View>
         </Card>
       ) : null}

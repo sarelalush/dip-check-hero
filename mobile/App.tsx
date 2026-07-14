@@ -29,11 +29,11 @@ import { ForgotPasswordScreen } from './src/screens/ForgotPasswordScreen';
 import { ResetPasswordScreen } from './src/screens/ResetPasswordScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { PlanUsageScreen } from './src/screens/PlanUsageScreen';
+import { RemindersScreen } from './src/screens/RemindersScreen';
 import { PrivacyPolicyScreen } from './src/screens/PrivacyPolicyScreen';
 import { TermsScreen } from './src/screens/TermsScreen';
 import { SupportScreen } from './src/screens/SupportScreen';
 import { DeleteAccountScreen } from './src/screens/DeleteAccountScreen';
-import { ReleaseChecklistScreen } from './src/screens/ReleaseChecklistScreen';
 import { colors } from './src/theme';
 import { AuthProvider, useAuth } from './src/state/AuthContext';
 import { PoolsProvider, usePools } from './src/state/PoolsContext';
@@ -53,7 +53,8 @@ export type RootStackParamList = {
   ConfirmScan: { brandId?: string; poolId?: string; imageUri: string };
   Results: { brandId?: string; poolId?: string; imageUri?: string; imagePath?: string; imageUrl?: string; testId?: string } | undefined;
   History: undefined;
-  PlanUsage: { reason?: 'poolQuota' | 'scanQuota' } | undefined;
+  PlanUsage: { reason?: 'poolQuota' | 'scanQuota' | 'subscriptionRequired' } | undefined;
+  Reminders: undefined;
   PrivacyPolicy: undefined;
   Terms: undefined;
   Support: undefined;
@@ -164,11 +165,11 @@ function AppNavigator() {
             <Stack.Screen name="Results" component={ResultsScreen} />
             <Stack.Screen name="History" component={HistoryScreen} />
             <Stack.Screen name="PlanUsage" component={PlanUsageScreen} />
+            <Stack.Screen name="Reminders" component={RemindersScreen} />
             <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
             <Stack.Screen name="Terms" component={TermsScreen} />
             <Stack.Screen name="Support" component={SupportScreen} />
             <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
-            <Stack.Screen name="ReleaseChecklist" component={ReleaseChecklistScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
           </>
         ) : (

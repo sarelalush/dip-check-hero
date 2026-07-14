@@ -15,7 +15,7 @@ import {
 import { colors, rtl, shadows, typography } from '../theme';
 import { usePools } from '../state/PoolsContext';
 import { useAuth } from '../state/AuthContext';
-import { canCreatePool } from '../services/usageService';
+import { canCreatePool, hasActiveSubscription } from '../services/usageService';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddPool'>;
@@ -52,6 +52,7 @@ export function AddPoolScreen({ navigation }: Props) {
   const [imageBusy, setImageBusy] = useState(false);
   const [quotaChecking, setQuotaChecking] = useState(true);
   const [quotaExceeded, setQuotaExceeded] = useState(false);
+  const [subscriptionRequired, setSubscriptionRequired] = useState(false);
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
 
@@ -76,8 +77,18 @@ export function AddPoolScreen({ navigation }: Props) {
 
     async function checkPoolQuota() {
       setQuotaChecking(true);
+      const subscribed = await hasActiveSubscription(accountId);
+      if (!mounted) return;
+      if (!subscribed) {
+        setSubscriptionRequired(true);
+        setQuotaExceeded(true);
+        setQuotaChecking(false);
+        return;
+      }
+
       const allowed = await canCreatePool(accountId, pools.length);
       if (!mounted) return;
+      setSubscriptionRequired(false);
       setQuotaExceeded(!allowed);
       setQuotaChecking(false);
     }
@@ -127,8 +138,16 @@ export function AddPoolScreen({ navigation }: Props) {
     savingRef.current = true;
     setSaving(true);
     try {
+      const subscribed = await hasActiveSubscription(accountId);
+      if (!subscribed) {
+        setSubscriptionRequired(true);
+        setQuotaExceeded(true);
+        return;
+      }
+
       const allowed = await canCreatePool(accountId, pools.length);
       if (!allowed) {
+        setSubscriptionRequired(false);
         setQuotaExceeded(true);
         return;
       }
@@ -174,10 +193,14 @@ export function AddPoolScreen({ navigation }: Props) {
             <View style={styles.quotaIcon}>
               <Text style={styles.imageIcon}>+</Text>
             </View>
-            <Text style={styles.quotaTitle}>המנוי הנוכחי כולל בריכה פעילה אחת</Text>
-            <Text style={styles.quotaText}>כדי להוסיף בריכה נוספת ניתן יהיה לשדרג או להוסיף חבילת בריכה בקרוב.</Text>
-            <Pressable onPress={() => navigation.navigate('PlanUsage', { reason: 'poolQuota' })} style={styles.primaryBtn}>
-              <Text style={styles.primaryBtnLabel}>צפה באפשרויות שדרוג</Text>
+            <Text style={styles.quotaTitle}>{subscriptionRequired ? 'נדרש מנוי פעיל' : 'המנוי הנוכחי כולל בריכה פעילה אחת'}</Text>
+            <Text style={styles.quotaText}>
+              {subscriptionRequired
+                ? 'כדי ליצור בריכה, לסרוק סטיק ולקבל המלצות צריך להפעיל מנוי.'
+                : 'כדי להוסיף בריכה נוספת ניתן יהיה לשדרג או להוסיף חבילת בריכה בקרוב.'}
+            </Text>
+            <Pressable onPress={() => navigation.navigate('PlanUsage', { reason: subscriptionRequired ? 'subscriptionRequired' : 'poolQuota' })} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnLabel}>{subscriptionRequired ? 'הפעל מנוי' : 'צפה באפשרויות שדרוג'}</Text>
             </Pressable>
             <Pressable onPress={() => navigation.navigate('Pools')} style={styles.secondaryBtn}>
               <Text style={styles.secondaryBtnLabel}>חזרה לבריכות</Text>

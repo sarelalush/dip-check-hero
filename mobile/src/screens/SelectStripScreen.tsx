@@ -12,7 +12,7 @@ import { PARAM_LABEL_HE, type StripBrand } from '../domain/strip';
 import { usePools } from '../state/PoolsContext';
 import { useAuth } from '../state/AuthContext';
 import { useScanSession } from '../state/ScanSessionContext';
-import { canCreateScan } from '../services/usageService';
+import { canCreateScan, hasActiveSubscription } from '../services/usageService';
 import { colors, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
@@ -74,6 +74,13 @@ export function SelectStripScreen({ navigation, route }: Props) {
     setSelectedBrandId(brand.id);
     setSelectedBrand(brand.id);
     setCheckingQuota(true);
+    const subscribed = await hasActiveSubscription(accountId);
+    if (!subscribed) {
+      setCheckingQuota(false);
+      navigation.navigate('PlanUsage', { reason: 'subscriptionRequired' });
+      return;
+    }
+
     const allowed = await canCreateScan(accountId);
     setCheckingQuota(false);
     if (!allowed) {

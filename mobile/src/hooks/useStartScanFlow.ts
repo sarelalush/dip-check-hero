@@ -2,14 +2,23 @@ import { useCallback } from 'react';
 import type { NavigationProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../App';
 import { usePools } from '../state/PoolsContext';
+import { useAuth } from '../state/AuthContext';
 import { useScanSession } from '../state/ScanSessionContext';
+import { hasActiveSubscription } from '../services/usageService';
 
 export function useStartScanFlow(navigation: NavigationProp<RootStackParamList>) {
   const { getPool, pools } = usePools();
+  const { accountId } = useAuth();
   const { startScanSession } = useScanSession();
 
   return useCallback(
-    (poolId?: string) => {
+    async (poolId?: string) => {
+      const subscribed = await hasActiveSubscription(accountId);
+      if (!subscribed) {
+        navigation.navigate('PlanUsage', { reason: 'subscriptionRequired' });
+        return;
+      }
+
       const explicitPool = poolId ? getPool(poolId) : undefined;
       const selectedPool = explicitPool ?? (pools.length === 1 ? pools[0] : undefined);
 
@@ -26,6 +35,6 @@ export function useStartScanFlow(navigation: NavigationProp<RootStackParamList>)
 
       navigation.navigate('SelectPool');
     },
-    [getPool, navigation, pools, startScanSession],
+    [accountId, getPool, navigation, pools, startScanSession],
   );
 }

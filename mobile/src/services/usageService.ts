@@ -25,6 +25,7 @@ const PLAN_ADDONS_ENABLED = true;
 export interface PlanUsageInfo {
   activePoolLimit: number;
   activePoolsUsed: number;
+  hasActiveSubscription: boolean;
   includedPools: number;
   includedScans: number;
   planName: string;
@@ -37,6 +38,7 @@ export function getFallbackPlanUsage(activePoolsUsed = 0): PlanUsageInfo {
   return {
     activePoolLimit: BASE_PLAN.activePoolLimit,
     activePoolsUsed,
+    hasActiveSubscription: false,
     includedPools: BASE_PLAN.activePoolLimit,
     includedScans: BASE_PLAN.includedScans,
     planName: BASE_PLAN.name,
@@ -45,33 +47,71 @@ export function getFallbackPlanUsage(activePoolsUsed = 0): PlanUsageInfo {
   };
 }
 
+function isSubscriptionCurrent(subscription?: { current_period_end?: string | null; provider?: string | null; status?: string | null } | null) {
+  if (!subscription) return false;
+  if (subscription.provider === 'dev') return false;
+
+  const status = subscription.status;
+  const periodEnd = subscription.current_period_end ? Date.parse(subscription.current_period_end) : Number.POSITIVE_INFINITY;
+  const periodIsCurrent = Number.isFinite(periodEnd) ? periodEnd > Date.now() : true;
+
+  if (!periodIsCurrent) return false;
+  return status === 'active' || status === 'trialing' || status === 'canceled';
+}
+
+export async function hasActiveSubscription(accountId?: string) {
+  if (!isSupabaseConfigured || !accountId) return false;
+
+  try {
+    const { data, error } = await getSupabaseClient()
+      .from('subscriptions')
+      .select('status,current_period_end,provider')
+      .eq('account_id', accountId)
+      .in('status', ['active', 'trialing', 'canceled'])
+      .order('created_at', { ascending: false })
+      .limit(10);
+
+    if (error) throw error;
+    return (data ?? []).some(isSubscriptionCurrent);
+  } catch (error) {
+    console.warn('Failed to check active subscription', error);
+    return false;
+  }
+}
+
 export async function canCreatePool(accountId?: string, localActivePools = 0) {
   if (!PLAN_ADDONS_ENABLED && localActivePools >= BASE_PLAN.activePoolLimit) {
     return false;
   }
 
-  if (!isSupabaseConfigured || !accountId) return true;
+  if (!isSupabaseConfigured || !accountId) return false;
 
   try {
+    const subscribed = await hasActiveSubscription(accountId);
+    if (!subscribed) return false;
+
     const { data, error } = await getSupabaseClient().rpc('can_create_pool', { p_account_id: accountId });
     if (error) throw error;
     return data !== false;
   } catch (error) {
-    console.warn('Failed to check pool quota, allowing local fallback', error);
-    return true;
+    console.warn('Failed to check pool quota', error);
+    return false;
   }
 }
 
 export async function canCreateScan(accountId?: string) {
-  if (!isSupabaseConfigured || !accountId) return true;
+  if (!isSupabaseConfigured || !accountId) return false;
 
   try {
+    const subscribed = await hasActiveSubscription(accountId);
+    if (!subscribed) return false;
+
     const { data, error } = await getSupabaseClient().rpc('can_create_scan', { p_account_id: accountId });
     if (error) throw error;
     return data !== false;
   } catch (error) {
-    console.warn('Failed to check scan quota, allowing local fallback', error);
-    return true;
+    console.warn('Failed to check scan quota', error);
+    return false;
   }
 }
 
@@ -94,7 +134,7 @@ export async function fetchPlanUsage(accountId?: string, localActivePools = 0): 
   }
 
   try {
-    const [entitlementsResponse, usageResponse, subscriptionResponse] = await Promise.all([
+    const [entitlementsResponse, usageResponse, subscriptionResponse, hasSubscription] = await Promise.all([
       getSupabaseClient().rpc('get_current_account_entitlements', { p_account_id: accountId }),
       getSupabaseClient()
         .from('usage_periods')
@@ -105,11 +145,12 @@ export async function fetchPlanUsage(accountId?: string, localActivePools = 0): 
         .maybeSingle(),
       getSupabaseClient()
         .from('subscriptions')
-        .select('plan_id,status')
+        .select('plan_id,status,current_period_end,provider')
         .eq('account_id', accountId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
+      hasActiveSubscription(accountId),
     ]);
 
     if (entitlementsResponse.error) throw entitlementsResponse.error;
@@ -130,12 +171,13 @@ export async function fetchPlanUsage(accountId?: string, localActivePools = 0): 
     return {
       activePoolLimit,
       activePoolsUsed: localActivePools,
+      hasActiveSubscription: hasSubscription,
       includedPools: entitlements?.included_pools ?? BASE_PLAN.activePoolLimit,
       includedScans: entitlements?.included_scans ?? BASE_PLAN.includedScans,
       planName,
       scansLimit,
       scansUsed: usage?.scans_used ?? 0,
-      status: subscription?.status ?? undefined,
+      status: hasSubscription ? subscription?.status ?? undefined : 'inactive',
     };
   } catch (error) {
     console.warn('Failed to fetch plan usage, using safe fallback', error);
