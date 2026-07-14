@@ -42,6 +42,7 @@ import { ResultsHistoryProvider } from './src/state/ResultsHistoryContext';
 import { ScanSessionProvider } from './src/state/ScanSessionContext';
 import { ReminderProvider } from './src/state/ReminderContext';
 import { AppPreferencesProvider } from './src/state/AppPreferencesContext';
+import { hasActiveSubscription } from './src/services/usageService';
 
 export type RootStackParamList = {
   Home: undefined;
@@ -76,6 +77,7 @@ export type RootStackParamList = {
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+type SubscriptionGateStatus = 'active' | 'checking' | 'inactive' | 'idle';
 
 export default function App() {
   const [fontWaitExpired, setFontWaitExpired] = useState(false);
@@ -128,11 +130,46 @@ function LoadingScreen() {
 }
 
 function AppNavigator() {
-  const { loading, isAuthenticated, passwordRecoveryExpiresAt } = useAuth();
+  const { accountId, loading, isAuthenticated, passwordRecoveryExpiresAt } = useAuth();
   const { hydrated: poolsHydrated } = usePools();
   const isPasswordRecovery = Boolean(passwordRecoveryExpiresAt);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionGateStatus>('idle');
 
-  if (loading || (isAuthenticated && !isPasswordRecovery && !poolsHydrated)) {
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!isAuthenticated || isPasswordRecovery) {
+      setSubscriptionStatus('idle');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!accountId) {
+      setSubscriptionStatus('inactive');
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setSubscriptionStatus('checking');
+    hasActiveSubscription(accountId)
+      .then((active) => {
+        if (!cancelled) setSubscriptionStatus(active ? 'active' : 'inactive');
+      })
+      .catch(() => {
+        if (!cancelled) setSubscriptionStatus('inactive');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, isAuthenticated, isPasswordRecovery]);
+
+  const subscriptionRequired = isAuthenticated && !isPasswordRecovery && subscriptionStatus === 'inactive';
+  const subscriptionChecking = isAuthenticated && !isPasswordRecovery && subscriptionStatus === 'checking';
+
+  if (loading || subscriptionChecking || (isAuthenticated && !isPasswordRecovery && !subscriptionRequired && !poolsHydrated)) {
     return (
       <View style={styles.loadingScreen}>
         <LoadingScreen />
@@ -141,9 +178,9 @@ function AppNavigator() {
   }
 
   return (
-    <NavigationContainer key={isPasswordRecovery ? 'recovery' : isAuthenticated ? 'app' : 'auth'}>
+    <NavigationContainer key={isPasswordRecovery ? 'recovery' : isAuthenticated ? (subscriptionRequired ? 'paywall' : 'app') : 'auth'}>
       <Stack.Navigator
-        initialRouteName={isPasswordRecovery ? 'ResetPassword' : isAuthenticated ? 'Home' : 'Welcome'}
+        initialRouteName={isPasswordRecovery ? 'ResetPassword' : isAuthenticated ? (subscriptionRequired ? 'Purchase' : 'Home') : 'Welcome'}
         screenOptions={{ headerShown: false }}
       >
         {isPasswordRecovery ? (
