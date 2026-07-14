@@ -15,7 +15,7 @@ export function useStartScanFlow(navigation: NavigationProp<RootStackParamList>)
     async (poolId?: string) => {
       const subscribed = await hasActiveSubscription(accountId);
       if (!subscribed) {
-        navigation.navigate('PlanUsage', { reason: 'subscriptionRequired' });
+        navigation.navigate('Purchase', { reason: 'subscriptionRequired' });
         return;
       }
 

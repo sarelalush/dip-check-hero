@@ -77,14 +77,14 @@ export function SelectStripScreen({ navigation, route }: Props) {
     const subscribed = await hasActiveSubscription(accountId);
     if (!subscribed) {
       setCheckingQuota(false);
-      navigation.navigate('PlanUsage', { reason: 'subscriptionRequired' });
+      navigation.navigate('Purchase', { reason: 'subscriptionRequired' });
       return;
     }
 
     const allowed = await canCreateScan(accountId);
     setCheckingQuota(false);
     if (!allowed) {
-      navigation.navigate('PlanUsage', { reason: 'scanQuota' });
+      navigation.navigate('Purchase', { reason: 'scanQuota' });
       return;
     }
 

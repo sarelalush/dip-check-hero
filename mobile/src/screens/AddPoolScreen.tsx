@@ -199,7 +199,7 @@ export function AddPoolScreen({ navigation }: Props) {
                 ? 'כדי ליצור בריכה, לסרוק סטיק ולקבל המלצות צריך להפעיל מנוי.'
                 : 'כדי להוסיף בריכה נוספת ניתן יהיה לשדרג או להוסיף חבילת בריכה בקרוב.'}
             </Text>
-            <Pressable onPress={() => navigation.navigate('PlanUsage', { reason: subscriptionRequired ? 'subscriptionRequired' : 'poolQuota' })} style={styles.primaryBtn}>
+            <Pressable onPress={() => navigation.navigate('Purchase', { reason: subscriptionRequired ? 'subscriptionRequired' : 'poolQuota' })} style={styles.primaryBtn}>
               <Text style={styles.primaryBtnLabel}>{subscriptionRequired ? 'הפעל מנוי' : 'צפה באפשרויות שדרוג'}</Text>
             </Pressable>
             <Pressable onPress={() => navigation.navigate('Pools')} style={styles.secondaryBtn}>

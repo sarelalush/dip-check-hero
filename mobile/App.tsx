@@ -29,6 +29,7 @@ import { ForgotPasswordScreen } from './src/screens/ForgotPasswordScreen';
 import { ResetPasswordScreen } from './src/screens/ResetPasswordScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { PlanUsageScreen } from './src/screens/PlanUsageScreen';
+import { PurchaseScreen } from './src/screens/PurchaseScreen';
 import { RemindersScreen } from './src/screens/RemindersScreen';
 import { PrivacyPolicyScreen } from './src/screens/PrivacyPolicyScreen';
 import { TermsScreen } from './src/screens/TermsScreen';
@@ -54,6 +55,7 @@ export type RootStackParamList = {
   Results: { brandId?: string; poolId?: string; imageUri?: string; imagePath?: string; imageUrl?: string; testId?: string } | undefined;
   History: undefined;
   PlanUsage: { reason?: 'poolQuota' | 'scanQuota' | 'subscriptionRequired' } | undefined;
+  Purchase: { reason?: 'poolQuota' | 'scanQuota' | 'subscriptionRequired' } | undefined;
   Reminders: undefined;
   PrivacyPolicy: undefined;
   Terms: undefined;
@@ -165,6 +167,7 @@ function AppNavigator() {
             <Stack.Screen name="Results" component={ResultsScreen} />
             <Stack.Screen name="History" component={HistoryScreen} />
             <Stack.Screen name="PlanUsage" component={PlanUsageScreen} />
+            <Stack.Screen name="Purchase" component={PurchaseScreen} />
             <Stack.Screen name="Reminders" component={RemindersScreen} />
             <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
             <Stack.Screen name="Terms" component={TermsScreen} />
