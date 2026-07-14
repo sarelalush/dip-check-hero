@@ -1285,14 +1285,14 @@ async function verifyAccountMembership(accountId: string, userId: string, reques
   return Array.isArray(rows) && rows.length > 0;
 }
 
-async function canCreateScan(accountId: string, request: Request) {
+async function canCreateScan(accountId: string, userId: string, request: Request) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   if (!supabaseUrl) return true;
 
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/can_create_scan`, {
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/can_create_scan_for_user`, {
     method: 'POST',
     headers: getServiceHeaders(request),
-    body: JSON.stringify({ p_account_id: accountId }),
+    body: JSON.stringify({ p_account_id: accountId, p_user_id: userId }),
   });
 
   if (!response.ok) return true;
@@ -1422,7 +1422,7 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
       throw new EdgeAnalysisError('unavailable', 'המשתמש אינו משויך לחשבון שנשלח לניתוח.');
     }
 
-    const quotaAvailable = await canCreateScan(body.accountId, request);
+    const quotaAvailable = await canCreateScan(body.accountId, authenticatedUserId, request);
     if (!quotaAvailable) {
       throw new EdgeAnalysisError('unavailable', 'מכסת הסריקות החודשית נוצלה. כרגע לא ניתן לבצע ניתוח נוסף.');
     }
