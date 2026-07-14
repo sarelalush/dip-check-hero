@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, ImageBackground, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { getRecommendedBrand } from '../config/stripBrands';
@@ -183,7 +183,20 @@ export function AddPoolScreen({ navigation }: Props) {
     }
   }
 
-  if (!quotaChecking && quotaExceeded) {
+  if (quotaChecking) {
+    return (
+      <WebPhoneFrame>
+        <ImageBackground source={ADD_POOL_IMAGE} resizeMode="cover" style={styles.root}>
+          <View style={styles.waterWash} />
+          <View style={styles.loadingContent}>
+            <ActivityIndicator color={colors.primary} size="large" />
+          </View>
+        </ImageBackground>
+      </WebPhoneFrame>
+    );
+  }
+
+  if (quotaExceeded) {
     return (
       <WebPhoneFrame>
       <ImageBackground source={ADD_POOL_IMAGE} resizeMode="cover" style={styles.root}>
@@ -447,6 +460,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   keyboardRoot: { flex: 1 },
   waterWash: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(245,253,255,0.72)' },
+  loadingContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { paddingHorizontal: 20, paddingTop: 50, paddingBottom: 40 },
   quotaContent: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
   quotaCard: { backgroundColor: colors.card, borderRadius: 28, padding: 20, gap: 14, alignItems: 'center', ...shadows.card },
