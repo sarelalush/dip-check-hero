@@ -212,8 +212,8 @@ export function AddPoolScreen({ navigation }: Props) {
                 ? 'כדי ליצור בריכה, לסרוק סטיק ולקבל המלצות צריך להפעיל מנוי.'
                 : 'כדי להוסיף בריכה נוספת ניתן יהיה לשדרג או להוסיף חבילת בריכה בקרוב.'}
             </Text>
-            <Pressable onPress={() => navigation.navigate('Purchase', { reason: subscriptionRequired ? 'subscriptionRequired' : 'poolQuota' })} style={styles.primaryBtn}>
-              <Text style={styles.primaryBtnLabel}>{subscriptionRequired ? 'הפעל מנוי' : 'צפה באפשרויות שדרוג'}</Text>
+            <Pressable onPress={() => navigation.navigate('Purchase', { reason: subscriptionRequired ? 'subscriptionRequired' : 'poolQuota' })} style={styles.quotaPrimaryBtn}>
+              <Text numberOfLines={2} adjustsFontSizeToFit style={styles.quotaPrimaryBtnLabel}>{subscriptionRequired ? 'הפעל מנוי' : 'צפה באפשרויות שדרוג'}</Text>
             </Pressable>
             <Pressable onPress={() => navigation.navigate('Pools')} style={styles.secondaryBtn}>
               <Text style={styles.secondaryBtnLabel}>חזרה לבריכות</Text>
@@ -463,10 +463,30 @@ const styles = StyleSheet.create({
   loadingContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { paddingHorizontal: 20, paddingTop: 50, paddingBottom: 40 },
   quotaContent: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
-  quotaCard: { backgroundColor: colors.card, borderRadius: 28, padding: 20, gap: 14, alignItems: 'center', ...shadows.card },
+  quotaCard: { width: '100%', maxWidth: 350, backgroundColor: colors.card, borderRadius: 28, padding: 20, gap: 14, alignItems: 'center', ...shadows.card },
   quotaIcon: { width: 62, height: 62, borderRadius: 31, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
   quotaTitle: { color: colors.text, fontSize: 18, fontWeight: '900', fontFamily: typography.fontFamilyBold, ...rtl.textCenter },
   quotaText: { color: colors.textSoft, fontSize: 13, lineHeight: 20, fontWeight: '800', fontFamily: typography.fontFamilyRegular, ...rtl.textCenter },
+  quotaPrimaryBtn: {
+    width: '100%',
+    marginTop: 6,
+    minHeight: 56,
+    borderRadius: 22,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...shadows.button,
+  },
+  quotaPrimaryBtnLabel: {
+    color: colors.white,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '900',
+    fontFamily: typography.fontFamilyBold,
+    ...rtl.textCenter,
+  },
   topBar: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
   iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center', ...shadows.card },
   iconGlyph: { fontSize: 24, color: colors.text, fontWeight: '900' },
