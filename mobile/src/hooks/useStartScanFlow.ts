@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { NavigationProp } from '@react-navigation/native';
 import type { RootStackParamList } from '../../App';
+import { getBrand } from '../config/stripBrands';
 import { usePools } from '../state/PoolsContext';
 import { useAuth } from '../state/AuthContext';
 import { useScanSession } from '../state/ScanSessionContext';
@@ -21,8 +22,15 @@ export function useStartScanFlow(navigation: NavigationProp<RootStackParamList>)
       const selectedPool = explicitPool ?? (pools.length === 1 ? pools[0] : undefined);
 
       if (selectedPool) {
-        startScanSession({ brandId: selectedPool.stripBrandId, poolId: selectedPool.id });
-        navigation.navigate('SelectStrip', { poolId: selectedPool.id });
+        const poolBrand = selectedPool.stripBrandId ? getBrand(selectedPool.stripBrandId) : undefined;
+        const canSkipStripSelection = Boolean(poolBrand?.supported);
+
+        startScanSession({ brandId: canSkipStripSelection ? poolBrand?.id : selectedPool.stripBrandId, poolId: selectedPool.id });
+        if (canSkipStripSelection) {
+          navigation.navigate('Scan', { poolId: selectedPool.id, brandId: poolBrand?.id });
+        } else {
+          navigation.navigate('SelectStrip', { poolId: selectedPool.id });
+        }
         return;
       }
 

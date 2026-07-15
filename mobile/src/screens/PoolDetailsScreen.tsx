@@ -67,7 +67,15 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
   }
 
   function startPoolScan() {
-    startScanSession({ brandId: pool?.stripBrandId, poolId: route.params.poolId });
+    const selectedBrand = pool?.stripBrandId ? getBrand(pool.stripBrandId) : undefined;
+    const canSkipStripSelection = Boolean(selectedBrand?.supported);
+
+    startScanSession({ brandId: canSkipStripSelection ? selectedBrand?.id : pool?.stripBrandId, poolId: route.params.poolId });
+    if (canSkipStripSelection) {
+      navigation.navigate('Scan', { brandId: selectedBrand?.id, poolId: route.params.poolId });
+      return;
+    }
+
     navigation.navigate('SelectStrip', { poolId: route.params.poolId });
   }
 

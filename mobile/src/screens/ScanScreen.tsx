@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
 import { LineIcon } from '../components/LineIcon';
 import { WaterTexture } from '../components/WaterVisuals';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
+import { useAuth } from '../state/AuthContext';
 import { useScanSession } from '../state/ScanSessionContext';
+import { canCreateScan, hasActiveSubscription } from '../services/usageService';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Scan'>;
@@ -20,11 +22,13 @@ const pickerOptions: ImagePicker.ImagePickerOptions = {
 };
 
 export function ScanScreen({ navigation, route }: Props) {
+  const { accountId } = useAuth();
   const { resetScanSession, session, setCurrentStep, setImageUri, setScanError, startScanSession } = useScanSession();
   const didInitializeSession = useRef(false);
   const [selectedImageUri, setSelectedImageUri] = useState<string | undefined>(session.imageUri);
   const [feedback, setFeedback] = useState('בחרו תמונת סטיק או צלמו אחת חדשה');
   const [isPicking, setIsPicking] = useState(false);
+  const [scanGateStatus, setScanGateStatus] = useState<'checking' | 'ready'>('checking');
   const activeBrandId = session.selectedBrandId ?? route.params?.brandId;
 
   const resultParams = useMemo(
@@ -68,8 +72,47 @@ export function ScanScreen({ navigation, route }: Props) {
     setCurrentStep('scan');
   }, [activeBrandId, setCurrentStep]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!activeBrandId) return () => {
+      cancelled = true;
+    };
+
+    async function verifyScanAccess() {
+      setScanGateStatus('checking');
+
+      if (!accountId) {
+        navigation.replace('Purchase', { reason: 'subscriptionRequired' });
+        return;
+      }
+
+      const subscribed = await hasActiveSubscription(accountId);
+      if (cancelled) return;
+      if (!subscribed) {
+        navigation.replace('Purchase', { reason: 'subscriptionRequired' });
+        return;
+      }
+
+      const allowed = await canCreateScan(accountId);
+      if (cancelled) return;
+      if (!allowed) {
+        navigation.replace('Purchase', { reason: 'scanQuota' });
+        return;
+      }
+
+      setScanGateStatus('ready');
+    }
+
+    void verifyScanAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, activeBrandId, navigation]);
+
   async function pickImage(source: PickSource) {
-    if (isPicking) {
+    if (isPicking || scanGateStatus !== 'ready') {
       return;
     }
 
@@ -130,6 +173,10 @@ export function ScanScreen({ navigation, route }: Props) {
   }
 
   function continueToResults() {
+    if (scanGateStatus !== 'ready') {
+      return;
+    }
+
     const imageUri = selectedImageUri ?? session.imageUri;
 
     if (!imageUri) {
@@ -146,6 +193,23 @@ export function ScanScreen({ navigation, route }: Props) {
   function closeScan() {
     resetScanSession();
     navigation.navigate('Home');
+  }
+
+  if (activeBrandId && scanGateStatus !== 'ready') {
+    return (
+      <AppShell activeTab="scan" navigation={navigation} scroll={false} waterMode="full">
+        <View style={styles.gateScreen}>
+          <View style={styles.waterLayer}>
+            <WaterTexture deep />
+          </View>
+          <View style={styles.gateCard}>
+            <ActivityIndicator color={colors.primary} size="large" />
+            <Text style={styles.gateTitle}>מכינים את הסריקה</Text>
+            <Text style={styles.gateText}>בודקים מנוי ומכסת סריקות כדי לפתוח את הצילום.</Text>
+          </View>
+        </View>
+      </AppShell>
+    );
   }
 
   return (
@@ -250,8 +314,40 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 120,
   },
+  gateScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 96,
+  },
   waterLayer: {
     ...StyleSheet.absoluteFillObject,
+  },
+  gateCard: {
+    width: '100%',
+    borderRadius: 28,
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 28,
+    ...shadows.card,
+  },
+  gateTitle: {
+    color: colors.text,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 20,
+    fontWeight: '900',
+    ...rtl.textCenter,
+  },
+  gateText: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 13,
+    fontWeight: '800',
+    lineHeight: 20,
+    ...rtl.textCenter,
   },
   topBar: {
     flexDirection: 'row-reverse',

@@ -12,7 +12,6 @@ import { PARAM_LABEL_HE, type StripBrand } from '../domain/strip';
 import { usePools } from '../state/PoolsContext';
 import { useAuth } from '../state/AuthContext';
 import { useScanSession } from '../state/ScanSessionContext';
-import { canCreateScan, hasActiveSubscription } from '../services/usageService';
 import { colors, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
@@ -35,7 +34,6 @@ export function SelectStripScreen({ navigation, route }: Props) {
     [pool?.stripBrandId, session.selectedBrandId],
   );
   const [selectedBrandId, setSelectedBrandId] = useState(initialBrand.id);
-  const [checkingQuota, setCheckingQuota] = useState(false);
   const selectedBrand = stripBrands.find((brand) => brand.id === selectedBrandId) ?? initialBrand;
 
   useEffect(() => {
@@ -68,31 +66,22 @@ export function SelectStripScreen({ navigation, route }: Props) {
     setSelectedBrand(brandId);
   }
 
-  async function continueWithBrand(brand: StripBrand) {
-    if (!brand.supported || checkingQuota) return;
+  function continueWithBrand(brand: StripBrand) {
+    if (!brand.supported) return;
 
     setSelectedBrandId(brand.id);
     setSelectedBrand(brand.id);
-    setCheckingQuota(true);
-    const subscribed = await hasActiveSubscription(accountId);
-    if (!subscribed) {
-      setCheckingQuota(false);
-      navigation.navigate('Purchase', { reason: 'subscriptionRequired' });
-      return;
-    }
 
-    const allowed = await canCreateScan(accountId);
-    setCheckingQuota(false);
-    if (!allowed) {
-      navigation.navigate('Purchase', { reason: 'scanQuota' });
+    if (!accountId) {
+      navigation.navigate('Purchase', { reason: 'subscriptionRequired' });
       return;
     }
 
     navigation.navigate('Scan', { brandId: brand.id, poolId: selectedPoolId });
   }
 
-  async function handleContinue() {
-    await continueWithBrand(selectedBrand);
+  function handleContinue() {
+    continueWithBrand(selectedBrand);
   }
 
   function handleBrandPress(brand: StripBrand) {
@@ -101,7 +90,7 @@ export function SelectStripScreen({ navigation, route }: Props) {
       return;
     }
 
-    void continueWithBrand(brand);
+    continueWithBrand(brand);
   }
 
   return (
@@ -139,8 +128,8 @@ export function SelectStripScreen({ navigation, route }: Props) {
 
       <View style={styles.cta}>
         <PrimaryButton
-          disabled={!selectedBrand.supported || checkingQuota}
-          label={checkingQuota ? 'בודק זמינות סריקה...' : selectedBrand.supported ? 'המשך לסריקה' : 'מותג זה ייתמך בקרוב'}
+          disabled={!selectedBrand.supported}
+          label={selectedBrand.supported ? 'המשך לסריקה' : 'מותג זה ייתמך בקרוב'}
           icon="scan"
           onPress={handleContinue}
         />

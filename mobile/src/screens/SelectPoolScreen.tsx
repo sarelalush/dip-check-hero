@@ -5,6 +5,7 @@ import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
 import { PoolCard } from '../components/PoolCard';
 import { PrimaryButton } from '../components/PrimaryButton';
+import { getBrand } from '../config/stripBrands';
 import { usePools } from '../state/PoolsContext';
 import { useScanSession } from '../state/ScanSessionContext';
 import { colors, rtl, typography } from '../theme';
@@ -24,7 +25,15 @@ export function SelectPoolScreen({ navigation }: Props) {
   function selectPool(poolId: string) {
     const pool = pools.find((item) => item.id === poolId);
     if (!pool) return;
-    startScanSession({ brandId: pool.stripBrandId, poolId: pool.id });
+    const brand = pool.stripBrandId ? getBrand(pool.stripBrandId) : undefined;
+    const canSkipStripSelection = Boolean(brand?.supported);
+
+    startScanSession({ brandId: canSkipStripSelection ? brand?.id : pool.stripBrandId, poolId: pool.id });
+    if (canSkipStripSelection) {
+      navigation.replace('Scan', { brandId: brand?.id, poolId: pool.id });
+      return;
+    }
+
     navigation.replace('SelectStrip', { poolId: pool.id });
   }
 
