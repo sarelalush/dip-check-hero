@@ -323,8 +323,8 @@ function getStoreItemPrice(productId: string, storePlatform: StorePlatform, stor
 
 function getUnavailableProductMessage(storePlatform: StorePlatform) {
   return storePlatform === 'ios'
-    ? 'המוצר עדיין לא חזר מ-App Store Connect. ודא שהמוצר מצורף לגרסה שנשלחה לבדיקה, שיש לו מחיר ולוקליזציה, ושמותקן build אחרון מ-TestFlight.'
-    : 'המוצר עדיין לא זמין בחנות. ודא שהוא מוגדר ופעיל ב-Google Play Console.';
+    ? 'המוצר עדיין לא זמין לרכישה בחנות. ודא שהמוצר מצורף לגרסת האפליקציה שנשלחה לבדיקה, שיש לו מחיר ולוקליזציה, ושמותקנת הגרסה האחרונה לבדיקה.'
+    : 'המוצר עדיין לא זמין לרכישה בחנות. ודא שהוא מוגדר, פעיל ומשויך לגרסה האחרונה שנשלחה לבדיקה.';
 }
 
 function getPurchaseErrorMessage(message: string | undefined, storePlatform: StorePlatform) {

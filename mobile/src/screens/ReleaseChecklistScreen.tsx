@@ -30,7 +30,7 @@ const checklistItems: Array<{ label: string; note: string; tone: ChecklistTone }
   { label: 'Privacy / Terms קיימים', note: 'נוספו מסכי מדיניות פרטיות ותנאי שימוש.', tone: 'done' },
   { label: 'מחיקת חשבון', note: 'יש מסך בקשה/אישור. מחיקה מלאה עדיין דורשת backend מאובטח.', tone: 'partial' },
   { label: 'התראות', note: 'העדפות תזכורת קיימות מקומית. Push/Local notifications עדיין לא סופי.', tone: 'partial' },
-  { label: 'תשלומים', note: 'מסך תוכנית ושימוש קיים. רכישה בפועל עדיין לא מחוברת.', tone: 'partial' },
+  { label: 'תשלומים', note: 'מסך תוכנית ושימוש מחובר למוצרי החנות ומציג מנויים, תוספות ושחזור רכישות.', tone: 'done' },
 ];
 
 export function ReleaseChecklistScreen({ navigation }: Props) {
