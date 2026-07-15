@@ -13,8 +13,8 @@
       "bundleIdentifier": "com.stickcheck.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSPhotoLibraryUsageDescription": "אפשר ל-AquaSense לבחור תמונת סטיק מהגלריה.",
-        "NSCameraUsageDescription": "אפשר ל-AquaSense לצלם סטיק בדיקה."
+        "NSPhotoLibraryUsageDescription": "AquaSense צריכה גישה לגלריה כדי לבחור תמונת סטיק לבדיקה.",
+        "NSCameraUsageDescription": "AquaSense צריכה גישה למצלמה כדי לצלם סטיק בדיקה."
       }
     },
     "android": {
@@ -35,8 +35,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "אפשר ל-AquaSense לבחור תמונת סטיק מהגלריה.",
-          "cameraPermission": "אפשר ל-AquaSense לצלם סטיק בדיקה."
+          "photosPermission": "AquaSense צריכה גישה לגלריה כדי לבחור תמונת סטיק לבדיקה.",
+          "cameraPermission": "AquaSense צריכה גישה למצלמה כדי לצלם סטיק בדיקה."
         }
       ],
       "expo-notifications",
