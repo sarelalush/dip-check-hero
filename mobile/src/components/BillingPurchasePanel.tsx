@@ -173,7 +173,7 @@ function NativeBillingPurchasePanel({
     }
 
     const item = storeItems.get(productId);
-    if (!item) {
+    if (!item && storePlatform === 'android') {
       setStatus('error');
       setMessage('המוצר עדיין לא זמין בחנות. ודא שהוא מוגדר ופעיל בקונסול.');
       return;
@@ -255,8 +255,8 @@ function getPurchaseTransactionId(purchase: Purchase) {
   return 'transactionId' in purchase && typeof purchase.transactionId === 'string' ? purchase.transactionId : undefined;
 }
 
-function requireSubscriptionOfferToken(item: StoreItem) {
-  if (!item.offerToken) {
+function requireSubscriptionOfferToken(item?: StoreItem) {
+  if (!item?.offerToken) {
     throw new Error('לא נמצאה הצעת מנוי פעילה עבור המוצר הזה.');
   }
   return item.offerToken;
