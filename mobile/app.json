@@ -6,6 +6,7 @@
     "orientation": "portrait",
     "scheme": "aquasense",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.stickcheck.app",
