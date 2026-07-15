@@ -6,9 +6,10 @@ import { Card } from './Card';
 import { LineIcon } from './LineIcon';
 import {
   BILLING_PRODUCTS,
-  STORE_IN_APP_PRODUCT_IDS,
-  STORE_SUBSCRIPTION_IDS,
   getBillingProductLabel,
+  getStoreInAppProductIds,
+  getStoreProductId,
+  getStoreSubscriptionIds,
   isConsumableBillingProduct,
 } from '../services/billingConfig';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
@@ -139,6 +140,9 @@ function NativeBillingPurchasePanel({
     },
   });
 
+  const storeSubscriptionIds = useMemo(() => getStoreSubscriptionIds(storePlatform), [storePlatform]);
+  const storeInAppProductIds = useMemo(() => getStoreInAppProductIds(storePlatform), [storePlatform]);
+
   useEffect(() => {
     if (!connected) return;
 
@@ -147,8 +151,8 @@ function NativeBillingPurchasePanel({
       try {
         setStatus('loading');
         await Promise.all([
-          fetchProducts({ skus: STORE_SUBSCRIPTION_IDS, type: 'subs' }),
-          fetchProducts({ skus: STORE_IN_APP_PRODUCT_IDS, type: 'in-app' }),
+          fetchProducts({ skus: storeSubscriptionIds, type: 'subs' }),
+          fetchProducts({ skus: storeInAppProductIds, type: 'in-app' }),
         ]);
         if (!mounted) return;
         setStatus('idle');
@@ -165,7 +169,7 @@ function NativeBillingPurchasePanel({
     return () => {
       mounted = false;
     };
-  }, [connected, fetchProducts]);
+  }, [connected, fetchProducts, storeInAppProductIds, storeSubscriptionIds]);
 
   const storeItems = useMemo(() => {
     const map = new Map<string, StoreItem>();
@@ -189,7 +193,8 @@ function NativeBillingPurchasePanel({
       return;
     }
 
-    const item = storeItems.get(productId);
+    const storeProductId = getStoreProductId(productId, storePlatform);
+    const item = storeItems.get(storeProductId);
     if (!item && storePlatform === 'android') {
       setStatus('error');
       setMessage('המוצר עדיין לא זמין בחנות. ודא שהוא מוגדר ופעיל בקונסול.');
@@ -204,11 +209,11 @@ function NativeBillingPurchasePanel({
         await requestPurchase({
           request:
             storePlatform === 'ios'
-              ? { apple: { sku: productId } }
+              ? { apple: { sku: storeProductId } }
               : {
                   google: {
                     obfuscatedAccountId: accountId ?? '',
-                    skus: [productId],
+                    skus: [storeProductId],
                   },
                 },
           type: 'in-app',
@@ -217,12 +222,12 @@ function NativeBillingPurchasePanel({
         await requestPurchase({
           request:
             storePlatform === 'ios'
-              ? { apple: { sku: productId } }
+              ? { apple: { sku: storeProductId } }
               : {
                   google: {
                     obfuscatedAccountId: accountId ?? '',
-                    skus: [productId],
-                    subscriptionOffers: [{ offerToken: requireSubscriptionOfferToken(item), sku: productId }],
+                    skus: [storeProductId],
+                    subscriptionOffers: [{ offerToken: requireSubscriptionOfferToken(item), sku: storeProductId }],
                   },
                 },
           type: 'subs',
@@ -272,19 +277,25 @@ function NativeBillingPurchasePanel({
         busy={busy && activeProductId === BILLING_PRODUCTS.basicMonthly.id}
         label="הפעל מנוי בסיסי"
         onPress={() => purchase(BILLING_PRODUCTS.basicMonthly.id)}
-        price={storeItems.get(BILLING_PRODUCTS.basicMonthly.id)?.displayPrice ?? BILLING_PRODUCTS.basicMonthly.fallbackPriceHe}
+        price={storeItems.get(getStoreProductId(BILLING_PRODUCTS.basicMonthly.id, storePlatform))?.displayPrice ?? BILLING_PRODUCTS.basicMonthly.fallbackPriceHe}
       />
       <BillingButton
         busy={busy && activeProductId === BILLING_PRODUCTS.extraPoolMonthly.id}
         label="הוסף בריכה נוספת"
         onPress={() => purchase(BILLING_PRODUCTS.extraPoolMonthly.id)}
-        price={storeItems.get(BILLING_PRODUCTS.extraPoolMonthly.id)?.displayPrice ?? BILLING_PRODUCTS.extraPoolMonthly.fallbackPriceHe}
+        price={
+          storeItems.get(getStoreProductId(BILLING_PRODUCTS.extraPoolMonthly.id, storePlatform))?.displayPrice ??
+          BILLING_PRODUCTS.extraPoolMonthly.fallbackPriceHe
+        }
       />
       <BillingButton
         busy={busy && activeProductId === BILLING_PRODUCTS.extraScanPack200.id}
         label="רכוש עוד 200 סריקות"
         onPress={() => purchase(BILLING_PRODUCTS.extraScanPack200.id)}
-        price={storeItems.get(BILLING_PRODUCTS.extraScanPack200.id)?.displayPrice ?? BILLING_PRODUCTS.extraScanPack200.fallbackPriceHe}
+        price={
+          storeItems.get(getStoreProductId(BILLING_PRODUCTS.extraScanPack200.id, storePlatform))?.displayPrice ??
+          BILLING_PRODUCTS.extraScanPack200.fallbackPriceHe
+        }
       />
       <Pressable disabled={busy} onPress={restore} style={({ pressed }) => [styles.restoreButton, busy && styles.disabled, pressed && !busy ? styles.pressed : null]}>
         <LineIcon name="history" color={colors.primaryDark} size={16} />
