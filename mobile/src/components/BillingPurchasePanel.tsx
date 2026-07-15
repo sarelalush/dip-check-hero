@@ -9,6 +9,7 @@ import {
   getBillingProductLabel,
   getStoreInAppProductIds,
   getStoreProductId,
+  getStoreProductIdCandidates,
   getStoreSubscriptionIds,
   isConsumableBillingProduct,
 } from '../services/billingConfig';
@@ -131,7 +132,7 @@ function NativeBillingPurchasePanel({
   const { connected, fetchProducts, finishTransaction, products, requestPurchase, restorePurchases, subscriptions } = useIAP({
     onPurchaseError(error) {
       setStatus('error');
-      setMessage(error.message || 'הרכישה בוטלה או נכשלה.');
+      setMessage(getPurchaseErrorMessage(error.message, storePlatform));
     },
     onPurchaseSuccess: handlePurchaseSuccess,
     onError(error) {
@@ -193,11 +194,11 @@ function NativeBillingPurchasePanel({
       return;
     }
 
-    const storeProductId = getStoreProductId(productId, storePlatform);
+    const storeProductId = resolveLoadedStoreProductId(productId, storePlatform, storeItems);
     const item = storeItems.get(storeProductId);
-    if (!item && storePlatform === 'android') {
+    if (!item) {
       setStatus('error');
-      setMessage('המוצר עדיין לא זמין בחנות. ודא שהוא מוגדר ופעיל בקונסול.');
+      setMessage(getUnavailableProductMessage(storePlatform));
       return;
     }
 
@@ -235,7 +236,7 @@ function NativeBillingPurchasePanel({
       }
     } catch (error) {
       setStatus('error');
-      setMessage(error instanceof Error ? error.message : 'לא הצלחנו לפתוח את חלון הרכישה.');
+      setMessage(error instanceof Error ? getPurchaseErrorMessage(error.message, storePlatform) : 'לא הצלחנו לפתוח את חלון הרכישה.');
     } finally {
       setActiveProductId(undefined);
     }
@@ -277,15 +278,14 @@ function NativeBillingPurchasePanel({
         busy={busy && activeProductId === BILLING_PRODUCTS.basicMonthly.id}
         label="הפעל מנוי בסיסי"
         onPress={() => purchase(BILLING_PRODUCTS.basicMonthly.id)}
-        price={storeItems.get(getStoreProductId(BILLING_PRODUCTS.basicMonthly.id, storePlatform))?.displayPrice ?? BILLING_PRODUCTS.basicMonthly.fallbackPriceHe}
+        price={getStoreItemPrice(BILLING_PRODUCTS.basicMonthly.id, storePlatform, storeItems) ?? BILLING_PRODUCTS.basicMonthly.fallbackPriceHe}
       />
       <BillingButton
         busy={busy && activeProductId === BILLING_PRODUCTS.extraPoolMonthly.id}
         label="הוסף בריכה נוספת"
         onPress={() => purchase(BILLING_PRODUCTS.extraPoolMonthly.id)}
         price={
-          storeItems.get(getStoreProductId(BILLING_PRODUCTS.extraPoolMonthly.id, storePlatform))?.displayPrice ??
-          BILLING_PRODUCTS.extraPoolMonthly.fallbackPriceHe
+          getStoreItemPrice(BILLING_PRODUCTS.extraPoolMonthly.id, storePlatform, storeItems) ?? BILLING_PRODUCTS.extraPoolMonthly.fallbackPriceHe
         }
       />
       <BillingButton
@@ -293,8 +293,7 @@ function NativeBillingPurchasePanel({
         label="רכוש עוד 200 סריקות"
         onPress={() => purchase(BILLING_PRODUCTS.extraScanPack200.id)}
         price={
-          storeItems.get(getStoreProductId(BILLING_PRODUCTS.extraScanPack200.id, storePlatform))?.displayPrice ??
-          BILLING_PRODUCTS.extraScanPack200.fallbackPriceHe
+          getStoreItemPrice(BILLING_PRODUCTS.extraScanPack200.id, storePlatform, storeItems) ?? BILLING_PRODUCTS.extraScanPack200.fallbackPriceHe
         }
       />
       <Pressable disabled={busy} onPress={restore} style={({ pressed }) => [styles.restoreButton, busy && styles.disabled, pressed && !busy ? styles.pressed : null]}>
@@ -309,6 +308,30 @@ function NativeBillingPurchasePanel({
 
 function getPurchaseTransactionId(purchase: Purchase) {
   return 'transactionId' in purchase && typeof purchase.transactionId === 'string' ? purchase.transactionId : undefined;
+}
+
+function resolveLoadedStoreProductId(productId: string, storePlatform: StorePlatform, storeItems: Map<string, StoreItem>) {
+  return (
+    getStoreProductIdCandidates(productId, storePlatform).find((candidate) => storeItems.has(candidate)) ??
+    getStoreProductId(productId, storePlatform)
+  );
+}
+
+function getStoreItemPrice(productId: string, storePlatform: StorePlatform, storeItems: Map<string, StoreItem>) {
+  return storeItems.get(resolveLoadedStoreProductId(productId, storePlatform, storeItems))?.displayPrice;
+}
+
+function getUnavailableProductMessage(storePlatform: StorePlatform) {
+  return storePlatform === 'ios'
+    ? 'המוצר עדיין לא חזר מ-App Store Connect. ודא שהמוצר מצורף לגרסה שנשלחה לבדיקה, שיש לו מחיר ולוקליזציה, ושמותקן build אחרון מ-TestFlight.'
+    : 'המוצר עדיין לא זמין בחנות. ודא שהוא מוגדר ופעיל ב-Google Play Console.';
+}
+
+function getPurchaseErrorMessage(message: string | undefined, storePlatform: StorePlatform) {
+  if (/sku|product.*not.*found|item.*not.*available/i.test(message ?? '')) {
+    return getUnavailableProductMessage(storePlatform);
+  }
+  return message || 'הרכישה בוטלה או נכשלה.';
 }
 
 function requireSubscriptionOfferToken(item?: StoreItem) {

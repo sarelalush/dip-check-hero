@@ -57,12 +57,20 @@ export function getStoreProductId(productId: string, platform: BillingStorePlatf
   );
 }
 
+export function getStoreProductIdCandidates(productId: string, platform: BillingStorePlatform) {
+  const product = Object.values(BILLING_PRODUCTS).find((item) => item.id === productId || hasStoreProductId(item, productId));
+  if (!product) return [productId];
+  if (platform === 'android') return [product.storeIds.android];
+
+  return Array.from(new Set([product.storeIds.ios, product.id, product.storeIds.android]));
+}
+
 export function getStoreSubscriptionIds(platform: BillingStorePlatform) {
-  return STORE_SUBSCRIPTION_IDS.map((productId) => getStoreProductId(productId, platform));
+  return STORE_SUBSCRIPTION_IDS.flatMap((productId) => getStoreProductIdCandidates(productId, platform));
 }
 
 export function getStoreInAppProductIds(platform: BillingStorePlatform) {
-  return STORE_IN_APP_PRODUCT_IDS.map((productId) => getStoreProductId(productId, platform));
+  return STORE_IN_APP_PRODUCT_IDS.flatMap((productId) => getStoreProductIdCandidates(productId, platform));
 }
 
 export function isConsumableBillingProduct(productId: string) {
