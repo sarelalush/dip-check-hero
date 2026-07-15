@@ -21,6 +21,8 @@ export const PLAN_ADDONS = {
 };
 
 const PLAN_ADDONS_ENABLED = true;
+const ACTIVE_SUBSCRIPTION_CACHE_MS = 60 * 1000;
+const activeSubscriptionCache = new Map<string, { expiresAt: number; value: boolean }>();
 
 export interface PlanUsageInfo {
   activePoolLimit: number;
@@ -62,6 +64,11 @@ function isSubscriptionCurrent(subscription?: { current_period_end?: string | nu
 export async function hasActiveSubscription(accountId?: string) {
   if (!isSupabaseConfigured || !accountId) return false;
 
+  const cached = activeSubscriptionCache.get(accountId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
   try {
     const { data, error } = await getSupabaseClient()
       .from('subscriptions')
@@ -72,7 +79,11 @@ export async function hasActiveSubscription(accountId?: string) {
       .limit(10);
 
     if (error) throw error;
-    return (data ?? []).some(isSubscriptionCurrent);
+    const active = (data ?? []).some(isSubscriptionCurrent);
+    if (active) {
+      activeSubscriptionCache.set(accountId, { expiresAt: Date.now() + ACTIVE_SUBSCRIPTION_CACHE_MS, value: active });
+    }
+    return active;
   } catch (error) {
     console.warn('Failed to check active subscription', error);
     return false;

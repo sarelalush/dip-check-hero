@@ -4,7 +4,6 @@ import type { RootStackParamList } from '../../App';
 import { usePools } from '../state/PoolsContext';
 import { useAuth } from '../state/AuthContext';
 import { useScanSession } from '../state/ScanSessionContext';
-import { hasActiveSubscription } from '../services/usageService';
 
 export function useStartScanFlow(navigation: NavigationProp<RootStackParamList>) {
   const { getPool, pools } = usePools();
@@ -12,9 +11,8 @@ export function useStartScanFlow(navigation: NavigationProp<RootStackParamList>)
   const { startScanSession } = useScanSession();
 
   return useCallback(
-    async (poolId?: string) => {
-      const subscribed = await hasActiveSubscription(accountId);
-      if (!subscribed) {
+    (poolId?: string) => {
+      if (!accountId) {
         navigation.navigate('Purchase', { reason: 'subscriptionRequired' });
         return;
       }
