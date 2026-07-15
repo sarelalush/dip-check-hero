@@ -16,6 +16,7 @@ interface AppShellProps {
   children: ReactNode;
   navigation: NavigationProp<RootStackParamList>;
   scroll?: boolean;
+  showBottomTabs?: boolean;
   waterMode?: 'soft' | 'full';
   contentStyle?: StyleProp<ViewStyle>;
 }
@@ -25,6 +26,7 @@ export function AppShell({
   children,
   navigation,
   scroll = true,
+  showBottomTabs = true,
   waterMode = 'soft',
   contentStyle,
 }: AppShellProps) {
@@ -32,7 +34,7 @@ export function AppShell({
   const insets = useSafeAreaInsets();
   const bottomInset = showDevicePreview ? 0 : Math.max(insets.bottom, Platform.OS === 'android' ? 28 : 16);
   const topContentPadding = showDevicePreview ? 12 : Math.max(insets.top + 12, Platform.OS === 'android' ? 38 : 32);
-  const contentBottomPadding = layout.tabHeight + bottomInset + 26;
+  const contentBottomPadding = (showBottomTabs ? layout.tabHeight : 0) + bottomInset + 26;
   const content = (
     <SafeAreaView style={[styles.safe, contentStyle, { paddingTop: topContentPadding, paddingBottom: contentBottomPadding }]} edges={[]}>
       {children}
@@ -59,7 +61,7 @@ export function AppShell({
       ) : (
         content
       )}
-      <BottomTabBar active={activeTab} navigation={navigation} />
+      {showBottomTabs ? <BottomTabBar active={activeTab} navigation={navigation} /> : null}
     </View>
   );
 

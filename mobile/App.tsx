@@ -215,6 +215,10 @@ function AppNavigator() {
         ) : (
           <>
             <Stack.Screen name="Welcome" component={LandingScreen} />
+            <Stack.Screen name="Purchase" component={PurchaseScreen} />
+            <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+            <Stack.Screen name="Terms" component={TermsScreen} />
+            <Stack.Screen name="Support" component={SupportScreen} />
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Signup" component={SignupScreen} />
             <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />

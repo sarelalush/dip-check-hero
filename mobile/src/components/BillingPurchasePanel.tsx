@@ -32,9 +32,9 @@ export function BillingPurchasePanel(props: BillingPurchasePanelProps) {
   if (Platform.OS !== 'android' && Platform.OS !== 'ios') {
     return (
       <Card compact style={styles.noticeCard}>
-        <Text style={styles.noticeTitle}>רכישות זמינות רק באפליקציה המותקנת</Text>
+        <Text style={styles.noticeTitle}>רכישות זמינות באפליקציה המותקנת</Text>
         <Text style={styles.noticeText}>
-          ב-web וב-Expo Go אפשר לראות את המסך, אבל רכישה אמיתית זמינה רק בגרסה שמותקנת דרך App Store או Google Play.
+          בגרסת הדפדפן אפשר לצפות במסך בלבד. רכישה אמיתית זמינה רק באפליקציה שמותקנת דרך החנות של המכשיר.
         </Text>
       </Card>
     );
@@ -66,16 +66,33 @@ function NativeBillingPurchasePanel({
       if (processedPurchaseTokens.current.has(purchaseToken)) return;
       processedPurchaseTokens.current.add(purchaseToken);
 
+      const isApple = storePlatform === 'ios';
+
+      if (!accountId && isApple) {
+        try {
+          await finishTransaction({
+            purchase,
+            isConsumable: isConsumableBillingProduct(productId),
+          });
+          setStatus('success');
+          setMessage('הרכישה נשמרה בחשבון Apple שלך. ניתן להירשם או להתחבר בכל שלב כדי להפעיל ולסנכרן את המנוי באפליקציה.');
+        } catch (error) {
+          processedPurchaseTokens.current.delete(purchaseToken);
+          setStatus('error');
+          setMessage(error instanceof Error ? error.message : 'הרכישה התקבלה, אך לא הצלחנו לסיים את התהליך. נסה שוב.');
+        }
+        return;
+      }
+
       if (!isSupabaseConfigured || !accountId) {
         setStatus('error');
-        setMessage('לא ניתן לאמת רכישה ללא חיבור לחשבון. התחבר ונסה שוב.');
+        setMessage('צריך להתחבר לחשבון כדי לאמת רכישה במכשיר הזה.');
         return;
       }
 
       try {
-        const isApple = storePlatform === 'ios';
         setStatus('verifying');
-        setMessage(isApple ? 'מאמתים את הרכישה מול Apple...' : 'מאמתים את הרכישה מול Google Play...');
+        setMessage(isApple ? 'מאמתים את הרכישה מול Apple...' : 'מאמתים את הרכישה מול החנות...');
         const { data, error } = await getSupabaseClient().functions.invoke(
           isApple ? 'verify-apple-purchase' : 'verify-google-play-purchase',
           {
@@ -166,7 +183,7 @@ function NativeBillingPurchasePanel({
   }, [products, subscriptions]);
 
   const purchase = async (productId: string) => {
-    if (!accountId) {
+    if (!accountId && storePlatform === 'android') {
       setStatus('error');
       setMessage('צריך להתחבר לחשבון לפני רכישה.');
       return;
@@ -190,7 +207,7 @@ function NativeBillingPurchasePanel({
               ? { apple: { sku: productId } }
               : {
                   google: {
-                    obfuscatedAccountId: accountId,
+                    obfuscatedAccountId: accountId ?? '',
                     skus: [productId],
                   },
                 },
@@ -203,7 +220,7 @@ function NativeBillingPurchasePanel({
               ? { apple: { sku: productId } }
               : {
                   google: {
-                    obfuscatedAccountId: accountId,
+                    obfuscatedAccountId: accountId ?? '',
                     skus: [productId],
                     subscriptionOffers: [{ offerToken: requireSubscriptionOfferToken(item), sku: productId }],
                   },
@@ -220,7 +237,7 @@ function NativeBillingPurchasePanel({
   };
 
   const restore = async () => {
-    if (!accountId) {
+    if (!accountId && storePlatform === 'android') {
       setStatus('error');
       setMessage('צריך להתחבר לחשבון לפני שחזור רכישות.');
       return;
@@ -232,7 +249,11 @@ function NativeBillingPurchasePanel({
       setMessage('מחפשים רכישות פעילות בחנות...');
       await restorePurchases({ alsoPublishToEventListenerIOS: true, onlyIncludeActiveItemsIOS: true });
       setStatus('success');
-      setMessage('אם נמצאה רכישה פעילה, היא תאומת ותופעל בחשבון שלך.');
+      setMessage(
+        accountId
+          ? 'אם נמצאה רכישה פעילה, היא תאומת ותופעל בחשבון שלך.'
+          : 'אם נמצאה רכישה פעילה בחשבון Apple שלך, ניתן להתחבר או להירשם כדי לסנכרן אותה באפליקציה.',
+      );
     } catch (error) {
       setStatus('error');
       setMessage(error instanceof Error ? error.message : 'לא הצלחנו לשחזר רכישות כרגע.');

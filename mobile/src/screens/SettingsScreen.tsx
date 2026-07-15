@@ -24,7 +24,7 @@ export function SettingsScreen({ navigation }: Props) {
       (user?.user_metadata?.display_name as string | undefined) ||
       (user?.user_metadata?.full_name as string | undefined) ||
       user?.email ||
-      'משתמש Dip Check'
+      'משתמש AquaSense'
     );
   }, [user]);
 

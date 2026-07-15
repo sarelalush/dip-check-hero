@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as QueryParams from 'expo-auth-session/build/QueryParams';
+import * as Crypto from 'expo-crypto';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import type { Session, User } from '@supabase/supabase-js';
@@ -36,6 +37,14 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 const PASSWORD_RECOVERY_WINDOW_MS = 5 * 60 * 1000;
+const APPLE_NONCE_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._';
+
+async function generateAppleNonce(length = 32) {
+  const bytes = await Crypto.getRandomBytesAsync(length);
+  return Array.from(bytes)
+    .map((byte) => APPLE_NONCE_CHARS[byte % APPLE_NONCE_CHARS.length])
+    .join('');
+}
 
 function normalizeEmail(email: string) {
   return email
@@ -315,7 +324,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return { error: 'התחברות עם Apple אינה זמינה במכשיר הזה.' };
           }
 
+          const rawNonce = await generateAppleNonce();
+          const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
           const credential = await AppleAuthentication.signInAsync({
+            nonce: hashedNonce,
             requestedScopes: [
               AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
               AppleAuthentication.AppleAuthenticationScope.EMAIL,
@@ -327,6 +339,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
 
           const { data, error } = await getSupabaseClient().auth.signInWithIdToken({
+            nonce: rawNonce,
             provider: 'apple',
             token: credential.identityToken,
           });

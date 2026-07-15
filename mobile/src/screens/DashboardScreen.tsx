@@ -42,7 +42,7 @@ export function DashboardScreen({ navigation }: Props) {
                 <Text style={styles.logoDrop}>●</Text>
               </View>
               <View>
-                <Text style={styles.logoName}>Dip Check</Text>
+                <Text style={styles.logoName}>AquaSense</Text>
                 <Text style={styles.logoSub}>בדיקת מים חכמה</Text>
               </View>
             </View>

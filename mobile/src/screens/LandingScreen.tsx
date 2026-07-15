@@ -135,7 +135,7 @@ export function LandingScreen({ navigation }: Props) {
       return;
     }
     await completeOnboarding();
-    navigation.navigate('Signup');
+    navigation.navigate('Purchase', { reason: 'subscriptionRequired' });
   }, [completeOnboarding, isLast, navigation]);
 
   const skip = useCallback(async () => {
@@ -234,8 +234,8 @@ function OnboardingHeader({ compact, index, slide }: { compact: boolean; index: 
   return (
     <View style={[styles.header, compact && styles.headerCompact]}>
       <View style={[styles.brandRow, compact && styles.brandRowCompact]}>
-        <Text style={[styles.brandDip, compact && styles.brandTextCompact]}>Dip</Text>
-        <Text style={[styles.brandCheck, compact && styles.brandTextCompact]}>Check</Text>
+        <Text style={[styles.brandDip, compact && styles.brandTextCompact]}>Aqua</Text>
+        <Text style={[styles.brandCheck, compact && styles.brandTextCompact]}>Sense</Text>
         <View style={[styles.dropLogo, compact && styles.dropLogoCompact]}>
           <LineIcon name="check" color={colors.white} size={compact ? 16 : 21} />
         </View>

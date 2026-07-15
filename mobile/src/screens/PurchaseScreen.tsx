@@ -31,7 +31,7 @@ export function PurchaseScreen({ navigation, route }: Props) {
   const copy = reasonCopy[reason];
 
   return (
-    <AppShell activeTab="settings" navigation={navigation} contentStyle={styles.content}>
+    <AppShell activeTab="settings" navigation={navigation} contentStyle={styles.content} showBottomTabs={Boolean(accountId)}>
       <View style={styles.hero}>
         <View style={styles.heroIcon}>
           <LineIcon name="drop" color={colors.white} size={26} />
@@ -59,7 +59,33 @@ export function PurchaseScreen({ navigation, route }: Props) {
         </View>
       </Card>
 
-      <BillingPurchasePanel accountId={accountId} onPurchaseVerified={() => navigation.navigate('Home')} />
+      {!accountId ? (
+        <Card compact style={styles.accountCard}>
+          <Text style={styles.accountTitle}>אפשר לרכוש גם בלי הרשמה</Text>
+          <Text style={styles.accountText}>
+            הרשמה אינה חובה לפני רכישה. חשבון AquaSense מאפשר להפעיל את המנוי באפליקציה, לשמור בריכות ולסנכרן את הרכישה במכשירים נתמכים.
+          </Text>
+          <View style={styles.accountActions}>
+            <Pressable style={({ pressed }) => [styles.accountPrimary, pressed && styles.pressed]} onPress={() => navigation.navigate('Signup')}>
+              <Text style={styles.accountPrimaryText}>הרשמה</Text>
+            </Pressable>
+            <Pressable style={({ pressed }) => [styles.accountSecondary, pressed && styles.pressed]} onPress={() => navigation.navigate('Login')}>
+              <Text style={styles.accountSecondaryText}>התחברות</Text>
+            </Pressable>
+          </View>
+        </Card>
+      ) : null}
+
+      <BillingPurchasePanel
+        accountId={accountId}
+        onPurchaseVerified={() => {
+          if (accountId) {
+            navigation.navigate('Home');
+            return;
+          }
+          navigation.navigate('Signup');
+        }}
+      />
 
       <View style={styles.legalLinks}>
         <Pressable onPress={() => navigation.navigate('Terms')} hitSlop={8}>
@@ -71,9 +97,11 @@ export function PurchaseScreen({ navigation, route }: Props) {
         </Pressable>
       </View>
 
-      <Pressable style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]} onPress={() => navigation.navigate('PlanUsage', { reason })}>
-        <Text style={styles.secondaryText}>צפה במכסה ובשימוש</Text>
-      </Pressable>
+      {accountId ? (
+        <Pressable style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]} onPress={() => navigation.navigate('PlanUsage', { reason })}>
+          <Text style={styles.secondaryText}>צפה במכסה ובשימוש</Text>
+        </Pressable>
+      ) : null}
     </AppShell>
   );
 }
@@ -223,6 +251,58 @@ const styles = StyleSheet.create({
     gap: 9,
     justifyContent: 'center',
     marginTop: 12,
+  },
+  accountActions: {
+    flexDirection: 'row-reverse',
+    gap: 10,
+    marginTop: 10,
+  },
+  accountCard: {
+    gap: 6,
+    marginTop: 14,
+  },
+  accountPrimary: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: radius.round,
+    flex: 1,
+    paddingVertical: 10,
+  },
+  accountPrimaryText: {
+    color: colors.white,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  accountSecondary: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderColor: colors.borderSoft,
+    borderRadius: radius.round,
+    borderWidth: 1,
+    flex: 1,
+    paddingVertical: 10,
+  },
+  accountSecondaryText: {
+    color: colors.primaryDark,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  accountText: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 18,
+    ...rtl.textCenter,
+  },
+  accountTitle: {
+    color: colors.text,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 15,
+    fontWeight: '900',
+    ...rtl.textCenter,
   },
   legalLinkText: {
     color: colors.primaryDark,

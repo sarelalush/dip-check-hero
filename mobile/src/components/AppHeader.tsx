@@ -19,7 +19,7 @@ export function AppHeader({ onNotificationPress }: AppHeaderProps) {
         </View>
         <View>
           <Text style={styles.logoTitle}>AquaSense</Text>
-          <Text style={styles.logoSub}>Dip Check</Text>
+          <Text style={styles.logoSub}>AquaSense</Text>
         </View>
       </View>
 
