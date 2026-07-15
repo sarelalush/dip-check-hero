@@ -23,12 +23,15 @@ export const BILLING_PRODUCTS = {
 
 export type BillingProductId = (typeof BILLING_PRODUCTS)[keyof typeof BILLING_PRODUCTS]['id'];
 
-export const GOOGLE_PLAY_SUBSCRIPTION_IDS = [
+export const STORE_SUBSCRIPTION_IDS = [
   BILLING_PRODUCTS.basicMonthly.id,
   BILLING_PRODUCTS.extraPoolMonthly.id,
 ];
 
-export const GOOGLE_PLAY_IN_APP_PRODUCT_IDS = [BILLING_PRODUCTS.extraScanPack200.id];
+export const STORE_IN_APP_PRODUCT_IDS = [BILLING_PRODUCTS.extraScanPack200.id];
+
+export const GOOGLE_PLAY_SUBSCRIPTION_IDS = STORE_SUBSCRIPTION_IDS;
+export const GOOGLE_PLAY_IN_APP_PRODUCT_IDS = STORE_IN_APP_PRODUCT_IDS;
 
 export function isConsumableBillingProduct(productId: string) {
   return productId === BILLING_PRODUCTS.extraScanPack200.id;

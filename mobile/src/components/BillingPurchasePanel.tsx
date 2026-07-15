@@ -6,8 +6,8 @@ import { Card } from './Card';
 import { LineIcon } from './LineIcon';
 import {
   BILLING_PRODUCTS,
-  GOOGLE_PLAY_IN_APP_PRODUCT_IDS,
-  GOOGLE_PLAY_SUBSCRIPTION_IDS,
+  STORE_IN_APP_PRODUCT_IDS,
+  STORE_SUBSCRIPTION_IDS,
   getBillingProductLabel,
   isConsumableBillingProduct,
 } from '../services/billingConfig';
@@ -15,6 +15,7 @@ import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabas
 import { colors, radius, rtl, typography } from '../theme';
 
 type PurchaseStatus = 'idle' | 'loading' | 'purchasing' | 'verifying' | 'success' | 'error';
+type StorePlatform = 'android' | 'ios';
 
 interface BillingPurchasePanelProps {
   accountId?: string;
@@ -28,19 +29,25 @@ interface StoreItem {
 }
 
 export function BillingPurchasePanel(props: BillingPurchasePanelProps) {
-  if (Platform.OS !== 'android') {
+  if (Platform.OS !== 'android' && Platform.OS !== 'ios') {
     return (
       <Card compact style={styles.noticeCard}>
-        <Text style={styles.noticeTitle}>תשלומים זמינים כרגע באנדרואיד בלבד</Text>
-        <Text style={styles.noticeText}>ב־web וב־Expo Go אפשר לראות את המסך, אבל רכישה אמיתית זמינה רק בגרסת Android שמותקנת דרך Google Play.</Text>
+        <Text style={styles.noticeTitle}>רכישות זמינות רק באפליקציה המותקנת</Text>
+        <Text style={styles.noticeText}>
+          ב-web וב-Expo Go אפשר לראות את המסך, אבל רכישה אמיתית זמינה רק בגרסת Android או iOS שמותקנת דרך החנות.
+        </Text>
       </Card>
     );
   }
 
-  return <AndroidBillingPurchasePanel {...props} />;
+  return <NativeBillingPurchasePanel {...props} storePlatform={Platform.OS} />;
 }
 
-function AndroidBillingPurchasePanel({ accountId, onPurchaseVerified }: BillingPurchasePanelProps) {
+function NativeBillingPurchasePanel({
+  accountId,
+  onPurchaseVerified,
+  storePlatform,
+}: BillingPurchasePanelProps & { storePlatform: StorePlatform }) {
   const processedPurchaseTokens = useRef(new Set<string>());
   const [status, setStatus] = useState<PurchaseStatus>('idle');
   const [message, setMessage] = useState<string>();
@@ -49,7 +56,7 @@ function AndroidBillingPurchasePanel({ accountId, onPurchaseVerified }: BillingP
   const handlePurchaseSuccess = useCallback(
     async (purchase: Purchase) => {
       const productId = purchase.productId;
-      const purchaseToken = purchase.purchaseToken;
+      const purchaseToken = purchase.purchaseToken ?? getPurchaseTransactionId(purchase);
       if (!productId || !purchaseToken) {
         setStatus('error');
         setMessage('הרכישה התקבלה ללא מזהה תקין. נסה שוב בעוד רגע.');
@@ -66,17 +73,23 @@ function AndroidBillingPurchasePanel({ accountId, onPurchaseVerified }: BillingP
       }
 
       try {
+        const isApple = storePlatform === 'ios';
         setStatus('verifying');
-        setMessage('מאמתים את הרכישה מול Google Play...');
-        const { data, error } = await getSupabaseClient().functions.invoke('verify-google-play-purchase', {
-          body: {
-            accountId,
-            productId,
-            purchase,
-            purchaseToken,
-            platform: 'android',
+        setMessage(isApple ? 'מאמתים את הרכישה מול Apple...' : 'מאמתים את הרכישה מול Google Play...');
+        const { data, error } = await getSupabaseClient().functions.invoke(
+          isApple ? 'verify-apple-purchase' : 'verify-google-play-purchase',
+          {
+            body: {
+              accountId,
+              productId,
+              purchase,
+              purchaseToken,
+              signedTransactionInfo: purchase.purchaseToken,
+              transactionId: getPurchaseTransactionId(purchase),
+              platform: storePlatform,
+            },
           },
-        });
+        );
 
         if (error) throw error;
         if (!data?.ok) throw new Error(data?.message ?? 'הרכישה לא אומתה.');
@@ -94,7 +107,7 @@ function AndroidBillingPurchasePanel({ accountId, onPurchaseVerified }: BillingP
         setMessage(error instanceof Error ? error.message : 'לא הצלחנו לאמת את הרכישה. נסה שוב.');
       }
     },
-    [accountId, onPurchaseVerified],
+    [accountId, onPurchaseVerified, storePlatform],
   );
 
   const { connected, fetchProducts, finishTransaction, products, requestPurchase, subscriptions } = useIAP({
@@ -105,7 +118,7 @@ function AndroidBillingPurchasePanel({ accountId, onPurchaseVerified }: BillingP
     onPurchaseSuccess: handlePurchaseSuccess,
     onError(error) {
       setStatus('error');
-      setMessage(error.message || 'לא ניתן להתחבר ל־Google Play כרגע.');
+      setMessage(error.message || 'לא ניתן להתחבר לחנות כרגע.');
     },
   });
 
@@ -117,8 +130,8 @@ function AndroidBillingPurchasePanel({ accountId, onPurchaseVerified }: BillingP
       try {
         setStatus('loading');
         await Promise.all([
-          fetchProducts({ skus: GOOGLE_PLAY_SUBSCRIPTION_IDS, type: 'subs' }),
-          fetchProducts({ skus: GOOGLE_PLAY_IN_APP_PRODUCT_IDS, type: 'in-app' }),
+          fetchProducts({ skus: STORE_SUBSCRIPTION_IDS, type: 'subs' }),
+          fetchProducts({ skus: STORE_IN_APP_PRODUCT_IDS, type: 'in-app' }),
         ]);
         if (!mounted) return;
         setStatus('idle');
@@ -126,7 +139,7 @@ function AndroidBillingPurchasePanel({ accountId, onPurchaseVerified }: BillingP
       } catch (error) {
         if (!mounted) return;
         setStatus('error');
-        setMessage(error instanceof Error ? error.message : 'לא הצלחנו לטעון מוצרים מ־Google Play.');
+        setMessage(error instanceof Error ? error.message : 'לא הצלחנו לטעון מוצרים מהחנות.');
       }
     }
 
@@ -162,7 +175,7 @@ function AndroidBillingPurchasePanel({ accountId, onPurchaseVerified }: BillingP
     const item = storeItems.get(productId);
     if (!item) {
       setStatus('error');
-      setMessage('המוצר עדיין לא זמין ב־Google Play. ודא שהוא מוגדר ופעיל בקונסול.');
+      setMessage('המוצר עדיין לא זמין בחנות. ודא שהוא מוגדר ופעיל בקונסול.');
       return;
     }
 
@@ -172,27 +185,29 @@ function AndroidBillingPurchasePanel({ accountId, onPurchaseVerified }: BillingP
       setMessage(`פותחים רכישה עבור ${getBillingProductLabel(productId)}...`);
       if (isConsumableBillingProduct(productId)) {
         await requestPurchase({
-          request: {
-            google: {
-              obfuscatedAccountId: accountId,
-              skus: [productId],
-            },
-          },
+          request:
+            storePlatform === 'ios'
+              ? { apple: { sku: productId } }
+              : {
+                  google: {
+                    obfuscatedAccountId: accountId,
+                    skus: [productId],
+                  },
+                },
           type: 'in-app',
         });
       } else {
-        if (!item.offerToken) {
-          throw new Error('לא נמצאה הצעת מנוי פעילה עבור המוצר הזה.');
-        }
-
         await requestPurchase({
-          request: {
-            google: {
-              obfuscatedAccountId: accountId,
-              skus: [productId],
-              subscriptionOffers: [{ offerToken: item.offerToken, sku: productId }],
-            },
-          },
+          request:
+            storePlatform === 'ios'
+              ? { apple: { sku: productId } }
+              : {
+                  google: {
+                    obfuscatedAccountId: accountId,
+                    skus: [productId],
+                    subscriptionOffers: [{ offerToken: requireSubscriptionOfferToken(item), sku: productId }],
+                  },
+                },
           type: 'subs',
         });
       }
@@ -234,6 +249,17 @@ function AndroidBillingPurchasePanel({ accountId, onPurchaseVerified }: BillingP
       {message ? <Text style={[styles.statusText, status === 'error' ? styles.errorText : null]}>{message}</Text> : null}
     </Card>
   );
+}
+
+function getPurchaseTransactionId(purchase: Purchase) {
+  return 'transactionId' in purchase && typeof purchase.transactionId === 'string' ? purchase.transactionId : undefined;
+}
+
+function requireSubscriptionOfferToken(item: StoreItem) {
+  if (!item.offerToken) {
+    throw new Error('לא נמצאה הצעת מנוי פעילה עבור המוצר הזה.');
+  }
+  return item.offerToken;
 }
 
 function getSubscriptionOfferToken(subscription: ProductSubscription) {
