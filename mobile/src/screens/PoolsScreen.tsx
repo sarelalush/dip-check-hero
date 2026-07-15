@@ -1,4 +1,5 @@
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppHeader } from '../components/AppHeader';
 import { AppShell } from '../components/AppShell';
@@ -83,6 +84,16 @@ export function PoolsScreen({ navigation }: Props) {
   const { pools } = usePools();
   const { getPoolHistoryRecords } = useResultsHistory();
   const startScanFlow = useStartScanFlow(navigation);
+  const [scanningPoolId, setScanningPoolId] = useState<string>();
+
+  function openPoolScan(poolId: string) {
+    if (scanningPoolId) return;
+    setScanningPoolId(poolId);
+    requestAnimationFrame(() => {
+      startScanFlow(poolId);
+      setTimeout(() => setScanningPoolId(undefined), 1200);
+    });
+  }
 
   return (
     <AppShell activeTab="pools" navigation={navigation}>
@@ -107,9 +118,10 @@ export function PoolsScreen({ navigation }: Props) {
               <FeaturedPoolCard
                 key={pool.id}
                 pool={pool}
+                busy={scanningPoolId === pool.id}
                 snapshot={snapshot}
                 onOpen={() => navigation.navigate('PoolDetails', { poolId: pool.id })}
-                onScan={() => startScanFlow(pool.id)}
+                onScan={() => openPoolScan(pool.id)}
               />
             ) : (
               <CompactPoolCard
@@ -138,11 +150,13 @@ export function PoolsScreen({ navigation }: Props) {
 }
 
 function FeaturedPoolCard({
+  busy = false,
   onOpen,
   onScan,
   pool,
   snapshot,
 }: {
+  busy?: boolean;
   onOpen: () => void;
   onScan: () => void;
   pool: Pool;
@@ -182,9 +196,9 @@ function FeaturedPoolCard({
       </View>
 
       <View style={styles.featuredActions}>
-        <Pressable onPress={onScan} style={({ pressed }) => [styles.scanButton, pressed && styles.pressed]}>
-          <LineIcon name="scan" color={colors.white} size={21} />
-          <Text style={styles.scanButtonText}>בדוק עכשיו</Text>
+        <Pressable disabled={busy} onPress={onScan} style={({ pressed }) => [styles.scanButton, pressed && !busy && styles.pressed, busy && styles.disabled]}>
+          {busy ? <ActivityIndicator color={colors.white} size="small" /> : <LineIcon name="scan" color={colors.white} size={21} />}
+          <Text style={styles.scanButtonText}>{busy ? 'פותח...' : 'בדוק עכשיו'}</Text>
         </Pressable>
         <LineIcon name="chevronLeft" color={colors.text} size={24} />
       </View>
@@ -614,5 +628,8 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.92,
     transform: [{ scale: 0.99 }],
+  },
+  disabled: {
+    opacity: 0.78,
   },
 });

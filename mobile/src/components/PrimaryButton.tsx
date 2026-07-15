@@ -1,22 +1,29 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { colors, radius, rtl, shadows, typography } from '../theme';
 import { LineIcon, type LineIconName } from './LineIcon';
 
 interface PrimaryButtonProps {
+  busy?: boolean;
   disabled?: boolean;
   label: string;
   icon?: LineIconName;
   onPress?: () => void;
 }
 
-export function PrimaryButton({ disabled = false, label, icon, onPress }: PrimaryButtonProps) {
+export function PrimaryButton({ busy = false, disabled = false, label, icon, onPress }: PrimaryButtonProps) {
+  const isDisabled = disabled || busy;
+
   return (
     <Pressable
-      disabled={disabled}
+      disabled={isDisabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, disabled && styles.disabled, pressed && !disabled && styles.pressed]}
+      style={({ pressed }) => [styles.button, isDisabled && styles.disabled, pressed && !isDisabled && styles.pressed]}
     >
-      {icon ? (
+      {busy ? (
+        <View style={styles.icon}>
+          <ActivityIndicator color={colors.primary} size="small" />
+        </View>
+      ) : icon ? (
         <View style={styles.icon}>
           <LineIcon name={icon} color={colors.primary} size={18} />
         </View>

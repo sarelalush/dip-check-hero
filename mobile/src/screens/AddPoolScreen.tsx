@@ -190,6 +190,8 @@ export function AddPoolScreen({ navigation }: Props) {
           <View style={styles.waterWash} />
           <View style={styles.loadingContent}>
             <ActivityIndicator color={colors.primary} size="large" />
+            <Text style={styles.loadingTitle}>בודקים את אפשרויות הבריכה</Text>
+            <Text style={styles.loadingText}>רק רגע, אנחנו מוודאים מנוי ומכסת בריכות.</Text>
           </View>
         </ImageBackground>
       </WebPhoneFrame>
@@ -359,6 +361,7 @@ export function AddPoolScreen({ navigation }: Props) {
         </View>
 
         <Pressable disabled={saving || quotaChecking} onPress={save} style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.9 }, (saving || quotaChecking) && styles.disabled]}>
+          {saving ? <ActivityIndicator color={colors.white} size="small" /> : null}
           <Text style={styles.primaryBtnLabel}>{saving ? 'שומר בריכה...' : 'שמירת בריכה'}</Text>
         </Pressable>
         <Pressable onPress={() => navigation.navigate('Pools')} style={styles.secondaryBtn}>
@@ -460,7 +463,9 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.background },
   keyboardRoot: { flex: 1 },
   waterWash: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(245,253,255,0.72)' },
-  loadingContent: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  loadingContent: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 28 },
+  loadingTitle: { color: colors.text, fontSize: 18, fontWeight: '900', fontFamily: typography.fontFamilyBold, ...rtl.textCenter },
+  loadingText: { color: colors.textSoft, fontSize: 13, lineHeight: 20, fontWeight: '800', fontFamily: typography.fontFamilyRegular, ...rtl.textCenter },
   content: { paddingHorizontal: 20, paddingTop: 50, paddingBottom: 40 },
   quotaContent: { flex: 1, justifyContent: 'center', paddingHorizontal: 20 },
   quotaCard: { width: '100%', maxWidth: 350, backgroundColor: colors.card, borderRadius: 28, padding: 20, gap: 14, alignItems: 'center', ...shadows.card },
@@ -550,7 +555,7 @@ const styles = StyleSheet.create({
   imageActionText: { color: colors.primaryDark, fontSize: 12, fontWeight: '900', fontFamily: typography.fontFamilySemiBold },
   imageRemoveButton: { borderRadius: 999, backgroundColor: colors.dangerSoft, paddingHorizontal: 16, paddingVertical: 10, alignItems: 'center' },
   imageRemoveText: { color: colors.danger, fontSize: 12, fontWeight: '900', fontFamily: typography.fontFamilySemiBold },
-  primaryBtn: { marginTop: 18, backgroundColor: colors.primary, borderRadius: 999, paddingVertical: 16, alignItems: 'center', ...shadows.button },
+  primaryBtn: { marginTop: 18, backgroundColor: colors.primary, borderRadius: 999, paddingVertical: 16, alignItems: 'center', justifyContent: 'center', flexDirection: 'row-reverse', gap: 8, ...shadows.button },
   primaryBtnLabel: { color: colors.white, fontSize: 16, fontWeight: '900', fontFamily: typography.fontFamily },
   secondaryBtn: { marginTop: 8, paddingVertical: 12, alignItems: 'center' },
   secondaryBtnLabel: { color: colors.muted, fontSize: 14, fontWeight: '800', fontFamily: typography.fontFamily },

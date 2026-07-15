@@ -1,4 +1,5 @@
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NavigationProp } from '@react-navigation/native';
 import { colors, layout, radius, rtl, shadows, typography } from '../theme';
@@ -26,12 +27,20 @@ const rightTabs: { key: Extract<TabKey, 'pools' | 'home'>; label: string; icon: 
 export function BottomTabBar({ active, navigation }: Props) {
   const startScanFlow = useStartScanFlow(navigation);
   const insets = useSafeAreaInsets();
+  const [scanOpening, setScanOpening] = useState(false);
   const bottomOffset = Math.max(insets.bottom, Platform.OS === 'android' ? 28 : 16);
 
   function go(tab: TabKey) {
     if (tab === 'home') navigation.navigate('Home');
     else if (tab === 'pools') navigation.navigate('Pools');
-    else if (tab === 'scan') startScanFlow();
+    else if (tab === 'scan') {
+      if (scanOpening) return;
+      setScanOpening(true);
+      requestAnimationFrame(() => {
+        startScanFlow();
+        setTimeout(() => setScanOpening(false), 1200);
+      });
+    }
     else if (tab === 'results') navigation.navigate('Results');
     else if (tab === 'history') navigation.navigate('History');
     else navigation.navigate('Settings');
@@ -46,12 +55,12 @@ export function BottomTabBar({ active, navigation }: Props) {
           ))}
         </View>
 
-        <Pressable onPress={() => go('scan')} style={({ pressed }) => [styles.scanWrap, pressed && styles.pressed]}>
+        <Pressable disabled={scanOpening} onPress={() => go('scan')} style={({ pressed }) => [styles.scanWrap, pressed && !scanOpening && styles.pressed]}>
           <View style={styles.scanHalo} />
           <View style={[styles.scanButton, active === 'scan' && styles.scanButtonActive]}>
-            <LineIcon name="scan" color={colors.white} size={25} />
+            {scanOpening ? <ActivityIndicator color={colors.white} size="small" /> : <LineIcon name="scan" color={colors.white} size={25} />}
           </View>
-          <Text style={styles.scanLabel}>סריקה</Text>
+          <Text style={styles.scanLabel}>{scanOpening ? 'פותח...' : 'סריקה'}</Text>
         </Pressable>
 
         <View style={styles.group}>

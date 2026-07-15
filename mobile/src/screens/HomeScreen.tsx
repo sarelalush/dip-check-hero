@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -68,6 +68,7 @@ export function HomeScreen({ navigation }: Props) {
   const { pools } = usePools();
   const { historyRecords } = useResultsHistory();
   const startScanFlow = useStartScanFlow(navigation);
+  const [scanOpening, setScanOpening] = useState(false);
   const latestRecord = useMemo(
     () => [...historyRecords].sort((a, b) => b.testedAt - a.testedAt)[0],
     [historyRecords],
@@ -87,6 +88,20 @@ export function HomeScreen({ navigation }: Props) {
         { icon: 'help' as const, label: 'כלור פעיל', status: 'אין נתון', tone: 'neutral' as const, value: '-' },
         { icon: 'results' as const, label: 'אלקליניות', status: 'אין נתון', tone: 'neutral' as const, value: '-' },
       ];
+
+  function handlePrimaryAction() {
+    if (pools.length === 0) {
+      navigation.navigate('AddPool');
+      return;
+    }
+
+    if (scanOpening) return;
+    setScanOpening(true);
+    requestAnimationFrame(() => {
+      startScanFlow();
+      setTimeout(() => setScanOpening(false), 1200);
+    });
+  }
 
   return (
     <AppShell activeTab="home" navigation={navigation} contentStyle={styles.screen}>
@@ -125,7 +140,12 @@ export function HomeScreen({ navigation }: Props) {
       </Card>
 
       <View style={styles.ctaWrap}>
-        <PrimaryButton label={pools.length > 0 ? 'התחל סריקה' : 'הוסף בריכה'} icon={pools.length > 0 ? 'scan' : 'plus'} onPress={() => (pools.length > 0 ? startScanFlow() : navigation.navigate('AddPool'))} />
+        <PrimaryButton
+          busy={scanOpening}
+          label={scanOpening ? 'פותח סריקה...' : pools.length > 0 ? 'התחל סריקה' : 'הוסף בריכה'}
+          icon={pools.length > 0 ? 'scan' : 'plus'}
+          onPress={handlePrimaryAction}
+        />
       </View>
 
       <View style={styles.shortcuts}>

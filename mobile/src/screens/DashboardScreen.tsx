@@ -1,4 +1,5 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabBar } from '../components/BottomTabBar';
 import { colors, layout, radius, rtl, shadows, spacing, typography } from '../theme';
@@ -11,6 +12,16 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Dashboard'>;
 export function DashboardScreen({ navigation }: Props) {
   const { pools } = usePools();
   const startScanFlow = useStartScanFlow(navigation);
+  const [scanOpening, setScanOpening] = useState(false);
+
+  function openScan() {
+    if (scanOpening) return;
+    setScanOpening(true);
+    requestAnimationFrame(() => {
+      startScanFlow();
+      setTimeout(() => setScanOpening(false), 1200);
+    });
+  }
 
   return (
     <View style={styles.viewport}>
@@ -72,13 +83,13 @@ export function DashboardScreen({ navigation }: Props) {
             <MetricCard label="אלקליניות" value="120" status="ppm" tone="ok" />
           </View>
 
-          <Pressable onPress={() => startScanFlow()} style={({ pressed }) => [styles.primaryScan, pressed && styles.pressed]}>
+          <Pressable disabled={scanOpening} onPress={openScan} style={({ pressed }) => [styles.primaryScan, pressed && !scanOpening && styles.pressed, scanOpening && styles.disabled]}>
             <View style={styles.scanTextWrap}>
-              <Text style={styles.primaryScanTitle}>התחל בדיקה חדשה</Text>
-              <Text style={styles.primaryScanSub}>בחר סטיק, צלם וקבל תוצאות</Text>
+              <Text style={styles.primaryScanTitle}>{scanOpening ? 'פותחים סריקה...' : 'התחל בדיקה חדשה'}</Text>
+              <Text style={styles.primaryScanSub}>{scanOpening ? 'רק רגע, מכינים את מסך הצילום' : 'בחר סטיק, צלם וקבל תוצאות'}</Text>
             </View>
             <View style={styles.scanBadge}>
-              <Text style={styles.scanBadgeText}>⌁</Text>
+              {scanOpening ? <ActivityIndicator color={colors.white} size="small" /> : <Text style={styles.scanBadgeText}>⌁</Text>}
             </View>
           </Pressable>
 
@@ -541,5 +552,8 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.9,
     transform: [{ scale: 0.99 }],
+  },
+  disabled: {
+    opacity: 0.78,
   },
 });
