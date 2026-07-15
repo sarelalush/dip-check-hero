@@ -34,7 +34,7 @@ export function BillingPurchasePanel(props: BillingPurchasePanelProps) {
       <Card compact style={styles.noticeCard}>
         <Text style={styles.noticeTitle}>רכישות זמינות רק באפליקציה המותקנת</Text>
         <Text style={styles.noticeText}>
-          ב-web וב-Expo Go אפשר לראות את המסך, אבל רכישה אמיתית זמינה רק בגרסת Android או iOS שמותקנת דרך החנות.
+          ב-web וב-Expo Go אפשר לראות את המסך, אבל רכישה אמיתית זמינה רק בגרסה שמותקנת דרך App Store או Google Play.
         </Text>
       </Card>
     );
@@ -110,7 +110,7 @@ function NativeBillingPurchasePanel({
     [accountId, onPurchaseVerified, storePlatform],
   );
 
-  const { connected, fetchProducts, finishTransaction, products, requestPurchase, subscriptions } = useIAP({
+  const { connected, fetchProducts, finishTransaction, products, requestPurchase, restorePurchases, subscriptions } = useIAP({
     onPurchaseError(error) {
       setStatus('error');
       setMessage(error.message || 'הרכישה בוטלה או נכשלה.');
@@ -219,6 +219,26 @@ function NativeBillingPurchasePanel({
     }
   };
 
+  const restore = async () => {
+    if (!accountId) {
+      setStatus('error');
+      setMessage('צריך להתחבר לחשבון לפני שחזור רכישות.');
+      return;
+    }
+
+    try {
+      setActiveProductId(undefined);
+      setStatus('verifying');
+      setMessage('מחפשים רכישות פעילות בחנות...');
+      await restorePurchases({ alsoPublishToEventListenerIOS: true, onlyIncludeActiveItemsIOS: true });
+      setStatus('success');
+      setMessage('אם נמצאה רכישה פעילה, היא תאומת ותופעל בחשבון שלך.');
+    } catch (error) {
+      setStatus('error');
+      setMessage(error instanceof Error ? error.message : 'לא הצלחנו לשחזר רכישות כרגע.');
+    }
+  };
+
   const busy = status === 'loading' || status === 'purchasing' || status === 'verifying';
 
   return (
@@ -245,6 +265,10 @@ function NativeBillingPurchasePanel({
         onPress={() => purchase(BILLING_PRODUCTS.extraScanPack200.id)}
         price={storeItems.get(BILLING_PRODUCTS.extraScanPack200.id)?.displayPrice ?? BILLING_PRODUCTS.extraScanPack200.fallbackPriceHe}
       />
+      <Pressable disabled={busy} onPress={restore} style={({ pressed }) => [styles.restoreButton, busy && styles.disabled, pressed && !busy ? styles.pressed : null]}>
+        <LineIcon name="history" color={colors.primaryDark} size={16} />
+        <Text style={styles.restoreText}>שחזור רכישות</Text>
+      </Pressable>
       {busy ? <ActivityIndicator color={colors.primaryDark} size="small" /> : null}
       {message ? <Text style={[styles.statusText, status === 'error' ? styles.errorText : null]}>{message}</Text> : null}
     </Card>
@@ -373,5 +397,22 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: colors.danger,
+  },
+  restoreButton: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    flexDirection: 'row-reverse',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  restoreText: {
+    color: colors.primaryDark,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  disabled: {
+    opacity: 0.54,
   },
 });

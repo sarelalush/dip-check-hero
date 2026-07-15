@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as QueryParams from 'expo-auth-session/build/QueryParams';
 import * as Linking from 'expo-linking';
@@ -25,6 +26,7 @@ interface AuthContextValue {
   resetPasswordForEmail: (email: string) => Promise<AuthResult>;
   passwordRecoveryExpiresAt?: number;
   passwordRecoveryPending: boolean;
+  signInWithApple: () => Promise<AuthResult>;
   signInWithGoogle: () => Promise<AuthResult>;
   completePasswordReset: (password: string) => Promise<AuthResult>;
   clearPasswordRecovery: () => void;
@@ -50,9 +52,9 @@ function toHebrewAuthError(message: string) {
   if (lower.includes('rate limit') || lower.includes('too many') || lower.includes('over email send rate limit')) {
     return 'נשלחו יותר מדי בקשות בזמן קצר. נסה שוב בעוד כמה דקות.';
   }
-  if (lower.includes('cancel')) return 'ההתחברות עם Google בוטלה.';
-  if (lower.includes('provider') || lower.includes('oauth')) return 'התחברות Google אינה מוגדרת עדיין ב-Supabase.';
-  if (lower.includes('redirect')) return 'כתובת החזרה של Google אינה מוגדרת נכון.';
+  if (lower.includes('cancel')) return 'ההתחברות בוטלה.';
+  if (lower.includes('provider') || lower.includes('oauth')) return 'התחברות חיצונית אינה מוגדרת עדיין ב-Supabase.';
+  if (lower.includes('redirect')) return 'כתובת החזרה אינה מוגדרת נכון.';
   if (lower.includes('invalid login credentials')) return 'האימייל או הסיסמה אינם נכונים.';
   if (lower.includes('email not confirmed')) return 'יש לאשר את האימייל לפני התחברות.';
   if (lower.includes('password')) return 'הסיסמה אינה עומדת בדרישות או אינה נכונה.';
@@ -297,6 +299,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
 
           await setSessionFromOAuthUrl(result.url);
+
+          return {};
+        } catch (error) {
+          return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };
+        }
+      },
+      async signInWithApple() {
+        if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
+        if (Platform.OS !== 'ios') return { error: 'התחברות עם Apple זמינה רק במכשירי iOS.' };
+
+        try {
+          const available = await AppleAuthentication.isAvailableAsync();
+          if (!available) {
+            return { error: 'התחברות עם Apple אינה זמינה במכשיר הזה.' };
+          }
+
+          const credential = await AppleAuthentication.signInAsync({
+            requestedScopes: [
+              AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+              AppleAuthentication.AppleAuthenticationScope.EMAIL,
+            ],
+          });
+
+          if (!credential.identityToken) {
+            return { error: 'לא התקבל אסימון תקין מ-Apple. נסה שוב.' };
+          }
+
+          const { data, error } = await getSupabaseClient().auth.signInWithIdToken({
+            provider: 'apple',
+            token: credential.identityToken,
+          });
+
+          if (error) return { error: toHebrewAuthError(error.message) };
+
+          const fullName = [
+            credential.fullName?.givenName,
+            credential.fullName?.middleName,
+            credential.fullName?.familyName,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+
+          if (fullName && data.user) {
+            await getSupabaseClient().auth.updateUser({
+              data: {
+                display_name: fullName,
+                full_name: fullName,
+              },
+            });
+          }
 
           return {};
         } catch (error) {

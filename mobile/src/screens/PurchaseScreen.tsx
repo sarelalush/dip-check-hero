@@ -36,7 +36,7 @@ export function PurchaseScreen({ navigation, route }: Props) {
         <View style={styles.heroIcon}>
           <LineIcon name="drop" color={colors.white} size={26} />
         </View>
-        <Text style={styles.kicker}>DipCheck Premium</Text>
+        <Text style={styles.kicker}>AquaSense Premium</Text>
         <Text style={styles.title}>{copy.title}</Text>
         <Text style={styles.subtitle}>{copy.subtitle}</Text>
       </View>
@@ -60,6 +60,16 @@ export function PurchaseScreen({ navigation, route }: Props) {
       </Card>
 
       <BillingPurchasePanel accountId={accountId} onPurchaseVerified={() => navigation.navigate('Home')} />
+
+      <View style={styles.legalLinks}>
+        <Pressable onPress={() => navigation.navigate('Terms')} hitSlop={8}>
+          <Text style={styles.legalLinkText}>תנאי שימוש</Text>
+        </Pressable>
+        <Text style={styles.legalSeparator}>•</Text>
+        <Pressable onPress={() => navigation.navigate('PrivacyPolicy')} hitSlop={8}>
+          <Text style={styles.legalLinkText}>מדיניות פרטיות</Text>
+        </Pressable>
+      </View>
 
       <Pressable style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]} onPress={() => navigation.navigate('PlanUsage', { reason })}>
         <Text style={styles.secondaryText}>צפה במכסה ובשימוש</Text>
@@ -206,6 +216,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginTop: 14,
     paddingVertical: 13,
+  },
+  legalLinks: {
+    alignItems: 'center',
+    flexDirection: 'row-reverse',
+    gap: 9,
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  legalLinkText: {
+    color: colors.primaryDark,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  legalSeparator: {
+    color: colors.muted,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    fontWeight: '900',
   },
   secondaryText: {
     color: colors.primaryDark,

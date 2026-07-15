@@ -224,8 +224,8 @@ function BrandMark() {
       </View>
       <View>
         <View style={styles.brandRow}>
-          <Text style={styles.brandDip}>Dip</Text>
-          <Text style={styles.brandCheck}>Check</Text>
+          <Text style={styles.brandDip}>Aqua</Text>
+          <Text style={styles.brandCheck}>Sense</Text>
         </View>
         <Text style={styles.brandSub}>בדיקת מים חכמה</Text>
       </View>

@@ -9,6 +9,7 @@
     "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": false,
+      "usesAppleSignIn": true,
       "bundleIdentifier": "com.stickcheck.app",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
@@ -39,6 +40,7 @@
         }
       ],
       "expo-notifications",
+      "expo-apple-authentication",
       "expo-iap",
       "expo-web-browser"
     ],

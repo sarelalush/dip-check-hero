@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AuthDivider,
@@ -17,7 +18,7 @@ import type { RootStackParamList } from '../../App';
 type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
 
 export function SignupScreen({ navigation }: Props) {
-  const { signUpWithEmail, signInWithGoogle } = useAuth();
+  const { signInWithApple, signInWithGoogle, signUpWithEmail } = useAuth();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -26,6 +27,7 @@ export function SignupScreen({ navigation }: Props) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [busy, setBusy] = useState(false);
+  const [appleBusy, setAppleBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
 
   async function submit() {
@@ -64,6 +66,19 @@ export function SignupScreen({ navigation }: Props) {
     }
   }
 
+  async function apple() {
+    if (busy || appleBusy || googleBusy) return;
+    setAppleBusy(true);
+    setError('');
+    setSuccess('');
+    const result = await signInWithApple();
+    setAppleBusy(false);
+
+    if (result.error) {
+      setError(result.error);
+    }
+  }
+
   return (
     <AuthScreenShell
       activeMode="signup"
@@ -92,17 +107,25 @@ export function SignupScreen({ navigation }: Props) {
       <AuthMessage text={error} tone="error" />
       <AuthMessage text={success} tone="success" />
 
-      <AuthPrimaryButton compact busy={busy} disabled={googleBusy} label="הרשמה" onPress={submit} />
+      <AuthPrimaryButton compact busy={busy} disabled={appleBusy || googleBusy} label="הרשמה" onPress={submit} />
       <AuthDivider compact />
       {Platform.OS === 'ios' ? (
-        <SocialButton compact disabled={busy || googleBusy} label="המשך עם Apple" mark="apple" onPress={() => setError('הרשמה עם Apple תהיה זמינה בקרוב.')} />
+        <AppleAuthentication.AppleAuthenticationButton
+          buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+          buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+          cornerRadius={11}
+          onPress={apple}
+          style={[styles.appleButton, (busy || appleBusy || googleBusy) && styles.disabled]}
+        />
       ) : null}
-      <SocialButton compact disabled={busy || googleBusy} label={googleBusy ? 'מתחבר עם Google...' : 'המשך עם Google'} mark="google" onPress={google} />
+      <SocialButton compact disabled={busy || appleBusy || googleBusy} label={googleBusy ? 'מתחבר עם Google...' : 'המשך עם Google'} mark="google" onPress={google} />
     </AuthScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
+  appleButton: { height: 39, width: '100%' },
+  disabled: { opacity: 0.62 },
   accountRow: { marginTop: Platform.OS === 'android' ? 8 : 2, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4 },
   accountText: { color: '#1D2530', fontFamily: typography.fontFamilyRegular, fontSize: 13, fontWeight: '700' },
   accountLink: { color: colors.primary, fontFamily: typography.fontFamilySemiBold, fontSize: 13, fontWeight: '900', ...rtl.text },
