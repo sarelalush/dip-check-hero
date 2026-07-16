@@ -22,6 +22,7 @@ const requiredScreens = [
   'SelectPoolScreen.tsx',
   'SelectStripScreen.tsx',
   'ScanPlaceholderScreen.tsx',
+  'CropScanImageScreen.tsx',
   'ScanScreen.tsx',
   'ConfirmScanScreen.tsx',
   'ResultsScreen.tsx',
@@ -107,7 +108,15 @@ for (const screen of requiredScreens) {
     source.includes('ImageBackground') &&
     source.includes('launchImageLibraryAsync') &&
     source.includes('<PrimaryButton');
-  assert(usesResponsiveShell || usesApprovedFullscreenCamera || usesApprovedPreScanScreen, `${screen} must render inside an approved mobile shell.`);
+  const usesApprovedGalleryCropper =
+    screen === 'CropScanImageScreen.tsx' &&
+    source.includes('PanResponder') &&
+    source.includes('ImageManipulator.manipulateAsync') &&
+    source.includes('ConfirmScan');
+  assert(
+    usesResponsiveShell || usesApprovedFullscreenCamera || usesApprovedPreScanScreen || usesApprovedGalleryCropper,
+    `${screen} must render inside an approved mobile shell.`,
+  );
 }
 
 for (const profile of deviceProfiles) {

@@ -15,7 +15,7 @@ const POOL_BACKGROUND = require('../../assets/images/home-pool.png');
 
 export function ScanPlaceholderScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
-  const { setCurrentStep, setImageUri, setScanError, startScanSession } = useScanSession();
+  const { setScanError, startScanSession } = useScanSession();
   const [galleryBusy, setGalleryBusy] = useState(false);
 
   useEffect(() => {
@@ -57,26 +57,19 @@ export function ScanPlaceholderScreen({ navigation, route }: Props) {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        allowsEditing: true,
-        aspect: [1, 5],
+        allowsEditing: false,
         mediaTypes: ['images'],
         quality: 1,
       });
 
       if (result.canceled || !result.assets[0]?.uri) return;
 
-      const imageUri = result.assets[0].uri;
-      setImageUri(imageUri, {
-        originalImageUri: imageUri,
-        processingLog: [
-          'source=gallery',
-          `selected=${result.assets[0].width ?? 0}x${result.assets[0].height ?? 0}`,
-        ],
-      });
-      setCurrentStep('confirm');
-      navigation.navigate('ConfirmScan', {
+      const asset = result.assets[0];
+      navigation.navigate('CropScanImage', {
         brandId: route.params.brandId,
-        imageUri,
+        imageHeight: asset.height,
+        imageUri: asset.uri,
+        imageWidth: asset.width,
         poolId: route.params.poolId,
       });
     } catch (error) {

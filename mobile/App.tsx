@@ -20,6 +20,7 @@ import { EditPoolScreen } from './src/screens/EditPoolScreen';
 import { ConfirmScanScreen } from './src/screens/ConfirmScanScreen';
 import { ResultsScreen } from './src/screens/ResultsScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
+import { CropScanImageScreen } from './src/screens/CropScanImageScreen';
 import { ScanPlaceholderScreen } from './src/screens/ScanPlaceholderScreen';
 import { SelectPoolScreen } from './src/screens/SelectPoolScreen';
 import { SelectStripScreen } from './src/screens/SelectStripScreen';
@@ -53,6 +54,7 @@ export type RootStackParamList = {
   SelectPool: undefined;
   SelectStrip: { poolId?: string } | undefined;
   Scan: { brandId?: string; poolId?: string } | undefined;
+  CropScanImage: { brandId?: string; imageHeight?: number; imageUri: string; imageWidth?: number; poolId?: string };
   ConfirmScan: { brandId?: string; poolId?: string; imageUri: string };
   Results: { brandId?: string; poolId?: string; imageUri?: string; imagePath?: string; imageUrl?: string; testId?: string } | undefined;
   History: undefined;
@@ -202,6 +204,7 @@ function AppNavigator() {
             <Stack.Screen name="SelectStrip" component={SelectStripScreen} />
             <Stack.Screen name="ScanPlaceholder" component={ScanPlaceholderScreen} />
             <Stack.Screen name="Scan" component={ScanScreen} />
+            <Stack.Screen name="CropScanImage" component={CropScanImageScreen} />
             <Stack.Screen name="ConfirmScan" component={ConfirmScanScreen} />
             <Stack.Screen name="Results" component={ResultsScreen} />
             <Stack.Screen name="History" component={HistoryScreen} />
