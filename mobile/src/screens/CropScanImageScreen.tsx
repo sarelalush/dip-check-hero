@@ -173,6 +173,7 @@ export function CropScanImageScreen({ navigation, route }: Props) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('חתוך ידנית את התמונה כך שיישאר רק הסטיק.');
   const gestureStart = useRef<CropBox | null>(null);
+  const activeHandleRef = useRef<ResizeHandle | null>(null);
   const cropRef = useRef<CropBox | null>(null);
   const renderedImageRef = useRef<RenderedImage | null>(null);
 
@@ -210,8 +211,8 @@ export function CropScanImageScreen({ navigation, route }: Props) {
     () =>
       PanResponder.create({
         onStartShouldSetPanResponderCapture: () => false,
-        onMoveShouldSetPanResponder: () => true,
-        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => activeHandleRef.current === null,
+        onStartShouldSetPanResponder: () => activeHandleRef.current === null,
         onPanResponderGrant: () => {
           gestureStart.current = cropRef.current;
         },
@@ -225,6 +226,13 @@ export function CropScanImageScreen({ navigation, route }: Props) {
           };
           setCrop(clampCrop(next, image));
         },
+        onPanResponderRelease: () => {
+          gestureStart.current = null;
+        },
+        onPanResponderTerminate: () => {
+          gestureStart.current = null;
+        },
+        onPanResponderTerminationRequest: () => false,
       }),
     [],
   );
@@ -235,9 +243,12 @@ export function CropScanImageScreen({ navigation, route }: Props) {
       return handles.reduce(
         (responders, handle) => {
           responders[handle] = PanResponder.create({
+            onMoveShouldSetPanResponderCapture: () => true,
             onMoveShouldSetPanResponder: () => true,
+            onStartShouldSetPanResponderCapture: () => true,
             onStartShouldSetPanResponder: () => true,
             onPanResponderGrant: () => {
+              activeHandleRef.current = handle;
               gestureStart.current = cropRef.current;
             },
             onPanResponderMove: (_event, gesture) => {
@@ -245,6 +256,15 @@ export function CropScanImageScreen({ navigation, route }: Props) {
               if (!image || !gestureStart.current) return;
               setCrop(resizeCrop(gestureStart.current, gesture, handle, image));
             },
+            onPanResponderRelease: () => {
+              activeHandleRef.current = null;
+              gestureStart.current = null;
+            },
+            onPanResponderTerminate: () => {
+              activeHandleRef.current = null;
+              gestureStart.current = null;
+            },
+            onPanResponderTerminationRequest: () => false,
           });
           return responders;
         },
@@ -405,7 +425,6 @@ export function CropScanImageScreen({ navigation, route }: Props) {
                   ]}
                 />
                 <View
-                  {...moveResponder.panHandlers}
                   style={[
                     styles.cropBox,
                     {
@@ -416,7 +435,9 @@ export function CropScanImageScreen({ navigation, route }: Props) {
                     },
                   ]}
                 >
-                  <Text style={styles.cropHint}>גרור להזזה</Text>
+                  <View {...moveResponder.panHandlers} style={styles.moveArea}>
+                    <Text style={styles.cropHint}>גרור להזזה</Text>
+                  </View>
                   <View {...resizeResponders.topLeft.panHandlers} style={[styles.cornerHandle, styles.topLeftHandle]} />
                   <View {...resizeResponders.topRight.panHandlers} style={[styles.cornerHandle, styles.topRightHandle]} />
                   <View {...resizeResponders.bottomRight.panHandlers} style={[styles.cornerHandle, styles.bottomRightHandle]} />
@@ -549,6 +570,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     position: 'absolute',
   },
+  moveArea: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
   cropHint: {
     backgroundColor: 'rgba(8,175,203,0.9)',
     borderRadius: radius.round,
@@ -569,7 +596,7 @@ const styles = StyleSheet.create({
     height: 34,
     position: 'absolute',
     width: 34,
-    zIndex: 5,
+    zIndex: 10,
   },
   topLeftHandle: {
     left: -18,
@@ -593,7 +620,7 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     borderWidth: 3,
     position: 'absolute',
-    zIndex: 5,
+    zIndex: 10,
   },
   topHandle: {
     height: 24,
