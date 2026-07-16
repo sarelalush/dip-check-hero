@@ -3,3 +3,6 @@
 !.env.example
 .expo/
 dist/
+.codex-screenshots/
+apple-review-screenshots/
+apple-store-screenshots/
