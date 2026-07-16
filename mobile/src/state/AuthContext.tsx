@@ -145,25 +145,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [passwordRecoveryExpiresAt, setPasswordRecoveryExpiresAt] = useState<number | undefined>();
   const [loading, setLoading] = useState(true);
   const handledOAuthUrls = useRef(new Set<string>());
+  const hydrateSessionRunId = useRef(0);
 
   const passwordRecoveryPending = Boolean(passwordRecoveryExpiresAt && Date.now() < passwordRecoveryExpiresAt);
 
   async function hydrateSession(nextSession: Session | null) {
+    const runId = hydrateSessionRunId.current + 1;
+    hydrateSessionRunId.current = runId;
+    setLoading(true);
     setSession(nextSession);
     setUser(nextSession?.user ?? null);
+    setAccountId(undefined);
 
     if (!nextSession?.user) {
-      setAccountId(undefined);
+      if (hydrateSessionRunId.current === runId) {
+        setLoading(false);
+      }
       return;
     }
 
     try {
       const { data, error } = await getSupabaseClient().rpc('ensure_default_account');
       if (error) throw error;
-      setAccountId(typeof data === 'string' ? data : undefined);
+      if (hydrateSessionRunId.current === runId) {
+        setAccountId(typeof data === 'string' ? data : undefined);
+      }
     } catch (error) {
       console.warn('Failed to ensure default account', error);
-      setAccountId(undefined);
+      if (hydrateSessionRunId.current === runId) {
+        setAccountId(undefined);
+      }
+    } finally {
+      if (hydrateSessionRunId.current === runId) {
+        setLoading(false);
+      }
     }
   }
 

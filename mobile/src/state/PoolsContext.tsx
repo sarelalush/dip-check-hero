@@ -28,19 +28,40 @@ interface PoolsContextValue {
 const PoolsContext = createContext<PoolsContextValue | null>(null);
 const POOLS_STORAGE_KEY = '@aquasense/pools';
 
+function getPoolsStorageKey(ownerKey: string) {
+  return `${POOLS_STORAGE_KEY}:${ownerKey}`;
+}
+
 export function PoolsProvider({ children }: { children: ReactNode }) {
   const { accountId, user, loading: authLoading } = useAuth();
   const [pools, setPools] = useState<Pool[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [hydratedOwnerKey, setHydratedOwnerKey] = useState<string | undefined>();
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | undefined>();
+  const ownerKey = authLoading ? undefined : user && accountId ? `${user.id}:${accountId}` : 'anonymous';
 
   useEffect(() => {
+    if (!ownerKey) {
+      setPools([]);
+      setHydrated(false);
+      setHydratedOwnerKey(undefined);
+      setSyncing(false);
+      setSyncError(undefined);
+      return undefined;
+    }
+
     let isMounted = true;
+    const storageKey = getPoolsStorageKey(ownerKey);
 
     async function restorePools() {
+      setPools([]);
+      setHydrated(false);
+      setHydratedOwnerKey(undefined);
+      setSyncError(undefined);
+
       try {
-        const storedPools = await AsyncStorage.getItem(POOLS_STORAGE_KEY);
+        const storedPools = await AsyncStorage.getItem(storageKey);
         if (!isMounted) return;
         if (storedPools) {
           const parsedPools = JSON.parse(storedPools) as Pool[];
@@ -52,6 +73,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
         console.warn('Failed to restore pools from storage', error);
       } finally {
         if (isMounted) {
+          setHydratedOwnerKey(ownerKey);
           setHydrated(true);
         }
       }
@@ -62,24 +84,25 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [ownerKey]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !hydratedOwnerKey) return;
+    const storageKey = getPoolsStorageKey(hydratedOwnerKey);
 
     async function persistPools() {
       try {
-        await AsyncStorage.setItem(POOLS_STORAGE_KEY, JSON.stringify(dedupePools(pools)));
+        await AsyncStorage.setItem(storageKey, JSON.stringify(dedupePools(pools)));
       } catch (error) {
         console.warn('Failed to persist pools to storage', error);
       }
     }
 
     persistPools();
-  }, [hydrated, pools]);
+  }, [hydrated, hydratedOwnerKey, pools]);
 
   useEffect(() => {
-    if (!hydrated || authLoading || !user || !accountId) return;
+    if (!hydrated || !ownerKey || hydratedOwnerKey !== ownerKey || authLoading || !user || !accountId) return;
 
     let isMounted = true;
     const currentUser = user;
@@ -109,7 +132,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, [accountId, authLoading, hydrated, user?.id]);
+  }, [accountId, authLoading, hydrated, hydratedOwnerKey, ownerKey, user?.id]);
 
   async function syncPoolToCloud(pool: Pool) {
     if (!user || !accountId) return;

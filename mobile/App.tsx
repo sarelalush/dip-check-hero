@@ -10,7 +10,7 @@ import {
   useFonts,
 } from '@expo-google-fonts/heebo';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from 'react-native';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { PoolsScreen } from './src/screens/PoolsScreen';
@@ -124,10 +124,11 @@ export default function App() {
   );
 }
 
-function LoadingScreen() {
+function LoadingScreen({ message = 'טוען...' }: { message?: string }) {
   return (
     <View style={styles.loadingScreen}>
       <ActivityIndicator color={colors.primary} size="large" />
+      <Text style={styles.loadingText}>{message}</Text>
     </View>
   );
 }
@@ -173,11 +174,7 @@ function AppNavigator() {
   const subscriptionChecking = isAuthenticated && !isPasswordRecovery && subscriptionStatus === 'checking';
 
   if (loading || subscriptionChecking || (isAuthenticated && !isPasswordRecovery && !subscriptionRequired && !poolsHydrated)) {
-    return (
-      <View style={styles.loadingScreen}>
-        <LoadingScreen />
-      </View>
-    );
+    return <LoadingScreen message="אוספים את נתוני החשבון..." />;
   }
 
   return (
@@ -243,6 +240,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.background,
     flex: 1,
+    gap: 12,
     justifyContent: 'center',
+  },
+  loadingText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '800',
   },
 });

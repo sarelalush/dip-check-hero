@@ -49,6 +49,10 @@ const HISTORY_STORAGE_KEY = '@aquasense/history-records';
 const HISTORY_STORAGE_LIMIT = 15;
 const FALLBACK_POOL_NAME = 'הבריכה שלי';
 
+function getHistoryStorageKey(ownerKey: string) {
+  return `${HISTORY_STORAGE_KEY}:${ownerKey}`;
+}
+
 function formatDateTime(timestamp: number) {
   return new Intl.DateTimeFormat('he-IL', {
     day: 'numeric',
@@ -154,21 +158,42 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
   const { getPool, pools } = usePools();
   const [historyRecords, setHistoryRecords] = useState<SavedHistoryRecord[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [hydratedOwnerKey, setHydratedOwnerKey] = useState<string | undefined>();
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | undefined>();
   const historyRecordsRef = useRef<SavedHistoryRecord[]>([]);
   const syncInFlightRef = useRef(false);
+  const syncRunIdRef = useRef(0);
+  const ownerKey = authLoading ? undefined : user && accountId ? `${user.id}:${accountId}` : 'anonymous';
 
   useEffect(() => {
     historyRecordsRef.current = historyRecords;
   }, [historyRecords]);
 
   useEffect(() => {
+    syncRunIdRef.current += 1;
+    syncInFlightRef.current = false;
+
+    if (!ownerKey) {
+      setHistoryRecords([]);
+      setHydrated(false);
+      setHydratedOwnerKey(undefined);
+      setSyncing(false);
+      setSyncError(undefined);
+      return undefined;
+    }
+
     let isMounted = true;
+    const storageKey = getHistoryStorageKey(ownerKey);
 
     async function restoreHistoryRecords() {
+      setHistoryRecords([]);
+      setHydrated(false);
+      setHydratedOwnerKey(undefined);
+      setSyncError(undefined);
+
       try {
-        const storedRecords = await AsyncStorage.getItem(HISTORY_STORAGE_KEY);
+        const storedRecords = await AsyncStorage.getItem(storageKey);
         if (!isMounted) return;
         if (storedRecords) {
           const parsedRecords = JSON.parse(storedRecords) as SavedHistoryRecord[];
@@ -180,6 +205,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         console.warn('Failed to restore history records from storage', error);
       } finally {
         if (isMounted) {
+          setHydratedOwnerKey(ownerKey);
           setHydrated(true);
         }
       }
@@ -190,43 +216,51 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [ownerKey]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !hydratedOwnerKey) return;
+    const storageKey = getHistoryStorageKey(hydratedOwnerKey);
 
     async function persistHistoryRecords() {
       try {
         const compactRecords = dedupeHistoryRecords(historyRecords).map(compactHistoryRecordForStorage);
-        await AsyncStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(compactRecords));
+        await AsyncStorage.setItem(storageKey, JSON.stringify(compactRecords));
       } catch (error) {
         console.warn('Failed to persist history records to storage', error);
       }
     }
 
     persistHistoryRecords();
-  }, [hydrated, historyRecords]);
+  }, [hydrated, hydratedOwnerKey, historyRecords]);
 
   const syncAuthenticatedHistory = useCallback(
     async (localRecords: SavedHistoryRecord[]) => {
-      if (!hydrated || authLoading || !user || !accountId || syncInFlightRef.current) return;
+      if (!hydrated || !ownerKey || hydratedOwnerKey !== ownerKey || authLoading || !user || !accountId || syncInFlightRef.current) return;
 
+      const syncRunId = syncRunIdRef.current + 1;
+      syncRunIdRef.current = syncRunId;
       syncInFlightRef.current = true;
       setSyncing(true);
       setSyncError(undefined);
 
       try {
         const result = await syncTestsWithCloud(localRecords, user, accountId, pools);
-        setHistoryRecords(dedupeHistoryRecords(result.records));
+        if (syncRunIdRef.current === syncRunId) {
+          setHistoryRecords(dedupeHistoryRecords(result.records));
+        }
       } catch (error) {
+        if (syncRunIdRef.current !== syncRunId) return;
         console.warn('Failed to sync history with cloud', error);
         setSyncError('סנכרון היסטוריית הבדיקות לענן נכשל. הנתונים המקומיים נשמרו.');
       } finally {
-        syncInFlightRef.current = false;
-        setSyncing(false);
+        if (syncRunIdRef.current === syncRunId) {
+          syncInFlightRef.current = false;
+          setSyncing(false);
+        }
       }
     },
-    [accountId, authLoading, hydrated, pools, user],
+    [accountId, authLoading, hydrated, hydratedOwnerKey, ownerKey, pools, user],
   );
 
   useEffect(() => {
