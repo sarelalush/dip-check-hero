@@ -42,7 +42,7 @@ export function ScanScreen({ navigation, route }: Props) {
     const frameWidth = Math.max(58, Math.min(92, frameHeight * 0.17));
     const preferredTop = previewHeight * 0.24;
     const minTop = insets.top + 132;
-    const maxTop = previewHeight - frameHeight - insets.bottom - 168;
+    const maxTop = previewHeight - frameHeight - insets.bottom - 136;
     const y = Math.max(minTop, Math.min(preferredTop, maxTop));
     const x = (previewWidth - frameWidth) / 2;
 
@@ -280,24 +280,6 @@ export function ScanScreen({ navigation, route }: Props) {
           <Text style={[styles.statusText, isCapturing && styles.statusReady]}>{captureMessage}</Text>
         </View>
 
-        <View style={styles.examplesPanel}>
-          <View style={styles.exampleBad}>
-            <View style={styles.badImageBackground}>
-              <MockMiniStrip />
-            </View>
-            <View style={styles.badBadge}>
-              <LineIcon name="close" color={colors.white} size={15} />
-            </View>
-          </View>
-          <View style={styles.divider} />
-          <View style={styles.exampleGood}>
-            <MockMiniStrip />
-            <View style={styles.goodBadge}>
-              <LineIcon name="check" color={colors.white} size={15} />
-            </View>
-          </View>
-        </View>
-
         <Pressable
           disabled={!cameraReady || isCapturing}
           onPress={captureStrip}
@@ -325,18 +307,6 @@ function LoadingGate() {
         <Text style={styles.permissionTitle}>מכינים את הסריקה</Text>
         <Text style={styles.permissionText}>בודקים מנוי ומכסת סריקות כדי לפתוח את הצילום.</Text>
       </View>
-    </View>
-  );
-}
-
-function MockMiniStrip() {
-  const pads = ['#F2F4EF', '#7ECFD0', '#A4CFA2', '#F2C64B', '#F39C38', '#E7767D', '#A56BC0'];
-
-  return (
-    <View style={styles.miniStrip}>
-      {pads.map((pad) => (
-        <View key={pad} style={[styles.miniPad, { backgroundColor: pad }]} />
-      ))}
     </View>
   );
 }
@@ -388,12 +358,6 @@ const styles = StyleSheet.create({
     marginTop: 5,
     ...rtl.textCenter,
   },
-  lowerHint: {
-    alignItems: 'center',
-    left: 24,
-    position: 'absolute',
-    right: 24,
-  },
   hintText: {
     color: colors.white,
     fontFamily: typography.fontFamilySemiBold,
@@ -437,87 +401,12 @@ const styles = StyleSheet.create({
   instructionPanel: {
     alignItems: 'center',
     alignSelf: 'stretch',
-    backgroundColor: 'rgba(6,15,20,0.72)',
+    backgroundColor: 'rgba(6,15,20,0.78)',
     borderColor: 'rgba(96,221,232,0.34)',
     borderRadius: radius.md,
     borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 10,
-  },
-  examplesPanel: {
-    alignItems: 'center',
-    alignSelf: 'stretch',
-    backgroundColor: 'rgba(10,18,24,0.78)',
-    borderColor: 'rgba(255,255,255,0.25)',
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    minHeight: 82,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    ...shadows.card,
-  },
-  exampleBad: {
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
-  },
-  exampleGood: {
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
-  },
-  badImageBackground: {
-    alignItems: 'center',
-    backgroundColor: colors.water,
-    borderRadius: 10,
-    height: 64,
-    justifyContent: 'center',
-    overflow: 'hidden',
-    width: 64,
-  },
-  badBadge: {
-    alignItems: 'center',
-    backgroundColor: colors.danger,
-    borderRadius: 14,
-    height: 28,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: 28,
-    top: 2,
-    width: 28,
-  },
-  goodBadge: {
-    alignItems: 'center',
-    backgroundColor: colors.success,
-    borderRadius: 14,
-    height: 28,
-    justifyContent: 'center',
-    position: 'absolute',
-    right: 42,
-    top: 1,
-    width: 28,
-  },
-  divider: {
-    alignSelf: 'stretch',
-    backgroundColor: 'rgba(255,255,255,0.16)',
-    marginHorizontal: 12,
-    width: 1,
-  },
-  miniStrip: {
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: 4,
-    height: 66,
-    justifyContent: 'space-evenly',
-    paddingVertical: 3,
-    width: 12,
-  },
-  miniPad: {
-    borderRadius: 2,
-    height: 7,
-    width: 7,
   },
   shutterOuter: {
     alignItems: 'center',

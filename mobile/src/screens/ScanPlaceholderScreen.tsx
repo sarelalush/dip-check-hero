@@ -1,24 +1,29 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LineIcon } from '../components/LineIcon';
 import { PrimaryButton } from '../components/PrimaryButton';
-import { WaterTexture } from '../components/WaterVisuals';
-import { stripBrands } from '../data/stripBrands';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
+import { useScanSession } from '../state/ScanSessionContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ScanPlaceholder'>;
 
-const TIPS = [
-  { icon: 'scan', text: 'הנח את הסטיק על רקע בהיר ונקי' },
-  { icon: 'flash', text: 'צלם באור טוב, בלי צל חזק או השתקפות' },
-  { icon: 'check', text: 'ודא שכל ריבועי הצבע גלויים ולא חתוכים' },
-] as const;
+const POOL_BACKGROUND = require('../../assets/images/home-pool.png');
 
 export function ScanPlaceholderScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
-  const selectedBrand = stripBrands.find((brand) => brand.id === route.params.brandId);
+  const { setCurrentStep, setImageUri, setScanError, startScanSession } = useScanSession();
+  const [galleryBusy, setGalleryBusy] = useState(false);
+
+  useEffect(() => {
+    startScanSession({
+      brandId: route.params.brandId,
+      poolId: route.params.poolId,
+    });
+  }, [route.params.brandId, route.params.poolId, startScanSession]);
 
   function handleClose() {
     if (route.params.poolId) {
@@ -36,9 +41,60 @@ export function ScanPlaceholderScreen({ navigation, route }: Props) {
     });
   }
 
+  async function pickFromGallery() {
+    if (galleryBusy) return;
+
+    try {
+      setGalleryBusy(true);
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permission.granted) {
+        setScanError({
+          code: 'permissionDenied',
+          message: 'צריך לאפשר גישה לתמונות כדי לבחור תמונת סטיק מהגלריה.',
+        });
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        aspect: [1, 5],
+        mediaTypes: ['images'],
+        quality: 1,
+      });
+
+      if (result.canceled || !result.assets[0]?.uri) return;
+
+      const imageUri = result.assets[0].uri;
+      setImageUri(imageUri, {
+        originalImageUri: imageUri,
+        processingLog: [
+          'source=gallery',
+          `selected=${result.assets[0].width ?? 0}x${result.assets[0].height ?? 0}`,
+        ],
+      });
+      setCurrentStep('confirm');
+      navigation.navigate('ConfirmScan', {
+        brandId: route.params.brandId,
+        imageUri,
+        poolId: route.params.poolId,
+      });
+    } catch (error) {
+      console.warn('Failed to pick scan image from gallery', error);
+      setScanError({
+        code: 'imagePickerFailed',
+        message: 'לא הצלחנו לבחור תמונה מהגלריה. נסה שוב או צלם דרך המצלמה.',
+      });
+    } finally {
+      setGalleryBusy(false);
+    }
+  }
+
   return (
     <View style={styles.root}>
-      <WaterTexture deep />
+      <ImageBackground source={POOL_BACKGROUND} resizeMode="cover" style={StyleSheet.absoluteFill}>
+        <View style={styles.backdrop} />
+      </ImageBackground>
 
       <View style={[styles.topBar, { paddingTop: insets.top + 14 }]}>
         <Pressable onPress={handleClose} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
@@ -46,68 +102,45 @@ export function ScanPlaceholderScreen({ navigation, route }: Props) {
         </Pressable>
       </View>
 
-      <View style={styles.content}>
+      <View style={[styles.content, { paddingTop: insets.top + 72, paddingBottom: insets.bottom + 24 }]}>
         <Text style={styles.brand}>AquaSense</Text>
-        <Text style={styles.title}>לפני שמצלמים</Text>
-        <Text style={styles.subtitle}>
-          צילום נקי של הסטיק עוזר לקבל תוצאה מדויקת יותר. במסך הבא מקם את הסטיק בתוך המסגרת הצרה.
-        </Text>
 
-        <View style={styles.previewCard}>
+        <View style={styles.card}>
+          <Text style={styles.title}>רגע לפני הצילום</Text>
+          <Text style={styles.subtitle}>
+            במסך הבא מקם את סטיק הבדיקה בתוך המסגרת הצרה. ודא שכל ריבועי הצבע נמצאים בתוך הקווים ורואים אותם בבירור.
+          </Text>
+
           <View style={styles.framePreview}>
             <MockStrip />
           </View>
 
-          <View style={styles.examplesRow}>
-            <View style={styles.exampleBox}>
-              <View style={styles.badBackground}>
-                <MockStrip small />
-              </View>
-              <View style={[styles.badge, styles.badBadge]}>
-                <LineIcon name="close" color={colors.white} size={14} />
-              </View>
-              <Text style={styles.exampleText}>רחוק מדי</Text>
-            </View>
+          <Text style={styles.note}>המסגרת צריכה להיות צמודה לסטיק, בלי רקע מיותר מסביב.</Text>
 
-            <View style={styles.exampleBox}>
-              <MockStrip small />
-              <View style={[styles.badge, styles.goodBadge]}>
-                <LineIcon name="check" color={colors.white} size={14} />
-              </View>
-              <Text style={styles.exampleText}>צמוד וברור</Text>
-            </View>
+          <View style={styles.actions}>
+            <PrimaryButton label="פתח מצלמה" icon="camera" onPress={startCamera} />
+            <Pressable
+              disabled={galleryBusy}
+              onPress={pickFromGallery}
+              style={({ pressed }) => [styles.galleryButton, galleryBusy && styles.disabled, pressed && !galleryBusy && styles.pressed]}
+            >
+              <LineIcon name="image" color={colors.primaryDark} size={18} />
+              <Text style={styles.galleryButtonText}>{galleryBusy ? 'פותחים גלריה...' : 'בחר תמונה מהגלריה'}</Text>
+            </Pressable>
           </View>
         </View>
-
-        <View style={styles.tipsCard}>
-          <Text style={styles.tipsTitle}>כך נקבל צילום טוב</Text>
-          {TIPS.map((tip) => (
-            <View key={tip.text} style={styles.tipRow}>
-              <View style={styles.tipIcon}>
-                <LineIcon name={tip.icon} color={colors.primaryDark} size={18} />
-              </View>
-              <Text style={styles.tipText}>{tip.text}</Text>
-            </View>
-          ))}
-        </View>
-
-        <Text style={styles.brandName}>{selectedBrand?.nameHe ?? 'סטיק בדיקה'}</Text>
-      </View>
-
-      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 16, 28) }]}>
-        <PrimaryButton label="המשך לצילום" icon="camera" onPress={startCamera} />
       </View>
     </View>
   );
 }
 
-function MockStrip({ small = false }: { small?: boolean }) {
+function MockStrip() {
   const pads = ['#F2F4EF', '#7ECFD0', '#A4CFA2', '#F2C64B', '#F39C38', '#E7767D', '#A56BC0'];
 
   return (
-    <View style={[styles.strip, small && styles.stripSmall]}>
+    <View style={styles.strip}>
       {pads.map((pad) => (
-        <View key={pad} style={[styles.pad, small && styles.padSmall, { backgroundColor: pad }]} />
+        <View key={pad} style={[styles.pad, { backgroundColor: pad }]} />
       ))}
     </View>
   );
@@ -117,6 +150,10 @@ const styles = StyleSheet.create({
   root: {
     backgroundColor: colors.background,
     flex: 1,
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(238,252,255,0.55)',
   },
   topBar: {
     left: 0,
@@ -129,7 +166,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     alignSelf: 'flex-start',
     backgroundColor: 'rgba(6,30,42,0.35)',
-    borderColor: 'rgba(255,255,255,0.32)',
+    borderColor: 'rgba(255,255,255,0.38)',
     borderRadius: 24,
     borderWidth: 1,
     height: 48,
@@ -140,178 +177,107 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: spacing.lg,
-    paddingTop: 72,
   },
   brand: {
     color: colors.primary,
     fontFamily: typography.fontFamilyBold,
-    fontSize: 33,
+    fontSize: 32,
     fontWeight: '900',
+    marginBottom: spacing.md,
+    textShadowColor: 'rgba(255,255,255,0.9)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 8,
     ...rtl.textCenter,
   },
+  card: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderColor: colors.borderStrong,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    padding: spacing.lg,
+    ...shadows.card,
+  },
   title: {
-    color: colors.primaryDark,
+    color: colors.primaryDeep,
     fontFamily: typography.fontFamilyBold,
-    fontSize: 35,
+    fontSize: 25,
     fontWeight: '900',
-    marginTop: spacing.md,
     ...rtl.textCenter,
   },
   subtitle: {
     color: colors.text,
     fontFamily: typography.fontFamilySemiBold,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
-    lineHeight: 24,
+    lineHeight: 23,
     marginTop: spacing.sm,
     ...rtl.textCenter,
-  },
-  previewCard: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderColor: colors.borderStrong,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    marginTop: spacing.lg,
-    padding: spacing.md,
-    ...shadows.card,
   },
   framePreview: {
     alignItems: 'center',
     borderColor: colors.primaryLight,
     borderRadius: 18,
     borderWidth: 3,
-    height: 210,
-    justifyContent: 'center',
-    width: 58,
-  },
-  examplesRow: {
-    alignItems: 'center',
-    flexDirection: 'row-reverse',
-    gap: spacing.md,
+    height: 208,
     justifyContent: 'center',
     marginTop: spacing.md,
-  },
-  exampleBox: {
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSoft,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    minWidth: 112,
-    padding: spacing.sm,
-  },
-  badBackground: {
-    alignItems: 'center',
-    backgroundColor: colors.water,
-    borderRadius: 10,
-    height: 72,
-    justifyContent: 'center',
-    overflow: 'hidden',
     width: 72,
   },
-  badge: {
-    alignItems: 'center',
-    borderRadius: 14,
-    height: 28,
-    justifyContent: 'center',
-    position: 'absolute',
-    top: 4,
-    width: 28,
-  },
-  badBadge: {
-    backgroundColor: colors.danger,
-    right: 18,
-  },
-  goodBadge: {
-    backgroundColor: colors.success,
-    right: 24,
-  },
-  exampleText: {
-    color: colors.primaryDark,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 13,
-    fontWeight: '900',
-    marginTop: 6,
-    ...rtl.textCenter,
-  },
-  tipsCard: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderColor: colors.borderStrong,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    marginTop: spacing.md,
-    padding: spacing.md,
-  },
-  tipsTitle: {
-    color: colors.primaryDark,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 18,
-    fontWeight: '900',
-    marginBottom: spacing.sm,
-    ...rtl.textCenter,
-  },
-  tipRow: {
-    alignItems: 'center',
-    flexDirection: 'row-reverse',
-    gap: spacing.sm,
-    paddingVertical: 6,
-  },
-  tipIcon: {
-    alignItems: 'center',
-    backgroundColor: colors.primarySoft,
-    borderRadius: 18,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
-  },
-  tipText: {
-    color: colors.text,
-    flex: 1,
+  note: {
+    color: colors.textSoft,
     fontFamily: typography.fontFamilySemiBold,
-    fontSize: 14,
-    fontWeight: '800',
-    ...rtl.text,
-  },
-  brandName: {
-    color: colors.muted,
-    fontFamily: typography.fontFamilyBold,
     fontSize: 13,
     fontWeight: '800',
+    lineHeight: 19,
     marginTop: spacing.sm,
     ...rtl.textCenter,
   },
-  footer: {
-    paddingHorizontal: spacing.lg,
+  actions: {
+    alignSelf: 'stretch',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  galleryButton: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderColor: colors.borderStrong,
+    borderRadius: 17,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
+    gap: 8,
+    justifyContent: 'center',
+    minHeight: 50,
+    paddingHorizontal: spacing.md,
+    ...shadows.soft,
+  },
+  galleryButtonText: {
+    color: colors.primaryDeep,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 15,
+    fontWeight: '900',
+    ...rtl.textCenter,
   },
   strip: {
     alignItems: 'center',
     backgroundColor: colors.white,
     borderRadius: 7,
-    height: 188,
+    height: 178,
     justifyContent: 'space-evenly',
     paddingVertical: 7,
     width: 28,
     ...shadows.card,
   },
-  stripSmall: {
-    borderRadius: 5,
-    height: 74,
-    paddingVertical: 4,
-    width: 15,
-  },
   pad: {
     borderRadius: 3,
-    height: 21,
-    width: 21,
+    height: 20,
+    width: 20,
   },
-  padSmall: {
-    borderRadius: 2,
-    height: 8,
-    width: 8,
+  disabled: {
+    opacity: 0.55,
   },
   pressed: {
-    opacity: 0.78,
+    opacity: 0.86,
     transform: [{ scale: 0.99 }],
   },
 });

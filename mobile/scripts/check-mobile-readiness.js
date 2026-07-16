@@ -21,6 +21,7 @@ const requiredScreens = [
   'EditPoolScreen.tsx',
   'SelectPoolScreen.tsx',
   'SelectStripScreen.tsx',
+  'ScanPlaceholderScreen.tsx',
   'ScanScreen.tsx',
   'ConfirmScanScreen.tsx',
   'ResultsScreen.tsx',
@@ -101,7 +102,12 @@ for (const screen of requiredScreens) {
     source.includes('<AuthScreenShell') ||
     source.includes('<StaticInfoScreen');
   const usesApprovedFullscreenCamera = screen === 'ScanScreen.tsx' && source.includes('<CameraView');
-  assert(usesResponsiveShell || usesApprovedFullscreenCamera, `${screen} must render inside an approved mobile shell.`);
+  const usesApprovedPreScanScreen =
+    screen === 'ScanPlaceholderScreen.tsx' &&
+    source.includes('ImageBackground') &&
+    source.includes('launchImageLibraryAsync') &&
+    source.includes('<PrimaryButton');
+  assert(usesResponsiveShell || usesApprovedFullscreenCamera || usesApprovedPreScanScreen, `${screen} must render inside an approved mobile shell.`);
 }
 
 for (const profile of deviceProfiles) {
