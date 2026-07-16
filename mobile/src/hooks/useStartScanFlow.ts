@@ -25,9 +25,11 @@ export function useStartScanFlow(navigation: NavigationProp<RootStackParamList>)
         const poolBrand = selectedPool.stripBrandId ? getBrand(selectedPool.stripBrandId) : undefined;
         const canSkipStripSelection = Boolean(poolBrand?.supported);
 
-        startScanSession({ brandId: canSkipStripSelection ? poolBrand?.id : selectedPool.stripBrandId, poolId: selectedPool.id });
-        if (canSkipStripSelection) {
-          navigation.navigate('Scan', { poolId: selectedPool.id, brandId: poolBrand?.id });
+        const scanBrandId = poolBrand?.id ?? selectedPool.stripBrandId;
+
+        startScanSession({ brandId: canSkipStripSelection ? scanBrandId : selectedPool.stripBrandId, poolId: selectedPool.id });
+        if (canSkipStripSelection && scanBrandId) {
+          navigation.navigate('ScanPlaceholder', { poolId: selectedPool.id, brandId: scanBrandId });
         } else {
           navigation.navigate('SelectStrip', { poolId: selectedPool.id });
         }

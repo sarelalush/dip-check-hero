@@ -71,8 +71,8 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
     const canSkipStripSelection = Boolean(selectedBrand?.supported);
 
     startScanSession({ brandId: canSkipStripSelection ? selectedBrand?.id : pool?.stripBrandId, poolId: route.params.poolId });
-    if (canSkipStripSelection) {
-      navigation.navigate('Scan', { brandId: selectedBrand?.id, poolId: route.params.poolId });
+    if (canSkipStripSelection && selectedBrand?.id) {
+      navigation.navigate('ScanPlaceholder', { brandId: selectedBrand.id, poolId: route.params.poolId });
       return;
     }
 

@@ -29,8 +29,8 @@ export function SelectPoolScreen({ navigation }: Props) {
     const canSkipStripSelection = Boolean(brand?.supported);
 
     startScanSession({ brandId: canSkipStripSelection ? brand?.id : pool.stripBrandId, poolId: pool.id });
-    if (canSkipStripSelection) {
-      navigation.replace('Scan', { brandId: brand?.id, poolId: pool.id });
+    if (canSkipStripSelection && brand?.id) {
+      navigation.replace('ScanPlaceholder', { brandId: brand.id, poolId: pool.id });
       return;
     }
 

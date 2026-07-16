@@ -20,6 +20,7 @@ import { EditPoolScreen } from './src/screens/EditPoolScreen';
 import { ConfirmScanScreen } from './src/screens/ConfirmScanScreen';
 import { ResultsScreen } from './src/screens/ResultsScreen';
 import { ScanScreen } from './src/screens/ScanScreen';
+import { ScanPlaceholderScreen } from './src/screens/ScanPlaceholderScreen';
 import { SelectPoolScreen } from './src/screens/SelectPoolScreen';
 import { SelectStripScreen } from './src/screens/SelectStripScreen';
 import { LandingScreen } from './src/screens/LandingScreen';
@@ -199,6 +200,7 @@ function AppNavigator() {
             <Stack.Screen name="EditPool" component={EditPoolScreen} />
             <Stack.Screen name="SelectPool" component={SelectPoolScreen} />
             <Stack.Screen name="SelectStrip" component={SelectStripScreen} />
+            <Stack.Screen name="ScanPlaceholder" component={ScanPlaceholderScreen} />
             <Stack.Screen name="Scan" component={ScanScreen} />
             <Stack.Screen name="ConfirmScan" component={ConfirmScanScreen} />
             <Stack.Screen name="Results" component={ResultsScreen} />
