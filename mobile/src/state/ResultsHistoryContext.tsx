@@ -48,6 +48,7 @@ interface ResultsHistoryContextValue {
 const ResultsHistoryContext = createContext<ResultsHistoryContextValue | null>(null);
 const HISTORY_STORAGE_KEY = '@aquasense/history-records';
 const HISTORY_CACHE_READY_KEY = '@aquasense/history-cache-ready';
+const HISTORY_CACHE_READY_VERSION = 'v2';
 const HISTORY_STORAGE_LIMIT = 15;
 const FALLBACK_POOL_NAME = 'הבריכה שלי';
 
@@ -209,7 +210,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
           AsyncStorage.getItem(cacheReadyKey),
         ]);
         if (!isMounted) return;
-        let hasUsableCache = cacheReady === 'true';
+        let hasUsableCache = cacheReady === HISTORY_CACHE_READY_VERSION;
 
         if (storedRecords) {
           const parsedRecords = JSON.parse(storedRecords) as SavedHistoryRecord[];
@@ -280,7 +281,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         const result = await syncTestsWithCloud(localRecords, user, accountId, pools);
         if (syncRunIdRef.current === syncRunId) {
           setHistoryRecords(dedupeHistoryRecords(result.records));
-          await AsyncStorage.setItem(getHistoryCacheReadyKey(ownerKey), 'true');
+          await AsyncStorage.setItem(getHistoryCacheReadyKey(ownerKey), HISTORY_CACHE_READY_VERSION);
         }
       } catch (error) {
         if (syncRunIdRef.current !== syncRunId) return;

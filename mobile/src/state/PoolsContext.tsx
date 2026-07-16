@@ -29,6 +29,7 @@ interface PoolsContextValue {
 const PoolsContext = createContext<PoolsContextValue | null>(null);
 const POOLS_STORAGE_KEY = '@aquasense/pools';
 const POOLS_CACHE_READY_KEY = '@aquasense/pools-cache-ready';
+const POOLS_CACHE_READY_VERSION = 'v2';
 
 function getPoolsStorageKey(ownerKey: string) {
   return `${POOLS_STORAGE_KEY}:${ownerKey}`;
@@ -77,7 +78,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
           AsyncStorage.getItem(cacheReadyKey),
         ]);
         if (!isMounted) return;
-        let hasUsableCache = cacheReady === 'true';
+        let hasUsableCache = cacheReady === POOLS_CACHE_READY_VERSION;
 
         if (storedPools) {
           const parsedPools = JSON.parse(storedPools) as Pool[];
@@ -140,7 +141,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
         const result = await syncPoolsWithCloud(pools, currentUser, currentAccountId);
         if (!isMounted) return;
         setPools(dedupePools(result.pools));
-        await AsyncStorage.setItem(cacheReadyKey, 'true');
+        await AsyncStorage.setItem(cacheReadyKey, POOLS_CACHE_READY_VERSION);
       } catch (error) {
         if (!isMounted) return;
         console.warn('Failed to sync pools with cloud', error);
