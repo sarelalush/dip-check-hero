@@ -270,16 +270,16 @@ export function ScanScreen({ navigation, route }: Props) {
         <Text style={styles.subtitle}>מקם את הסטיק בדיוק בתוך המסגרת</Text>
       </View>
 
-      <View pointerEvents="none" style={[styles.lowerHint, { top: scanFrame.y + scanFrame.height + 12 }]}>
-        <Text style={styles.hintText}>ודא שכל הסטיק וריבועי הצבע נמצאים בתוך הקווים</Text>
-        <Text style={[styles.statusText, isCapturing && styles.statusReady]}>{captureMessage}</Text>
-      </View>
-
       <Pressable onPress={closeScan} style={({ pressed }) => [styles.closeButton, { top: insets.top + 14 }, pressed && styles.pressed]}>
         <LineIcon name="close" color={colors.white} size={24} />
       </Pressable>
 
       <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom + 14, 24) }]}>
+        <View pointerEvents="none" style={styles.instructionPanel}>
+          <Text style={styles.hintText}>ודא שכל הסטיק וריבועי הצבע נמצאים בתוך הקווים</Text>
+          <Text style={[styles.statusText, isCapturing && styles.statusReady]}>{captureMessage}</Text>
+        </View>
+
         <View style={styles.examplesPanel}>
           <View style={styles.exampleBad}>
             <View style={styles.badImageBackground}>
@@ -428,11 +428,21 @@ const styles = StyleSheet.create({
   bottomBar: {
     alignItems: 'center',
     bottom: 0,
-    gap: 16,
+    gap: 10,
     left: 0,
     paddingHorizontal: 22,
     position: 'absolute',
     right: 0,
+  },
+  instructionPanel: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(6,15,20,0.72)',
+    borderColor: 'rgba(96,221,232,0.34)',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
   examplesPanel: {
     alignItems: 'center',
@@ -443,8 +453,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     justifyContent: 'center',
-    minHeight: 112,
-    paddingHorizontal: 18,
+    minHeight: 82,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     ...shadows.card,
   },
   exampleBad: {
@@ -460,33 +471,33 @@ const styles = StyleSheet.create({
   badImageBackground: {
     alignItems: 'center',
     backgroundColor: colors.water,
-    borderRadius: 12,
-    height: 86,
+    borderRadius: 10,
+    height: 64,
     justifyContent: 'center',
     overflow: 'hidden',
-    width: 86,
+    width: 64,
   },
   badBadge: {
     alignItems: 'center',
     backgroundColor: colors.danger,
-    borderRadius: 16,
-    height: 32,
+    borderRadius: 14,
+    height: 28,
     justifyContent: 'center',
     position: 'absolute',
-    right: 20,
-    top: 6,
-    width: 32,
+    right: 28,
+    top: 2,
+    width: 28,
   },
   goodBadge: {
     alignItems: 'center',
     backgroundColor: colors.success,
-    borderRadius: 16,
-    height: 32,
+    borderRadius: 14,
+    height: 28,
     justifyContent: 'center',
     position: 'absolute',
-    right: 34,
-    top: 5,
-    width: 32,
+    right: 42,
+    top: 1,
+    width: 28,
   },
   divider: {
     alignSelf: 'stretch',
@@ -498,15 +509,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.white,
     borderRadius: 4,
-    height: 88,
+    height: 66,
     justifyContent: 'space-evenly',
     paddingVertical: 3,
-    width: 15,
+    width: 12,
   },
   miniPad: {
     borderRadius: 2,
-    height: 10,
-    width: 10,
+    height: 7,
+    width: 7,
   },
   shutterOuter: {
     alignItems: 'center',
