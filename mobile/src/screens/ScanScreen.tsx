@@ -1,34 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+import { ActivityIndicator, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { AppShell } from '../components/AppShell';
 import { LineIcon } from '../components/LineIcon';
 import { WaterTexture } from '../components/WaterVisuals';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
 import { useAuth } from '../state/AuthContext';
 import { useScanSession } from '../state/ScanSessionContext';
+import { processTestStripImage, TestStripProcessingError, type TestStripFrame } from '../services/testStripImageProcessing';
 import { canCreateScan, hasActiveSubscription } from '../services/usageService';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Scan'>;
-type PickSource = 'camera' | 'library';
-
-const pickerOptions: ImagePicker.ImagePickerOptions = {
-  mediaTypes: ['images'],
-  allowsEditing: false,
-  base64: true,
-  quality: 0.9,
-};
+type ScanGateStatus = 'checking' | 'ready';
 
 export function ScanScreen({ navigation, route }: Props) {
   const { accountId } = useAuth();
   const { resetScanSession, session, setCurrentStep, setImageUri, setScanError, startScanSession } = useScanSession();
   const didInitializeSession = useRef(false);
-  const [selectedImageUri, setSelectedImageUri] = useState<string | undefined>(session.imageUri);
-  const [feedback, setFeedback] = useState('בחרו תמונת סטיק או צלמו אחת חדשה');
-  const [isPicking, setIsPicking] = useState(false);
-  const [scanGateStatus, setScanGateStatus] = useState<'checking' | 'ready'>('checking');
+  const cameraRef = useRef<CameraView | null>(null);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [cameraReady, setCameraReady] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [captureMessage, setCaptureMessage] = useState('מקם את הסטיק בתוך המסגרת ולחץ צילום');
+  const [scanGateStatus, setScanGateStatus] = useState<ScanGateStatus>('checking');
+  const { height: previewHeight, width: previewWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const activeBrandId = session.selectedBrandId ?? route.params?.brandId;
 
   const resultParams = useMemo(
@@ -36,8 +34,27 @@ export function ScanScreen({ navigation, route }: Props) {
       brandId: session.selectedBrandId ?? route.params?.brandId,
       poolId: session.selectedPoolId ?? route.params?.poolId,
     }),
-    [route.params?.brandId, route.params?.poolId, session.selectedBrandId, session.selectedPoolId]
+    [route.params?.brandId, route.params?.poolId, session.selectedBrandId, session.selectedPoolId],
   );
+
+  const scanFrame = useMemo<TestStripFrame>(() => {
+    const frameHeight = Math.min(previewHeight * 0.56, 540);
+    const frameWidth = Math.max(58, Math.min(92, frameHeight * 0.17));
+    const preferredTop = previewHeight * 0.24;
+    const minTop = insets.top + 132;
+    const maxTop = previewHeight - frameHeight - insets.bottom - 168;
+    const y = Math.max(minTop, Math.min(preferredTop, maxTop));
+    const x = (previewWidth - frameWidth) / 2;
+
+    return {
+      height: frameHeight,
+      previewHeight,
+      previewWidth,
+      width: frameWidth,
+      x,
+      y,
+    };
+  }, [insets.bottom, insets.top, previewHeight, previewWidth]);
 
   useEffect(() => {
     if (didInitializeSession.current) return;
@@ -62,7 +79,7 @@ export function ScanScreen({ navigation, route }: Props) {
 
     setScanError({
       code: 'missingBrand',
-      message: 'בחרו מותג סטיק לפני שמתחילים סריקה.',
+      message: 'בחר מותג סטיק לפני שמתחילים סריקה.',
     });
     navigation.replace('SelectStrip', route.params?.poolId ? { poolId: route.params.poolId } : undefined);
   }, [activeBrandId, navigation, route.params?.poolId, setScanError]);
@@ -75,9 +92,11 @@ export function ScanScreen({ navigation, route }: Props) {
   useEffect(() => {
     let cancelled = false;
 
-    if (!activeBrandId) return () => {
-      cancelled = true;
-    };
+    if (!activeBrandId) {
+      return () => {
+        cancelled = true;
+      };
+    }
 
     async function verifyScanAccess() {
       setScanGateStatus('checking');
@@ -111,198 +130,212 @@ export function ScanScreen({ navigation, route }: Props) {
     };
   }, [accountId, activeBrandId, navigation]);
 
-  async function pickImage(source: PickSource) {
-    if (isPicking || scanGateStatus !== 'ready') {
-      return;
-    }
-
-    setIsPicking(true);
-    setFeedback(source === 'camera' ? 'פותח מצלמה...' : 'פותח גלריה...');
-
-    try {
-      const permission =
-        source === 'camera'
-          ? await ImagePicker.requestCameraPermissionsAsync()
-          : await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permission.granted) {
-        setScanError({
-          code: 'permissionDenied',
-          message:
-            source === 'camera'
-              ? 'כדי לצלם סטיק צריך לאשר גישה למצלמה.'
-              : 'כדי לבחור תמונה צריך לאשר גישה לגלריה.',
-        });
-        setFeedback(
-          source === 'camera'
-            ? 'כדי לצלם סטיק צריך לאשר גישה למצלמה'
-            : 'כדי לבחור תמונה צריך לאשר גישה לגלריה'
-        );
-        return;
-      }
-
-      const result =
-        source === 'camera'
-          ? await ImagePicker.launchCameraAsync(pickerOptions)
-          : await ImagePicker.launchImageLibraryAsync(pickerOptions);
-
-      if (result.canceled) {
-        setFeedback('לא נבחרה תמונה. אפשר לנסות שוב.');
-        return;
-      }
-
-      const asset = result.assets[0];
-      const uri = asset?.base64 ? `data:${asset.mimeType ?? 'image/jpeg'};base64,${asset.base64}` : asset?.uri;
-      if (!uri) {
-        setFeedback('לא הצלחנו לקרוא את התמונה. נסו תמונה אחרת.');
-        return;
-      }
-
-      setSelectedImageUri(uri);
-      setImageUri(uri);
-      setFeedback('התמונה התקבלה. אפשר להמשיך לתוצאות.');
-    } catch {
-      setScanError({
-        code: 'imagePickerFailed',
-        message: 'משהו השתבש בטעינת התמונה. נסו שוב.',
-      });
-      setFeedback('משהו השתבש בטעינת התמונה. נסו שוב.');
-    } finally {
-      setIsPicking(false);
-    }
-  }
-
-  function continueToResults() {
-    if (scanGateStatus !== 'ready') {
-      return;
-    }
-
-    const imageUri = selectedImageUri ?? session.imageUri;
-
-    if (!imageUri) {
-      setFeedback('בחרו תמונה או צלמו סטיק לפני שממשיכים.');
-      return;
-    }
-
-    navigation.navigate('ConfirmScan', {
-      ...resultParams,
-      imageUri,
-    });
-  }
-
   function closeScan() {
     resetScanSession();
     navigation.navigate('Home');
   }
 
-  if (activeBrandId && scanGateStatus !== 'ready') {
-    return (
-      <AppShell activeTab="scan" navigation={navigation} scroll={false} waterMode="full">
-        <View style={styles.gateScreen}>
-          <View style={styles.waterLayer}>
-            <WaterTexture deep />
-          </View>
-          <View style={styles.gateCard}>
-            <ActivityIndicator color={colors.primary} size="large" />
-            <Text style={styles.gateTitle}>מכינים את הסריקה</Text>
-            <Text style={styles.gateText}>בודקים מנוי ומכסת סריקות כדי לפתוח את הצילום.</Text>
-          </View>
-        </View>
-      </AppShell>
-    );
+  async function captureStrip() {
+    if (!cameraRef.current || !cameraReady || isCapturing || scanGateStatus !== 'ready') {
+      return;
+    }
+
+    setIsCapturing(true);
+    setCaptureMessage('מעבד את הסטיק...');
+
+    try {
+      const photo = await cameraRef.current.takePictureAsync({
+        base64: false,
+        exif: true,
+        quality: 1,
+        skipProcessing: false,
+      });
+
+      if (!photo?.uri || !photo.width || !photo.height) {
+        throw new TestStripProcessingError('notDetected', 'לא הצלחנו לקרוא את התמונה. נסה לצלם שוב.');
+      }
+
+      const processed = await processTestStripImage({
+        frame: scanFrame,
+        height: photo.height,
+        uri: photo.uri,
+        width: photo.width,
+      });
+
+      setCaptureMessage('מעולה, אפשר לצלם');
+      setImageUri(processed.uri, {
+        originalImageUri: processed.originalUri,
+        processingLog: processed.debugLog,
+      });
+      setCurrentStep('confirm');
+      navigation.navigate('ConfirmScan', {
+        ...resultParams,
+        imageUri: processed.uri,
+      });
+    } catch (error) {
+      const fallbackMessage = 'לא הצלחנו לחתוך את הסטיק. ודא שהוא ישר, חד וממלא את המסגרת.';
+      const code = error instanceof TestStripProcessingError ? error.code : 'processingFailed';
+      const message = error instanceof TestStripProcessingError ? error.userMessage : fallbackMessage;
+
+      setScanError({ code, message });
+      setCaptureMessage(message);
+    } finally {
+      setIsCapturing(false);
+    }
   }
 
-  return (
-    <AppShell activeTab="scan" navigation={navigation} scroll={false} waterMode="full">
-      <View style={styles.screen}>
-        <View style={styles.waterLayer}>
-          <WaterTexture deep />
-        </View>
-        <View style={styles.topBar}>
-          <View style={styles.actions}>
-            <Pressable style={styles.toolButton}>
-              <LineIcon name="help" color={colors.white} size={20} />
-            </Pressable>
-          </View>
-          <View style={styles.titleWrap}>
-            <Text style={styles.title}>סריקת סטיק</Text>
-            <Text style={styles.subtitle}>בחרו תמונה ברורה של הסטיק בתוך המסגרת</Text>
-          </View>
-          <View style={styles.actions}>
-            <Pressable style={styles.toolButton} onPress={() => pickImage('camera')}>
-              <LineIcon name="flash" color={colors.white} size={20} />
-            </Pressable>
-          </View>
-        </View>
+  if (activeBrandId && scanGateStatus !== 'ready') {
+    return <LoadingGate />;
+  }
 
-        <View style={styles.scanArea}>
-          <Pressable onPress={() => pickImage('library')} style={styles.frame}>
-            {selectedImageUri ? (
-              <>
-                <Image source={{ uri: selectedImageUri }} style={styles.previewImage} resizeMode="cover" />
-                <View style={styles.previewBadge}>
-                  <LineIcon name="check" color={colors.white} size={13} />
-                  <Text style={styles.previewBadgeText}>תמונה מוכנה</Text>
-                </View>
-              </>
-            ) : (
-              <>
-                <MockStrip />
-                <View style={styles.hand}>
-                  <View style={styles.thumb} />
-                  <View style={styles.finger} />
-                </View>
-              </>
-            )}
-            <View style={[styles.corner, styles.topRight]} />
-            <View style={[styles.corner, styles.topLeft]} />
-            <View style={[styles.corner, styles.bottomRight]} />
-            <View style={[styles.corner, styles.bottomLeft]} />
+  if (!permission) {
+    return <LoadingGate />;
+  }
+
+  if (!permission.granted) {
+    return (
+      <View style={styles.permissionScreen}>
+        <WaterTexture deep />
+        <View style={styles.permissionCard}>
+          <View style={styles.permissionIcon}>
+            <LineIcon name="camera" color={colors.primary} size={28} />
+          </View>
+          <Text style={styles.permissionTitle}>צריך הרשאת מצלמה</Text>
+          <Text style={styles.permissionText}>כדי לצלם רק את סטיק הבדיקה, צריך לאפשר גישה למצלמה.</Text>
+          <Pressable onPress={requestPermission} style={({ pressed }) => [styles.permissionButton, pressed && styles.pressed]}>
+            <Text style={styles.permissionButtonText}>אישור גישה למצלמה</Text>
           </Pressable>
-        </View>
-
-        <View style={styles.bottomArea}>
-          <View style={styles.instructionPill}>
-            <Text style={styles.instruction}>{feedback}</Text>
-          </View>
-
-          <View style={styles.pickActions}>
-            <Pressable
-              onPress={() => pickImage('library')}
-              style={({ pressed }) => [styles.pickButton, pressed && styles.pressed]}
-            >
-              <LineIcon name="image" color={colors.primaryDark} size={16} />
-              <Text style={styles.pickButtonText}>{selectedImageUri ? 'החלפת תמונה' : 'בחירה מהגלריה'}</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => pickImage('camera')}
-              style={({ pressed }) => [styles.pickButton, pressed && styles.pressed]}
-            >
-              <LineIcon name="camera" color={colors.primaryDark} size={16} />
-              <Text style={styles.pickButtonText}>צילום סטיק</Text>
-            </Pressable>
-          </View>
-
-          <Pressable onPress={continueToResults} style={({ pressed }) => [styles.resultsButton, pressed && styles.pressed]}>
-            <LineIcon name="results" color={colors.white} size={16} />
-            <Text style={styles.resultsButtonText}>המשך לתוצאות</Text>
-          </Pressable>
-          <Pressable onPress={closeScan} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
-            <LineIcon name="close" color={colors.text} size={24} />
+          <Pressable onPress={closeScan} style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}>
+            <Text style={styles.cancelButtonText}>חזרה</Text>
           </Pressable>
         </View>
       </View>
-    </AppShell>
+    );
+  }
+
+  const frameColor = isCapturing ? colors.success : cameraReady ? colors.primaryLight : colors.white;
+
+  return (
+    <View style={styles.screen}>
+      <CameraView
+        ref={cameraRef}
+        facing="back"
+        mode="picture"
+        onCameraReady={() => {
+          setCameraReady(true);
+          setCaptureMessage('מקם את הסטיק בתוך המסגרת ולחץ צילום');
+        }}
+        style={StyleSheet.absoluteFill}
+      />
+
+      <View pointerEvents="none" style={[styles.mask, { height: scanFrame.y, top: 0 }]} />
+      <View
+        pointerEvents="none"
+        style={[styles.mask, { bottom: 0, top: scanFrame.y + scanFrame.height }]}
+      />
+      <View
+        pointerEvents="none"
+        style={[styles.mask, { height: scanFrame.height, left: 0, top: scanFrame.y, width: scanFrame.x }]}
+      />
+      <View
+        pointerEvents="none"
+        style={[
+          styles.mask,
+          {
+            height: scanFrame.height,
+            right: 0,
+            top: scanFrame.y,
+            width: Math.max(0, previewWidth - scanFrame.x - scanFrame.width),
+          },
+        ]}
+      />
+
+      <View
+        pointerEvents="none"
+        style={[
+          styles.stripFrame,
+          {
+            borderColor: frameColor,
+            height: scanFrame.height,
+            left: scanFrame.x,
+            top: scanFrame.y,
+            width: scanFrame.width,
+          },
+        ]}
+      />
+
+      <View pointerEvents="none" style={[styles.topContent, { paddingTop: insets.top + 12 }]}>
+        <Text style={styles.brand}>AquaSense</Text>
+        <Text style={styles.title}>צלם רק את הסטיק</Text>
+        <Text style={styles.subtitle}>מקם את הסטיק בדיוק בתוך המסגרת</Text>
+      </View>
+
+      <View pointerEvents="none" style={[styles.lowerHint, { top: scanFrame.y + scanFrame.height + 12 }]}>
+        <Text style={styles.hintText}>ודא שכל הסטיק וריבועי הצבע נמצאים בתוך הקווים</Text>
+        <Text style={[styles.statusText, isCapturing && styles.statusReady]}>{captureMessage}</Text>
+      </View>
+
+      <Pressable onPress={closeScan} style={({ pressed }) => [styles.closeButton, { top: insets.top + 14 }, pressed && styles.pressed]}>
+        <LineIcon name="close" color={colors.white} size={24} />
+      </Pressable>
+
+      <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom + 14, 24) }]}>
+        <View style={styles.examplesPanel}>
+          <View style={styles.exampleBad}>
+            <View style={styles.badImageBackground}>
+              <MockMiniStrip />
+            </View>
+            <View style={styles.badBadge}>
+              <LineIcon name="close" color={colors.white} size={15} />
+            </View>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.exampleGood}>
+            <MockMiniStrip />
+            <View style={styles.goodBadge}>
+              <LineIcon name="check" color={colors.white} size={15} />
+            </View>
+          </View>
+        </View>
+
+        <Pressable
+          disabled={!cameraReady || isCapturing}
+          onPress={captureStrip}
+          style={({ pressed }) => [
+            styles.shutterOuter,
+            (!cameraReady || isCapturing) && styles.disabled,
+            pressed && cameraReady && !isCapturing && styles.pressed,
+          ]}
+        >
+          <View style={styles.shutterInner}>
+            {isCapturing ? <ActivityIndicator color={colors.primary} size="small" /> : null}
+          </View>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
-function MockStrip() {
-  const pads = ['#F3C45C', '#D8728F', '#72C9BD', '#6B8BD8', '#BFD85E'];
+function LoadingGate() {
+  return (
+    <View style={styles.permissionScreen}>
+      <WaterTexture deep />
+      <View style={styles.permissionCard}>
+        <ActivityIndicator color={colors.primary} size="large" />
+        <Text style={styles.permissionTitle}>מכינים את הסריקה</Text>
+        <Text style={styles.permissionText}>בודקים מנוי ומכסת סריקות כדי לפתוח את הצילום.</Text>
+      </View>
+    </View>
+  );
+}
+
+function MockMiniStrip() {
+  const pads = ['#F2F4EF', '#7ECFD0', '#A4CFA2', '#F2C64B', '#F39C38', '#E7767D', '#A56BC0'];
 
   return (
-    <View style={styles.strip}>
+    <View style={styles.miniStrip}>
       {pads.map((pad) => (
-        <View key={pad} style={[styles.pad, { backgroundColor: pad }]} />
+        <View key={pad} style={[styles.miniPad, { backgroundColor: pad }]} />
       ))}
     </View>
   );
@@ -310,279 +343,263 @@ function MockStrip() {
 
 const styles = StyleSheet.create({
   screen: {
+    backgroundColor: '#000',
     flex: 1,
-    paddingTop: 8,
-    paddingBottom: 120,
   },
-  gateScreen: {
-    flex: 1,
+  mask: {
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    position: 'absolute',
+  },
+  stripFrame: {
+    borderRadius: 15,
+    borderWidth: 3,
+    position: 'absolute',
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+  },
+  topContent: {
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    paddingBottom: 96,
+    left: 22,
+    position: 'absolute',
+    right: 22,
   },
-  waterLayer: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  gateCard: {
-    width: '100%',
-    borderRadius: 28,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 22,
-    paddingVertical: 28,
-    ...shadows.card,
-  },
-  gateTitle: {
-    color: colors.text,
+  brand: {
+    color: colors.primaryLight,
     fontFamily: typography.fontFamilyBold,
-    fontSize: 20,
+    fontSize: 26,
     fontWeight: '900',
     ...rtl.textCenter,
-  },
-  gateText: {
-    color: colors.textSoft,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 13,
-    fontWeight: '800',
-    lineHeight: 20,
-    ...rtl.textCenter,
-  },
-  topBar: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  titleWrap: {
-    flex: 1,
-    alignItems: 'center',
   },
   title: {
     color: colors.white,
     fontFamily: typography.fontFamilyBold,
-    fontSize: 22,
+    fontSize: 29,
     fontWeight: '900',
+    marginTop: spacing.sm,
     ...rtl.textCenter,
   },
   subtitle: {
+    color: 'rgba(255,255,255,0.88)',
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 16,
+    fontWeight: '900',
     marginTop: 5,
-    color: 'rgba(255,255,255,0.86)',
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 13,
-    fontWeight: '800',
     ...rtl.textCenter,
   },
-  actions: {
-    flexDirection: 'row-reverse',
-    gap: 8,
-  },
-  toolButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,48,65,0.14)',
-    borderWidth: 0,
+  lowerHint: {
     alignItems: 'center',
-    justifyContent: 'center',
-    ...shadows.soft,
-  },
-  scanArea: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-  },
-  frame: {
-    width: '82%',
-    maxWidth: 300,
-    aspectRatio: 1,
-    borderRadius: radius.xxl,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.42)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  previewImage: {
-    width: '88%',
-    height: '88%',
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.62)',
-  },
-  previewBadge: {
+    left: 24,
     position: 'absolute',
-    bottom: 18,
-    alignSelf: 'center',
-    minHeight: 30,
-    borderRadius: radius.round,
-    backgroundColor: 'rgba(4,44,57,0.68)',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
+    right: 24,
   },
-  previewBadgeText: {
+  hintText: {
     color: colors.white,
     fontFamily: typography.fontFamilySemiBold,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '900',
+    lineHeight: 21,
     ...rtl.textCenter,
   },
-  corner: {
-    position: 'absolute',
-    width: 42,
-    height: 42,
-    borderColor: colors.white,
-  },
-  topRight: {
-    top: 0,
-    right: 0,
-    borderTopWidth: 4,
-    borderRightWidth: 4,
-    borderTopRightRadius: radius.xl,
-  },
-  topLeft: {
-    top: 0,
-    left: 0,
-    borderTopWidth: 4,
-    borderLeftWidth: 4,
-    borderTopLeftRadius: radius.xl,
-  },
-  bottomRight: {
-    bottom: 0,
-    right: 0,
-    borderBottomWidth: 4,
-    borderRightWidth: 4,
-    borderBottomRightRadius: radius.xl,
-  },
-  bottomLeft: {
-    bottom: 0,
-    left: 0,
-    borderBottomWidth: 4,
-    borderLeftWidth: 4,
-    borderBottomLeftRadius: radius.xl,
-  },
-  strip: {
-    width: 38,
-    height: 240,
-    borderRadius: 10,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'space-evenly',
-    paddingVertical: 10,
-    ...shadows.card,
-  },
-  pad: {
-    width: 26,
-    height: 25,
-    borderRadius: 4,
-  },
-  hand: {
-    position: 'absolute',
-    bottom: -84,
-    left: 95,
-    width: 92,
-    height: 118,
-    borderTopLeftRadius: 42,
-    borderTopRightRadius: 42,
-    borderBottomLeftRadius: 26,
-    borderBottomRightRadius: 26,
-    backgroundColor: '#F1C4A8',
-    transform: [{ rotate: '-9deg' }],
-  },
-  thumb: {
-    position: 'absolute',
-    top: 18,
-    right: -18,
-    width: 36,
-    height: 58,
-    borderRadius: 20,
-    backgroundColor: '#E8B08F',
-    transform: [{ rotate: '-24deg' }],
-  },
-  finger: {
-    position: 'absolute',
-    top: -36,
-    left: 34,
-    width: 31,
-    height: 82,
-    borderRadius: 18,
-    backgroundColor: '#F8D0B7',
-  },
-  bottomArea: {
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  instructionPill: {
-    borderRadius: radius.round,
-    backgroundColor: 'rgba(4,44,57,0.62)',
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    ...shadows.soft,
-  },
-  instruction: {
-    color: colors.white,
-    fontFamily: typography.fontFamilySemiBold,
-    fontSize: 13,
+  statusText: {
+    color: colors.primaryLight,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 14,
     fontWeight: '900',
+    marginTop: 7,
     ...rtl.textCenter,
   },
-  pickActions: {
-    width: '100%',
-    flexDirection: 'row-reverse',
-    gap: 10,
-  },
-  pickButton: {
-    flex: 1,
-    minHeight: 42,
-    borderRadius: radius.round,
-    backgroundColor: colors.whiteSoft,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.72)',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    ...shadows.soft,
-  },
-  pickButtonText: {
-    color: colors.primaryDeep,
-    fontFamily: typography.fontFamilySemiBold,
-    fontSize: 12,
-    fontWeight: '900',
-    ...rtl.textCenter,
+  statusReady: {
+    color: colors.success,
   },
   closeButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: colors.white,
     alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    borderColor: 'rgba(255,255,255,0.24)',
+    borderRadius: 22,
+    borderWidth: 1,
+    height: 44,
     justifyContent: 'center',
+    left: 18,
+    position: 'absolute',
+    width: 44,
+  },
+  bottomBar: {
+    alignItems: 'center',
+    bottom: 0,
+    gap: 16,
+    left: 0,
+    paddingHorizontal: 22,
+    position: 'absolute',
+    right: 0,
+  },
+  examplesPanel: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(10,18,24,0.78)',
+    borderColor: 'rgba(255,255,255,0.25)',
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    minHeight: 112,
+    paddingHorizontal: 18,
+    ...shadows.card,
+  },
+  exampleBad: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  exampleGood: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+  },
+  badImageBackground: {
+    alignItems: 'center',
+    backgroundColor: colors.water,
+    borderRadius: 12,
+    height: 86,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 86,
+  },
+  badBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.danger,
+    borderRadius: 16,
+    height: 32,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 20,
+    top: 6,
+    width: 32,
+  },
+  goodBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.success,
+    borderRadius: 16,
+    height: 32,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: 34,
+    top: 5,
+    width: 32,
+  },
+  divider: {
+    alignSelf: 'stretch',
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    marginHorizontal: 12,
+    width: 1,
+  },
+  miniStrip: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: 4,
+    height: 88,
+    justifyContent: 'space-evenly',
+    paddingVertical: 3,
+    width: 15,
+  },
+  miniPad: {
+    borderRadius: 2,
+    height: 10,
+    width: 10,
+  },
+  shutterOuter: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderColor: 'rgba(255,255,255,0.86)',
+    borderRadius: 48,
+    borderWidth: 4,
+    height: 82,
+    justifyContent: 'center',
+    width: 82,
     ...shadows.button,
   },
-  resultsButton: {
-    minHeight: 42,
-    borderRadius: radius.round,
-    backgroundColor: colors.primary,
-    flexDirection: 'row-reverse',
+  shutterInner: {
     alignItems: 'center',
+    backgroundColor: colors.white,
+    borderColor: '#111',
+    borderRadius: 34,
+    borderWidth: 2,
+    height: 66,
     justifyContent: 'center',
-    gap: 8,
+    width: 66,
+  },
+  permissionScreen: {
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+  },
+  permissionCard: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: radius.xxl,
+    gap: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 28,
+    width: '100%',
+    ...shadows.card,
+  },
+  permissionIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderRadius: 32,
+    height: 64,
+    justifyContent: 'center',
+    width: 64,
+  },
+  permissionTitle: {
+    color: colors.text,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 21,
+    fontWeight: '900',
+    ...rtl.textCenter,
+  },
+  permissionText: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 14,
+    fontWeight: '800',
+    lineHeight: 21,
+    ...rtl.textCenter,
+  },
+  permissionButton: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: colors.primary,
+    borderRadius: radius.round,
+    justifyContent: 'center',
+    minHeight: 50,
     paddingHorizontal: 18,
     ...shadows.button,
   },
-  resultsButtonText: {
+  permissionButtonText: {
     color: colors.white,
-    fontFamily: typography.fontFamilySemiBold,
-    fontSize: 13,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 16,
     fontWeight: '900',
     ...rtl.textCenter,
+  },
+  cancelButton: {
+    minHeight: 38,
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  cancelButtonText: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 14,
+    fontWeight: '900',
+    ...rtl.textCenter,
+  },
+  disabled: {
+    opacity: 0.62,
   },
   pressed: {
     opacity: 0.9,

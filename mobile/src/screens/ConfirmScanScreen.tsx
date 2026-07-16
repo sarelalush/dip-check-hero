@@ -11,7 +11,7 @@ import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ConfirmScan'>;
 
-const checklistItems = ['הסטיק חד וברור', 'כל ריבועי הצבע נראים', 'התאורה טובה'];
+const checklistItems = ['הסטיק חתוך ללא רקע', 'כל ריבועי הצבע נראים', 'התמונה חדה ומוכנה לניתוח'];
 
 export function ConfirmScanScreen({ navigation, route }: Props) {
   const { confirmImage, session, setCurrentStep, setImageUri, setScanError } = useScanSession();
@@ -30,7 +30,7 @@ export function ConfirmScanScreen({ navigation, route }: Props) {
 
     setScanError({
       code: 'missingImage',
-      message: 'בחרו תמונת סטיק לפני אישור הסריקה.',
+      message: 'בחר תמונת סטיק לפני אישור הסריקה.',
     });
     navigation.replace('Scan', { brandId, poolId });
   }, [brandId, imageUri, navigation, poolId, setScanError]);
@@ -58,18 +58,9 @@ export function ConfirmScanScreen({ navigation, route }: Props) {
     return (
       <AppShell activeTab="scan" navigation={navigation}>
         <View style={styles.header}>
-          <Text style={styles.title}>אישור תמונה</Text>
-          <Text style={styles.subtitle}>בחרו תמונת סטיק לפני שממשיכים לאישור.</Text>
+          <Text style={styles.title}>תצוגה מקדימה</Text>
+          <Text style={styles.subtitle}>מחזירים אותך למסך הצילום.</Text>
         </View>
-
-        <Card compact style={styles.checklistCard}>
-          <View style={styles.checkRow}>
-            <View style={styles.checkIcon}>
-              <LineIcon name="help" color={colors.warning} size={14} />
-            </View>
-            <Text style={styles.checkText}>מחזירים אתכם למסך הסריקה.</Text>
-          </View>
-        </Card>
       </AppShell>
     );
   }
@@ -77,21 +68,17 @@ export function ConfirmScanScreen({ navigation, route }: Props) {
   return (
     <AppShell activeTab="scan" navigation={navigation}>
       <View style={styles.header}>
-        <Text style={styles.title}>אישור תמונה</Text>
-        <Text style={styles.subtitle}>ודאו שהסטיק ברור ומופיע בתוך המסגרת</Text>
+        <Text style={styles.title}>תצוגה מקדימה</Text>
+        <Text style={styles.subtitle}>זו התמונה החתוכה שתישלח לניתוח. ודא שרואים רק את הסטיק.</Text>
       </View>
 
       <Card style={styles.previewCard}>
         <View style={styles.previewFrame}>
-          <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="cover" />
-          <View style={[styles.corner, styles.topRight]} />
-          <View style={[styles.corner, styles.topLeft]} />
-          <View style={[styles.corner, styles.bottomRight]} />
-          <View style={[styles.corner, styles.bottomLeft]} />
+          <Image source={{ uri: imageUri }} style={styles.previewImage} resizeMode="contain" />
         </View>
         <View style={styles.previewPill}>
           <LineIcon name="check" color={colors.success} size={14} />
-          <Text style={styles.previewPillText}>תמונה מוכנה לבדיקה</Text>
+          <Text style={styles.previewPillText}>רק הסטיק יישלח ל-AI</Text>
         </View>
       </Card>
 
@@ -107,10 +94,10 @@ export function ConfirmScanScreen({ navigation, route }: Props) {
       </Card>
 
       <View style={styles.actions}>
-        <PrimaryButton label="המשך לניתוח" icon="results" onPress={continueToResults} />
+        <PrimaryButton label="השתמש בתמונה" icon="results" onPress={continueToResults} />
         <Pressable onPress={retakeImage} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
           <LineIcon name="camera" color={colors.primaryDark} size={17} />
-          <Text style={styles.secondaryButtonText}>צילום מחדש / החלפת תמונה</Text>
+          <Text style={styles.secondaryButtonText}>צלם שוב</Text>
         </Pressable>
       </View>
     </AppShell>
@@ -119,89 +106,58 @@ export function ConfirmScanScreen({ navigation, route }: Props) {
 
 const styles = StyleSheet.create({
   header: {
-    marginTop: 18,
     alignItems: 'center',
+    marginTop: 18,
   },
   title: {
     color: colors.text,
     fontFamily: typography.fontFamilyBold,
-    fontSize: 21,
+    fontSize: 22,
     fontWeight: '900',
     ...rtl.textCenter,
   },
   subtitle: {
-    marginTop: 7,
     color: colors.textSoft,
     fontFamily: typography.fontFamilyRegular,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
-    lineHeight: 19,
+    lineHeight: 20,
+    marginTop: 7,
     ...rtl.textCenter,
   },
   previewCard: {
-    marginTop: 18,
-    padding: spacing.md,
     alignItems: 'center',
     gap: 12,
+    marginTop: 18,
+    padding: spacing.md,
   },
   previewFrame: {
-    width: '100%',
-    aspectRatio: 0.86,
-    maxHeight: 350,
-    borderRadius: radius.xl,
-    backgroundColor: colors.backgroundDeep,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    overflow: 'hidden',
     alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: colors.backgroundDeep,
+    borderColor: colors.borderStrong,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    height: 430,
     justifyContent: 'center',
+    maxHeight: 460,
+    maxWidth: 158,
+    overflow: 'hidden',
+    width: '42%',
+    ...shadows.soft,
   },
   previewImage: {
-    width: '100%',
     height: '100%',
-  },
-  corner: {
-    position: 'absolute',
-    width: 38,
-    height: 38,
-    borderColor: colors.white,
-  },
-  topRight: {
-    top: 12,
-    right: 12,
-    borderTopWidth: 4,
-    borderRightWidth: 4,
-    borderTopRightRadius: radius.md,
-  },
-  topLeft: {
-    top: 12,
-    left: 12,
-    borderTopWidth: 4,
-    borderLeftWidth: 4,
-    borderTopLeftRadius: radius.md,
-  },
-  bottomRight: {
-    bottom: 12,
-    right: 12,
-    borderBottomWidth: 4,
-    borderRightWidth: 4,
-    borderBottomRightRadius: radius.md,
-  },
-  bottomLeft: {
-    bottom: 12,
-    left: 12,
-    borderBottomWidth: 4,
-    borderLeftWidth: 4,
-    borderBottomLeftRadius: radius.md,
+    width: '100%',
   },
   previewPill: {
-    minHeight: 34,
-    borderRadius: radius.round,
-    backgroundColor: colors.successSoft,
-    flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: colors.successSoft,
+    borderRadius: radius.round,
+    flexDirection: 'row-reverse',
     gap: 6,
+    justifyContent: 'center',
+    minHeight: 34,
     paddingHorizontal: 14,
   },
   previewPillText: {
@@ -212,45 +168,45 @@ const styles = StyleSheet.create({
     ...rtl.textCenter,
   },
   checklistCard: {
-    marginTop: 12,
     gap: 10,
+    marginTop: 12,
   },
   checkRow: {
-    minHeight: 34,
-    flexDirection: 'row-reverse',
     alignItems: 'center',
+    flexDirection: 'row-reverse',
     gap: 10,
+    minHeight: 34,
   },
   checkIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.successSoft,
     alignItems: 'center',
+    backgroundColor: colors.successSoft,
+    borderRadius: 14,
+    height: 28,
     justifyContent: 'center',
+    width: 28,
   },
   checkText: {
-    flex: 1,
     color: colors.text,
+    flex: 1,
     fontFamily: typography.fontFamilySemiBold,
     fontSize: 13,
     fontWeight: '900',
     ...rtl.text,
   },
   actions: {
-    marginTop: 16,
     gap: 11,
+    marginTop: 16,
   },
   secondaryButton: {
-    minHeight: 48,
-    borderRadius: 17,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    flexDirection: 'row-reverse',
     alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: colors.white,
+    borderColor: colors.borderSoft,
+    borderRadius: 17,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
     gap: 8,
+    justifyContent: 'center',
+    minHeight: 48,
     paddingHorizontal: 18,
     ...shadows.soft,
   },

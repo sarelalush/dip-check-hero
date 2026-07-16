@@ -16,6 +16,14 @@ export interface ScanSessionError {
     | 'missingImage'
     | 'permissionDenied'
     | 'imagePickerFailed'
+    | 'missingFrame'
+    | 'stripOutsideFrame'
+    | 'stripTooSmall'
+    | 'notStraight'
+    | 'blurry'
+    | 'reflection'
+    | 'notDetected'
+    | 'processingFailed'
     | 'analysisFailed'
     | 'qualityFailed'
     | 'unknown';
@@ -28,6 +36,8 @@ export interface ScanSessionState {
   selectedBrandId?: string;
   selectedBrand?: StripBrand;
   imageUri?: string;
+  originalImageUri?: string;
+  imageProcessingLog?: string[];
   confirmedImageUri?: string;
   imagePath?: string;
   imageUrl?: string;
@@ -47,6 +57,11 @@ interface StartScanSessionInput {
   poolId?: string;
 }
 
+interface SetImageUriOptions {
+  originalImageUri?: string;
+  processingLog?: string[];
+}
+
 interface ScanSessionContextValue {
   session: ScanSessionState;
   confirmImage: () => void;
@@ -56,7 +71,7 @@ interface ScanSessionContextValue {
   setAnalysisResult: (result: StripAnalysisResult) => void;
   setScanError: (error?: ScanSessionError) => void;
   setCurrentStep: (step: ScanSessionStep) => void;
-  setImageUri: (imageUri?: string) => void;
+  setImageUri: (imageUri?: string, options?: SetImageUriOptions) => void;
   setScanImageUpload: (input: { imagePath?: string; imageUrl?: string; imageUploadError?: string; testId?: string }) => void;
   setQualityNotes: (notes: string[], status?: ScanQualityStatus) => void;
   setSelectedBrand: (brandId: string) => void;
@@ -121,6 +136,8 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         dosageResult: undefined,
         error: undefined,
         imageUri: undefined,
+        originalImageUri: undefined,
+        imageProcessingLog: undefined,
         imagePath: undefined,
         imageUrl: undefined,
         imageUploadError: undefined,
@@ -143,7 +160,7 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
-  const setImageUri = useCallback((imageUri?: string) => {
+  const setImageUri = useCallback((imageUri?: string, options: SetImageUriOptions = {}) => {
     setSession((current) =>
       withTimestamp({
         ...current,
@@ -152,6 +169,8 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         dosageResult: undefined,
         error: undefined,
         imageUri,
+        originalImageUri: imageUri ? options.originalImageUri : undefined,
+        imageProcessingLog: imageUri ? options.processingLog ?? [] : undefined,
         imagePath: undefined,
         imageUrl: undefined,
         imageUploadError: undefined,

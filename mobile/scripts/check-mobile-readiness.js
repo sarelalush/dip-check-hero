@@ -100,7 +100,8 @@ for (const screen of requiredScreens) {
     source.includes('<WebPhoneFrame') ||
     source.includes('<AuthScreenShell') ||
     source.includes('<StaticInfoScreen');
-  assert(usesResponsiveShell, `${screen} must render inside an approved mobile shell.`);
+  const usesApprovedFullscreenCamera = screen === 'ScanScreen.tsx' && source.includes('<CameraView');
+  assert(usesResponsiveShell || usesApprovedFullscreenCamera, `${screen} must render inside an approved mobile shell.`);
 }
 
 for (const profile of deviceProfiles) {
