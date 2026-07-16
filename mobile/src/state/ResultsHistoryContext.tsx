@@ -47,11 +47,16 @@ interface ResultsHistoryContextValue {
 
 const ResultsHistoryContext = createContext<ResultsHistoryContextValue | null>(null);
 const HISTORY_STORAGE_KEY = '@aquasense/history-records';
+const HISTORY_CACHE_READY_KEY = '@aquasense/history-cache-ready';
 const HISTORY_STORAGE_LIMIT = 15;
 const FALLBACK_POOL_NAME = 'הבריכה שלי';
 
 function getHistoryStorageKey(ownerKey: string) {
   return `${HISTORY_STORAGE_KEY}:${ownerKey}`;
+}
+
+function getHistoryCacheReadyKey(ownerKey: string) {
+  return `${HISTORY_CACHE_READY_KEY}:${ownerKey}`;
 }
 
 function formatDateTime(timestamp: number) {
@@ -189,6 +194,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
 
     let isMounted = true;
     const storageKey = getHistoryStorageKey(ownerKey);
+    const cacheReadyKey = getHistoryCacheReadyKey(ownerKey);
 
     async function restoreHistoryRecords() {
       setHistoryRecords([]);
@@ -198,13 +204,24 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
       setSyncError(undefined);
 
       try {
-        const storedRecords = await AsyncStorage.getItem(storageKey);
+        const [storedRecords, cacheReady] = await Promise.all([
+          AsyncStorage.getItem(storageKey),
+          AsyncStorage.getItem(cacheReadyKey),
+        ]);
         if (!isMounted) return;
+        let hasUsableCache = cacheReady === 'true';
+
         if (storedRecords) {
           const parsedRecords = JSON.parse(storedRecords) as SavedHistoryRecord[];
           if (Array.isArray(parsedRecords)) {
-            setHistoryRecords(dedupeHistoryRecords(parsedRecords));
+            const restoredRecords = dedupeHistoryRecords(parsedRecords);
+            setHistoryRecords(restoredRecords);
+            hasUsableCache = hasUsableCache || restoredRecords.length > 0;
           }
+        }
+
+        if (hasUsableCache) {
+          setInitialSyncComplete(true);
         }
       } catch (error) {
         console.warn('Failed to restore history records from storage', error);
@@ -212,7 +229,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         if (isMounted) {
           setHydratedOwnerKey(ownerKey);
           setHydrated(true);
-          setInitialSyncComplete(ownerKey === 'anonymous');
+          setInitialSyncComplete((current) => current || ownerKey === 'anonymous');
         }
       }
     }
@@ -257,13 +274,13 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
       syncRunIdRef.current = syncRunId;
       syncInFlightRef.current = true;
       setSyncing(true);
-      setInitialSyncComplete(false);
       setSyncError(undefined);
 
       try {
         const result = await syncTestsWithCloud(localRecords, user, accountId, pools);
         if (syncRunIdRef.current === syncRunId) {
           setHistoryRecords(dedupeHistoryRecords(result.records));
+          await AsyncStorage.setItem(getHistoryCacheReadyKey(ownerKey), 'true');
         }
       } catch (error) {
         if (syncRunIdRef.current !== syncRunId) return;

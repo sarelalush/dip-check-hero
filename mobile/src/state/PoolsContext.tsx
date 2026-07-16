@@ -28,9 +28,14 @@ interface PoolsContextValue {
 
 const PoolsContext = createContext<PoolsContextValue | null>(null);
 const POOLS_STORAGE_KEY = '@aquasense/pools';
+const POOLS_CACHE_READY_KEY = '@aquasense/pools-cache-ready';
 
 function getPoolsStorageKey(ownerKey: string) {
   return `${POOLS_STORAGE_KEY}:${ownerKey}`;
+}
+
+function getPoolsCacheReadyKey(ownerKey: string) {
+  return `${POOLS_CACHE_READY_KEY}:${ownerKey}`;
 }
 
 export function PoolsProvider({ children }: { children: ReactNode }) {
@@ -57,6 +62,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
 
     let isMounted = true;
     const storageKey = getPoolsStorageKey(ownerKey);
+    const cacheReadyKey = getPoolsCacheReadyKey(ownerKey);
 
     async function restorePools() {
       setPools([]);
@@ -66,13 +72,24 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
       setSyncError(undefined);
 
       try {
-        const storedPools = await AsyncStorage.getItem(storageKey);
+        const [storedPools, cacheReady] = await Promise.all([
+          AsyncStorage.getItem(storageKey),
+          AsyncStorage.getItem(cacheReadyKey),
+        ]);
         if (!isMounted) return;
+        let hasUsableCache = cacheReady === 'true';
+
         if (storedPools) {
           const parsedPools = JSON.parse(storedPools) as Pool[];
           if (Array.isArray(parsedPools)) {
-            setPools(dedupePools(parsedPools.map((pool) => normalizePool(pool))));
+            const restoredPools = dedupePools(parsedPools.map((pool) => normalizePool(pool)));
+            setPools(restoredPools);
+            hasUsableCache = hasUsableCache || restoredPools.length > 0;
           }
+        }
+
+        if (hasUsableCache) {
+          setInitialSyncComplete(true);
         }
       } catch (error) {
         console.warn('Failed to restore pools from storage', error);
@@ -80,7 +97,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
         if (isMounted) {
           setHydratedOwnerKey(ownerKey);
           setHydrated(true);
-          setInitialSyncComplete(ownerKey === 'anonymous');
+          setInitialSyncComplete((current) => current || ownerKey === 'anonymous');
         }
       }
     }
@@ -113,16 +130,17 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
     const currentUser = user;
     const currentAccountId = accountId;
+    const cacheReadyKey = getPoolsCacheReadyKey(ownerKey);
 
     async function syncAuthenticatedPools() {
       setSyncing(true);
-      setInitialSyncComplete(false);
       setSyncError(undefined);
 
       try {
         const result = await syncPoolsWithCloud(pools, currentUser, currentAccountId);
         if (!isMounted) return;
         setPools(dedupePools(result.pools));
+        await AsyncStorage.setItem(cacheReadyKey, 'true');
       } catch (error) {
         if (!isMounted) return;
         console.warn('Failed to sync pools with cloud', error);
