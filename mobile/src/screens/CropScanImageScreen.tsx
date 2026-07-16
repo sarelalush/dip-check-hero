@@ -173,8 +173,18 @@ export function CropScanImageScreen({ navigation, route }: Props) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('חתוך ידנית את התמונה כך שיישאר רק הסטיק.');
   const gestureStart = useRef<CropBox | null>(null);
+  const cropRef = useRef<CropBox | null>(null);
+  const renderedImageRef = useRef<RenderedImage | null>(null);
 
   const renderedImage = useMemo(() => computeRenderedImage(containerSize, imageSize), [containerSize, imageSize]);
+
+  useEffect(() => {
+    cropRef.current = crop;
+  }, [crop]);
+
+  useEffect(() => {
+    renderedImageRef.current = renderedImage;
+  }, [renderedImage]);
 
   useEffect(() => {
     if (imageSize.width && imageSize.height) return;
@@ -203,19 +213,20 @@ export function CropScanImageScreen({ navigation, route }: Props) {
         onMoveShouldSetPanResponder: () => true,
         onStartShouldSetPanResponder: () => true,
         onPanResponderGrant: () => {
-          gestureStart.current = crop;
+          gestureStart.current = cropRef.current;
         },
         onPanResponderMove: (_event, gesture) => {
-          if (!renderedImage || !gestureStart.current) return;
+          const image = renderedImageRef.current;
+          if (!image || !gestureStart.current) return;
           const next = {
             ...gestureStart.current,
             x: gestureStart.current.x + gesture.dx,
             y: gestureStart.current.y + gesture.dy,
           };
-          setCrop(clampCrop(next, renderedImage));
+          setCrop(clampCrop(next, image));
         },
       }),
-    [crop, renderedImage],
+    [],
   );
 
   const resizeResponders = useMemo(
@@ -227,11 +238,12 @@ export function CropScanImageScreen({ navigation, route }: Props) {
             onMoveShouldSetPanResponder: () => true,
             onStartShouldSetPanResponder: () => true,
             onPanResponderGrant: () => {
-              gestureStart.current = crop;
+              gestureStart.current = cropRef.current;
             },
             onPanResponderMove: (_event, gesture) => {
-              if (!renderedImage || !gestureStart.current) return;
-              setCrop(resizeCrop(gestureStart.current, gesture, handle, renderedImage));
+              const image = renderedImageRef.current;
+              if (!image || !gestureStart.current) return;
+              setCrop(resizeCrop(gestureStart.current, gesture, handle, image));
             },
           });
           return responders;
@@ -239,7 +251,7 @@ export function CropScanImageScreen({ navigation, route }: Props) {
         {} as Record<ResizeHandle, ReturnType<typeof PanResponder.create>>,
       );
     },
-    [crop, renderedImage],
+    [],
   );
 
   function onPreviewLayout(event: LayoutChangeEvent) {
@@ -552,58 +564,60 @@ const styles = StyleSheet.create({
   cornerHandle: {
     backgroundColor: colors.primary,
     borderColor: colors.white,
-    borderRadius: 11,
-    borderWidth: 2,
-    height: 22,
+    borderRadius: 17,
+    borderWidth: 3,
+    height: 34,
     position: 'absolute',
-    width: 22,
+    width: 34,
+    zIndex: 5,
   },
   topLeftHandle: {
-    left: -12,
-    top: -12,
+    left: -18,
+    top: -18,
   },
   topRightHandle: {
-    right: -12,
-    top: -12,
+    right: -18,
+    top: -18,
   },
   bottomRightHandle: {
-    bottom: -12,
-    right: -12,
+    bottom: -18,
+    right: -18,
   },
   bottomLeftHandle: {
-    bottom: -12,
-    left: -12,
+    bottom: -18,
+    left: -18,
   },
   edgeHandle: {
     backgroundColor: colors.white,
     borderColor: colors.primary,
-    borderRadius: 8,
-    borderWidth: 2,
+    borderRadius: 13,
+    borderWidth: 3,
     position: 'absolute',
+    zIndex: 5,
   },
   topHandle: {
-    height: 14,
-    left: '42%',
-    right: '42%',
-    top: -8,
+    height: 24,
+    left: '38%',
+    right: '38%',
+    top: -13,
   },
   rightHandle: {
-    bottom: '42%',
-    right: -8,
-    top: '42%',
-    width: 14,
+    bottom: '38%',
+    right: -13,
+    top: '38%',
+    width: 24,
   },
   bottomHandle: {
-    bottom: -8,
-    height: 14,
-    left: '42%',
-    right: '42%',
+    bottom: -13,
+    height: 24,
+    left: '38%',
+    right: '38%',
   },
   leftHandle: {
-    bottom: '42%',
-    left: -8,
-    top: '42%',
-    width: 14,
+    bottom: '38%',
+    left: -13,
+    top: '38%',
+    width: 24,
   },
   panel: {
     backgroundColor: colors.cardSoft,
