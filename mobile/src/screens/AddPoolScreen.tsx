@@ -16,16 +16,12 @@ import { colors, rtl, shadows, typography } from '../theme';
 import { usePools } from '../state/PoolsContext';
 import { useAuth } from '../state/AuthContext';
 import { canCreatePool, hasActiveSubscription } from '../services/usageService';
+import { normalizeNumericInput, parseNumberInput } from '../utils/numberInput';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddPool'>;
 type TabletsChoice = 'yes' | 'no' | 'unknown';
 const ADD_POOL_IMAGE = require('../../assets/images/home-pool.png');
-
-function parseNumber(value: string) {
-  const parsed = Number.parseFloat(value.replace(',', '.'));
-  return Number.isFinite(parsed) ? parsed : 0;
-}
 
 export function AddPoolScreen({ navigation }: Props) {
   const { addPool, pools } = usePools();
@@ -56,11 +52,11 @@ export function AddPoolScreen({ navigation }: Props) {
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
 
-  const lengthMeters = parseNumber(length);
-  const widthMeters = parseNumber(width);
-  const diameterMeters = parseNumber(diameter);
-  const averageDepthMeters = parseNumber(averageDepth);
-  const manualVolumeValue = parseNumber(manualVolume);
+  const lengthMeters = parseNumberInput(length);
+  const widthMeters = parseNumberInput(width);
+  const diameterMeters = parseNumberInput(diameter);
+  const averageDepthMeters = parseNumberInput(averageDepth);
+  const manualVolumeValue = parseNumberInput(manualVolume);
 
   const volumeLiters = useMemo(() => {
     if (method === 'manual') {
@@ -168,10 +164,10 @@ export function AddPoolScreen({ navigation }: Props) {
         stripBrandId: recommendedBrand.id,
         notes: notes.trim() || undefined,
         tabletsActive,
-        tabletsCount: tabletsActive ? Math.max(1, Math.round(parseNumber(tabletsCount)) || 1) : 1,
-        tabletWeightGrams: tabletsActive ? Math.max(1, Math.round(parseNumber(tabletWeight)) || 200) : 200,
-        pumpHoursPerDay: Math.max(0, parseNumber(pumpHoursPerDay) || 8),
-        retestHours: Math.max(1, parseNumber(retestHours) || 6),
+        tabletsCount: tabletsActive ? Math.max(1, Math.round(parseNumberInput(tabletsCount)) || 1) : 1,
+        tabletWeightGrams: tabletsActive ? Math.max(1, Math.round(parseNumberInput(tabletWeight)) || 200) : 200,
+        pumpHoursPerDay: Math.max(0, parseNumberInput(pumpHoursPerDay) || 8),
+        retestHours: Math.max(1, parseNumberInput(retestHours) || 6),
         imageUri,
       });
 
@@ -449,7 +445,7 @@ function Field({ label, value, onChangeText, placeholder, numeric, multiline }: 
       <TextInput
         style={[fieldStyles.input, multiline && { height: 80, textAlignVertical: 'top' }]}
         value={value}
-        onChangeText={onChangeText}
+        onChangeText={(nextValue) => onChangeText(numeric ? normalizeNumericInput(nextValue) : nextValue)}
         placeholder={placeholder}
         placeholderTextColor={colors.muted}
         keyboardType={numeric ? 'decimal-pad' : 'default'}
