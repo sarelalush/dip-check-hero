@@ -36,6 +36,7 @@ export interface SavedHistoryRecord {
 interface ResultsHistoryContextValue {
   historyRecords: SavedHistoryRecord[];
   isHydrated: boolean;
+  initialSyncComplete: boolean;
   syncing: boolean;
   syncError?: string;
   getHistoryRecord: (testId: string) => SavedHistoryRecord | undefined;
@@ -155,16 +156,18 @@ function isRecordForPool(record: SavedHistoryRecord, poolIds: Set<string>) {
 
 export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
   const { accountId, user, loading: authLoading } = useAuth();
-  const { getPool, pools } = usePools();
+  const { getPool, initialSyncComplete: poolsInitialSyncComplete, pools } = usePools();
   const [historyRecords, setHistoryRecords] = useState<SavedHistoryRecord[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [hydratedOwnerKey, setHydratedOwnerKey] = useState<string | undefined>();
+  const [initialSyncComplete, setInitialSyncComplete] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | undefined>();
   const historyRecordsRef = useRef<SavedHistoryRecord[]>([]);
   const syncInFlightRef = useRef(false);
   const syncRunIdRef = useRef(0);
   const ownerKey = authLoading ? undefined : user && accountId ? `${user.id}:${accountId}` : 'anonymous';
+  const isReadyForOwner = Boolean(ownerKey && hydratedOwnerKey === ownerKey && hydrated);
 
   useEffect(() => {
     historyRecordsRef.current = historyRecords;
@@ -178,6 +181,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
       setHistoryRecords([]);
       setHydrated(false);
       setHydratedOwnerKey(undefined);
+      setInitialSyncComplete(false);
       setSyncing(false);
       setSyncError(undefined);
       return undefined;
@@ -190,6 +194,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
       setHistoryRecords([]);
       setHydrated(false);
       setHydratedOwnerKey(undefined);
+      setInitialSyncComplete(false);
       setSyncError(undefined);
 
       try {
@@ -207,6 +212,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         if (isMounted) {
           setHydratedOwnerKey(ownerKey);
           setHydrated(true);
+          setInitialSyncComplete(ownerKey === 'anonymous');
         }
       }
     }
@@ -236,12 +242,22 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
 
   const syncAuthenticatedHistory = useCallback(
     async (localRecords: SavedHistoryRecord[]) => {
-      if (!hydrated || !ownerKey || hydratedOwnerKey !== ownerKey || authLoading || !user || !accountId || syncInFlightRef.current) return;
+      if (
+        !hydrated
+        || !ownerKey
+        || hydratedOwnerKey !== ownerKey
+        || authLoading
+        || !user
+        || !accountId
+        || !poolsInitialSyncComplete
+        || syncInFlightRef.current
+      ) return;
 
       const syncRunId = syncRunIdRef.current + 1;
       syncRunIdRef.current = syncRunId;
       syncInFlightRef.current = true;
       setSyncing(true);
+      setInitialSyncComplete(false);
       setSyncError(undefined);
 
       try {
@@ -257,15 +273,16 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         if (syncRunIdRef.current === syncRunId) {
           syncInFlightRef.current = false;
           setSyncing(false);
+          setInitialSyncComplete(true);
         }
       }
     },
-    [accountId, authLoading, hydrated, hydratedOwnerKey, ownerKey, pools, user],
+    [accountId, authLoading, hydrated, hydratedOwnerKey, ownerKey, pools, poolsInitialSyncComplete, user],
   );
 
   useEffect(() => {
     syncAuthenticatedHistory(historyRecords);
-  }, [accountId, authLoading, hydrated, pools, syncAuthenticatedHistory, user?.id]);
+  }, [accountId, authLoading, hydrated, pools, poolsInitialSyncComplete, syncAuthenticatedHistory, user?.id]);
 
   const refreshHistory = useCallback(async () => {
     await syncAuthenticatedHistory(historyRecordsRef.current);
@@ -294,8 +311,9 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<ResultsHistoryContextValue>(
     () => ({
-      historyRecords,
-      isHydrated: hydrated,
+      historyRecords: isReadyForOwner ? historyRecords : [],
+      isHydrated: isReadyForOwner,
+      initialSyncComplete: isReadyForOwner && initialSyncComplete,
       syncing,
       syncError,
       getHistoryRecord(testId) {
@@ -351,7 +369,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         return record;
       },
     }),
-    [accountId, getPool, historyRecords, hydrated, pools, refreshHistory, syncError, syncing, user],
+    [accountId, getPool, historyRecords, hydrated, initialSyncComplete, isReadyForOwner, pools, refreshHistory, syncError, syncing, user],
   );
 
   return <ResultsHistoryContext.Provider value={value}>{children}</ResultsHistoryContext.Provider>;

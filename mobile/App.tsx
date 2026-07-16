@@ -40,7 +40,7 @@ import { DeleteAccountScreen } from './src/screens/DeleteAccountScreen';
 import { colors } from './src/theme';
 import { AuthProvider, useAuth } from './src/state/AuthContext';
 import { PoolsProvider, usePools } from './src/state/PoolsContext';
-import { ResultsHistoryProvider } from './src/state/ResultsHistoryContext';
+import { ResultsHistoryProvider, useResultsHistory } from './src/state/ResultsHistoryContext';
 import { ScanSessionProvider } from './src/state/ScanSessionContext';
 import { ReminderProvider } from './src/state/ReminderContext';
 import { AppPreferencesProvider } from './src/state/AppPreferencesContext';
@@ -135,7 +135,8 @@ function LoadingScreen({ message = 'טוען...' }: { message?: string }) {
 
 function AppNavigator() {
   const { accountId, loading, isAuthenticated, passwordRecoveryExpiresAt } = useAuth();
-  const { hydrated: poolsHydrated } = usePools();
+  const { hydrated: poolsHydrated, initialSyncComplete: poolsInitialSyncComplete } = usePools();
+  const { initialSyncComplete: historyInitialSyncComplete, isHydrated: historyHydrated } = useResultsHistory();
   const isPasswordRecovery = Boolean(passwordRecoveryExpiresAt);
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionGateStatus>('idle');
 
@@ -172,15 +173,30 @@ function AppNavigator() {
 
   const subscriptionRequired = isAuthenticated && !isPasswordRecovery && subscriptionStatus === 'inactive';
   const subscriptionChecking = isAuthenticated && !isPasswordRecovery && subscriptionStatus === 'checking';
+  const accountDataLoading = isAuthenticated
+    && !isPasswordRecovery
+    && !subscriptionRequired
+    && (!poolsHydrated || !poolsInitialSyncComplete || !historyHydrated || !historyInitialSyncComplete);
 
-  if (loading || subscriptionChecking || (isAuthenticated && !isPasswordRecovery && !subscriptionRequired && !poolsHydrated)) {
+  if (loading || subscriptionChecking || accountDataLoading) {
     return <LoadingScreen message="אוספים את נתוני החשבון..." />;
   }
 
+  const navigationKey = isPasswordRecovery
+    ? 'recovery'
+    : isAuthenticated
+      ? `${subscriptionRequired ? 'paywall' : 'app'}:${accountId ?? 'pending'}`
+      : 'auth';
+  const initialRouteName = isPasswordRecovery
+    ? 'ResetPassword'
+    : isAuthenticated
+      ? (subscriptionRequired ? 'Purchase' : 'Home')
+      : 'Welcome';
+
   return (
-    <NavigationContainer key={isPasswordRecovery ? 'recovery' : isAuthenticated ? (subscriptionRequired ? 'paywall' : 'app') : 'auth'}>
+    <NavigationContainer key={navigationKey}>
       <Stack.Navigator
-        initialRouteName={isPasswordRecovery ? 'ResetPassword' : isAuthenticated ? (subscriptionRequired ? 'Purchase' : 'Home') : 'Welcome'}
+        initialRouteName={initialRouteName}
         screenOptions={{ headerShown: false }}
       >
         {isPasswordRecovery ? (

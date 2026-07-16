@@ -17,6 +17,7 @@ import { deletePoolFromCloud, syncPoolsWithCloud, upsertPoolToCloud } from '../s
 interface PoolsContextValue {
   pools: Pool[];
   hydrated: boolean;
+  initialSyncComplete: boolean;
   syncing: boolean;
   syncError?: string;
   addPool: (pool: NewPoolInput) => Pool;
@@ -37,15 +38,18 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
   const [pools, setPools] = useState<Pool[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [hydratedOwnerKey, setHydratedOwnerKey] = useState<string | undefined>();
+  const [initialSyncComplete, setInitialSyncComplete] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | undefined>();
   const ownerKey = authLoading ? undefined : user && accountId ? `${user.id}:${accountId}` : 'anonymous';
+  const isReadyForOwner = Boolean(ownerKey && hydratedOwnerKey === ownerKey && hydrated);
 
   useEffect(() => {
     if (!ownerKey) {
       setPools([]);
       setHydrated(false);
       setHydratedOwnerKey(undefined);
+      setInitialSyncComplete(false);
       setSyncing(false);
       setSyncError(undefined);
       return undefined;
@@ -58,6 +62,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
       setPools([]);
       setHydrated(false);
       setHydratedOwnerKey(undefined);
+      setInitialSyncComplete(false);
       setSyncError(undefined);
 
       try {
@@ -75,6 +80,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
         if (isMounted) {
           setHydratedOwnerKey(ownerKey);
           setHydrated(true);
+          setInitialSyncComplete(ownerKey === 'anonymous');
         }
       }
     }
@@ -110,6 +116,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
 
     async function syncAuthenticatedPools() {
       setSyncing(true);
+      setInitialSyncComplete(false);
       setSyncError(undefined);
 
       try {
@@ -123,6 +130,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
       } finally {
         if (isMounted) {
           setSyncing(false);
+          setInitialSyncComplete(true);
         }
       }
     }
@@ -155,8 +163,9 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<PoolsContextValue>(
     () => ({
-      pools,
-      hydrated,
+      pools: isReadyForOwner ? pools : [],
+      hydrated: isReadyForOwner,
+      initialSyncComplete: isReadyForOwner && initialSyncComplete,
       syncing,
       syncError,
       addPool(input) {
@@ -201,7 +210,7 @@ export function PoolsProvider({ children }: { children: ReactNode }) {
         return pools.find((pool) => pool.id === poolId || pool.cloudId === poolId);
       },
     }),
-    [accountId, hydrated, pools, syncError, syncing, user],
+    [accountId, hydrated, initialSyncComplete, isReadyForOwner, pools, syncError, syncing, user],
   );
 
   return <PoolsContext.Provider value={value}>{children}</PoolsContext.Provider>;
