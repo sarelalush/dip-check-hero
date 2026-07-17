@@ -11,11 +11,13 @@
 // Pipeline:
 // 1. Download the uploaded image from Storage or imageUrl.
 // 2. Decode it only for diagnostics. Never alter pad colors before analysis.
-// 3. Run the AI analyzer three times in parallel.
-// 4. Snap every reading to the manufacturer's discrete chart and require a
-//    high-confidence 2-of-3 majority before accepting a result.
-// 5. AI decides whether the uploaded image is a valid supported strip.
-// 6. If AI cannot validate the strip, return a clear invalid response.
+// 3. Run the AI analyzer three times in parallel as an image-quality gate.
+// 4. For AquaChek Pro, sample the four localized pads and match their colors
+//    deterministically to the manufacturer's discrete chart.
+// 5. AI decides whether the uploaded image is a valid supported strip, but it
+//    does not decide the AquaChek Pro numerical readings.
+// 6. If AI cannot validate the strip or color matching is uncertain, return a
+//    clear invalid response.
 // 7. If the AI provider is unavailable, return a service-unavailable response.
 //
 // Required secrets for AI mode:
@@ -32,7 +34,7 @@
 import { Image as ImageScript } from 'https://deno.land/x/imagescript@1.2.15/mod.ts';
 import {
   AQUACHEK_PRO_REFS as PRO_REFS,
-  analyzeAquachekProPadRgbs,
+  analyzeAquachekProDiscretePadRgbs,
   bestMatch,
   confidenceFromDistances,
   getFixedPadSampleRegions,
@@ -113,8 +115,17 @@ interface ParameterAnalysisEvidence {
   requiredAgreement: number;
 }
 
+interface ColorAnalysisEvidence {
+  confidence: number;
+  distances: Partial<Record<StripParameter, number>>;
+  margins: Partial<Record<StripParameter, number>>;
+  padRgbs: Rgb[];
+  selectedValues: Partial<Record<StripParameter, number>>;
+  whiteReference?: Rgb;
+}
+
 interface AnalysisEvidence {
-  method: 'repeated-model-discrete-consensus';
+  method: 'repeated-model-discrete-consensus' | 'gemini-quality-deterministic-color';
   requiredRuns: number;
   successfulRuns: number;
   qualityPassedRuns: number;
@@ -125,6 +136,7 @@ interface AnalysisEvidence {
   fullyVisiblePadRuns: number;
   requiredParameters: StripParameter[];
   parameters: Partial<Record<StripParameter, ParameterAnalysisEvidence>>;
+  colorAnalysis?: ColorAnalysisEvidence;
 }
 
 interface StripAnalysisResult {
@@ -182,6 +194,7 @@ interface CvResult {
   values: Partial<Record<StripParameter, number>>;
   confidence: number;
   notes?: string;
+  evidence?: ColorAnalysisEvidence;
 }
 
 interface ColorRef {
@@ -199,9 +212,10 @@ const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
 const REQUIRED_CONSENSUS_RUNS = 2;
-const ANALYSIS_VERSION = 'aquachek-pro-v4-pad-gate';
+const ANALYSIS_VERSION = 'aquachek-pro-v5-hybrid-color';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
+const MIN_ACCEPTED_CV_CONFIDENCE = 0.6;
 
 class EdgeAnalysisError extends Error {
   code: 'unavailable' | 'invalid_strip';
@@ -659,13 +673,22 @@ function sampleWhiteReference(image: DecodedImage) {
 function analyzeCv(image: DecodedImage, brand: StripBrand): CvResult | null {
   if (isAquachekPro(brand)) {
     const pads = samplePads(image, 4);
-    const analysis = analyzeAquachekProPadRgbs(pads, {
-      whiteReference: sampleWhiteReference(image),
+    const whiteReference = sampleWhiteReference(image);
+    const analysis = analyzeAquachekProDiscretePadRgbs(pads, {
+      whiteReference,
     });
     return {
       values: analysis.values,
       confidence: analysis.confidence,
-      notes: 'CV fallback used fixed pad sampling and color-chart matching.',
+      notes: 'Gemini validated image quality; readings came from deterministic manufacturer-chart color matching.',
+      evidence: {
+        confidence: analysis.confidence,
+        distances: analysis.distances,
+        margins: analysis.margins,
+        padRgbs: pads,
+        selectedValues: analysis.values,
+        whiteReference,
+      },
     };
   }
 
@@ -971,25 +994,37 @@ function safeFailureReason(reason: FailureReason): FailureReason {
     : 'low_confidence';
 }
 
-function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, brand: StripBrand): StripAnalysisResult | null {
+function combineAiRuns(
+  runs: AiRunResponse[],
+  request: AnalyzeStripRequest,
+  brand: StripBrand,
+  cvResult?: CvResult | null,
+): StripAnalysisResult | null {
   const okRuns = runs.filter((run): run is Extract<AiRunResponse, { ok: true }> => run.ok);
   if (!okRuns.length) return null;
 
   const expectedPhysicalPadCount = isAquachekPro(brand) ? 4 : brand.parameters.length;
   const runConfidences = okRuns.map((run) => Number(run.data.confidence ?? 0));
   const qualityPassedRuns = okRuns.filter(
-    (run) =>
-      run.data.isStrip === true &&
-      run.data.failureReason === 'none' &&
-      run.data.physicalPadCount === expectedPhysicalPadCount &&
-      run.data.allPadsFullyVisible === true,
+    (run) => {
+      const colorReadingUncertaintyOnly =
+        isAquachekPro(brand) &&
+        run.data.isStrip === true &&
+        run.data.failureReason === 'low_confidence';
+      return (
+        run.data.isStrip === true &&
+        (run.data.failureReason === 'none' || colorReadingUncertaintyOnly) &&
+        run.data.physicalPadCount === expectedPhysicalPadCount &&
+        run.data.allPadsFullyVisible === true
+      );
+    },
   );
   const confidencePassedRuns = qualityPassedRuns.filter(
     (run) => Number(run.data.confidence ?? 0) >= MIN_ACCEPTED_RUN_CONFIDENCE,
   );
   const confidencePassedValues = confidencePassedRuns.map((run) => Number(run.data.confidence ?? 0));
   const evidence: AnalysisEvidence = {
-    method: 'repeated-model-discrete-consensus',
+    method: isAquachekPro(brand) ? 'gemini-quality-deterministic-color' : 'repeated-model-discrete-consensus',
     requiredRuns: MULTI_SHOT_RUNS,
     successfulRuns: okRuns.length,
     qualityPassedRuns: qualityPassedRuns.length,
@@ -1000,6 +1035,7 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
     fullyVisiblePadRuns: okRuns.filter((run) => run.data.allPadsFullyVisible).length,
     requiredParameters: [...brand.parameters],
     parameters: {},
+    ...(cvResult?.evidence ? { colorAnalysis: cvResult.evidence } : {}),
   };
   const provider = okRuns[0]?.data.provider;
   const model = okRuns[0]?.data.model;
@@ -1055,6 +1091,73 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
         `${REQUIRED_CONSENSUS_RUNS} runs must each be at least ${MIN_ACCEPTED_RUN_CONFIDENCE}.`,
         `Mean confidence of supporting runs must be at least ${MIN_ACCEPTED_MEAN_CONFIDENCE}.`,
       ],
+    );
+  }
+
+  if (isAquachekPro(brand)) {
+    if (!cvResult) {
+      return reject(
+        'low_confidence',
+        'לא הצלחנו לקרוא את צבעי הפדים בצורה אמינה. יש לצלם שוב כשהסטיק ישר וממלא את המסגרת.',
+        ['The deterministic color analyzer could not decode the AquaChek Pro image.'],
+      );
+    }
+
+    if (cvResult.confidence < MIN_ACCEPTED_CV_CONFIDENCE) {
+      return reject(
+        'low_confidence',
+        'ההתאמה בין צבעי הפדים לטבלת היצרן אינה ודאית. יש לצלם שוב באור אחיד וללא השתקפות.',
+        [
+          `Deterministic color confidence ${cvResult.confidence.toFixed(3)} is below ${MIN_ACCEPTED_CV_CONFIDENCE}.`,
+        ],
+      );
+    }
+
+    const values: Partial<Record<StripParameter, number>> = {};
+    for (const parameter of brand.parameters) {
+      const chartValues = manufacturerLevelsFor(brand, parameter);
+      const selectedValue = cvResult.values[parameter];
+      evidence.parameters[parameter] = {
+        chartValues,
+        rawValues: typeof selectedValue === 'number' ? [selectedValue] : [],
+        snappedValues: typeof selectedValue === 'number' ? [selectedValue] : [],
+        selectedValue,
+        agreementCount: typeof selectedValue === 'number' ? 1 : 0,
+        requiredAgreement: 1,
+      };
+
+      if (!chartValues.includes(selectedValue as number)) {
+        return reject(
+          'low_confidence',
+          `לא התקבלה התאמת צבע תקינה עבור ${PARAM_META[parameter].name}. יש לצלם שוב את כל ארבעת הפדים.`,
+          [`No deterministic manufacturer-chart value was produced for ${parameter}.`],
+        );
+      }
+      values[parameter] = selectedValue;
+    }
+
+    return buildResult(
+      request,
+      brand,
+      values,
+      'ai',
+      Math.min(meanConfidence, cvResult.confidence),
+      {
+        provider,
+        model,
+        notes: cvResult.notes,
+        shotsUsed: okRuns.length,
+        lowConfidence: false,
+        isValidStrip: true,
+        failureReason: 'none',
+        analysisVersion: ANALYSIS_VERSION,
+        accepted: true,
+        acceptanceReasons: [
+          `At least ${REQUIRED_CONSENSUS_RUNS} Gemini runs validated image quality and four complete pads.`,
+          'All readings matched the nearest discrete AquaChek Pro manufacturer-chart color.',
+        ],
+        evidence,
+      },
     );
   }
 
@@ -1437,7 +1540,8 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
   const aiRuns = await Promise.all(
     Array.from({ length: MULTI_SHOT_RUNS }, () => analyzeWithAiProvider(dataUrl, brand)),
   );
-  const aiResult = combineAiRuns(aiRuns, body, brand);
+  const cvResult = image && isAquachekPro(brand) ? analyzeCv(image, brand) : null;
+  const aiResult = combineAiRuns(aiRuns, body, brand, cvResult);
   if (aiResult) {
     console.log('Gemini strip analysis selected', {
       accepted: aiResult.accepted,

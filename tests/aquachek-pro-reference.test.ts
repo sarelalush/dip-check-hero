@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AQUACHEK_PRO_COMBINED_PAD_COLORS,
   AQUACHEK_PRO_REFS,
+  analyzeAquachekProDiscretePadRgbs,
   analyzeAquachekProPadRgbs,
   getFixedPadSampleRegions,
 } from '../supabase/functions/_shared/aquachek-pro-reference.js';
@@ -37,6 +38,24 @@ describe('AquaChek Pro reference chart', () => {
       const result = analyzeAquachekProPadRgbs(testCase.padRgbs);
       expect(result.nearestValues).toEqual(testCase.expected);
     }
+  });
+
+  it('returns only manufacturer levels for production readings', () => {
+    const averageRgb = (first: number[], second: number[]) =>
+      first.map((channel, index) => (channel + second[index]) / 2) as [number, number, number];
+    const pads = [
+      averageRgb(AQUACHEK_PRO_REFS.totalChlorine[0].rgb, AQUACHEK_PRO_REFS.totalChlorine[1].rgb),
+      averageRgb(AQUACHEK_PRO_REFS.freeChlorine[2].rgb, AQUACHEK_PRO_REFS.freeChlorine[3].rgb),
+      averageRgb(AQUACHEK_PRO_REFS.ph[1].rgb, AQUACHEK_PRO_REFS.ph[2].rgb),
+      averageRgb(AQUACHEK_PRO_REFS.alkalinity[3].rgb, AQUACHEK_PRO_REFS.alkalinity[4].rgb),
+    ];
+    const result = analyzeAquachekProDiscretePadRgbs(pads);
+
+    expect(result.values).toEqual(result.nearestValues);
+    expect(AQUACHEK_PRO_REFS.totalChlorine.map((entry) => entry.value)).toContain(result.values.totalChlorine);
+    expect(AQUACHEK_PRO_REFS.freeChlorine.map((entry) => entry.value)).toContain(result.values.freeChlorine);
+    expect(AQUACHEK_PRO_REFS.ph.map((entry) => entry.value)).toContain(result.values.ph);
+    expect(AQUACHEK_PRO_REFS.alkalinity.map((entry) => entry.value)).toContain(result.values.alkalinity);
   });
 
   it('classifies every controlled synthetic rendering correctly', () => {

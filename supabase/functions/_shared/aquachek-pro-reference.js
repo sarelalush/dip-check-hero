@@ -226,6 +226,20 @@ export function analyzeAquachekProPadRgbs(pads, options = {}) {
 }
 
 /**
+ * Production-safe AquaChek result. Readings are always discrete levels that
+ * exist on the manufacturer chart; interpolated values remain diagnostics.
+ * @param {Rgb[]} pads
+ * @param {{ whiteReference?: Rgb }} [options]
+ */
+export function analyzeAquachekProDiscretePadRgbs(pads, options = {}) {
+  const analysis = analyzeAquachekProPadRgbs(pads, options);
+  return {
+    ...analysis,
+    values: { ...analysis.nearestValues },
+  };
+}
+
+/**
  * Fixed sampling geometry used by the production CV fallback and fixtures.
  * @param {number} imageWidth
  * @param {number} imageHeight
