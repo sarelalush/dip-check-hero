@@ -271,3 +271,53 @@ export function getFixedWhiteReferenceRegion(imageWidth, imageHeight) {
     height,
   };
 }
+
+/**
+ * Estimate focus quality inside the central AquaChek strip area using the
+ * variance of a five-point luminance Laplacian. This only measures spatial
+ * detail; it never modifies or normalizes reagent-pad colors.
+ *
+ * @param {number} imageWidth
+ * @param {number} imageHeight
+ * @param {(x: number, y: number) => Rgb} getRgb
+ */
+export function measureAquachekProSharpness(imageWidth, imageHeight, getRgb) {
+  const startX = Math.max(1, Math.floor(imageWidth * 0.24));
+  const endX = Math.min(imageWidth - 1, Math.ceil(imageWidth * 0.76));
+  const startY = Math.max(1, Math.floor(imageHeight * 0.04));
+  const endY = Math.min(imageHeight - 1, Math.ceil(imageHeight * 0.96));
+  const luminance = (x, y) => {
+    const [r, g, b] = getRgb(x, y);
+    return r * 0.2126 + g * 0.7152 + b * 0.0722;
+  };
+  let count = 0;
+  let sum = 0;
+  let sumSquares = 0;
+
+  for (let y = startY + 1; y < endY - 1; y += 1) {
+    for (let x = startX + 1; x < endX - 1; x += 1) {
+      const center = luminance(x, y);
+      const laplacian =
+        4 * center -
+        luminance(x - 1, y) -
+        luminance(x + 1, y) -
+        luminance(x, y - 1) -
+        luminance(x, y + 1);
+      sum += laplacian;
+      sumSquares += laplacian * laplacian;
+      count += 1;
+    }
+  }
+
+  const mean = count > 0 ? sum / count : 0;
+  return {
+    variance: count > 0 ? Math.max(0, sumSquares / count - mean * mean) : 0,
+    sampleCount: count,
+    region: {
+      x: startX,
+      y: startY,
+      width: Math.max(0, endX - startX),
+      height: Math.max(0, endY - startY),
+    },
+  };
+}

@@ -6,6 +6,7 @@ import {
   analyzeAquachekProDiscretePadRgbs,
   analyzeAquachekProPadRgbs,
   getFixedPadSampleRegions,
+  measureAquachekProSharpness,
 } from '../supabase/functions/_shared/aquachek-pro-reference.js';
 import {
   VALID_VARIANTS,
@@ -105,5 +106,45 @@ describe('AquaChek Pro reference chart', () => {
       'strong_glare',
       'strip_not_straight',
     ]);
+  });
+
+  it('separates sharply rendered strips from heavily blurred strips', () => {
+    const { png } = renderSyntheticStrip(enumerateCanonicalCases()[417], VALID_VARIANTS[0]);
+    const blurred = new Uint8Array(png.data.length);
+    const blurRadius = 4;
+    for (let y = 0; y < png.height; y += 1) {
+      for (let x = 0; x < png.width; x += 1) {
+        const totals = [0, 0, 0];
+        let count = 0;
+        for (let dy = -blurRadius; dy <= blurRadius; dy += 1) {
+          for (let dx = -blurRadius; dx <= blurRadius; dx += 1) {
+            const sampleX = Math.max(0, Math.min(png.width - 1, x + dx));
+            const sampleY = Math.max(0, Math.min(png.height - 1, y + dy));
+            const sampleOffset = (sampleY * png.width + sampleX) * 4;
+            for (let channel = 0; channel < 3; channel += 1) {
+              totals[channel] += png.data[sampleOffset + channel];
+            }
+            count += 1;
+          }
+        }
+        const targetOffset = (y * png.width + x) * 4;
+        for (let channel = 0; channel < 3; channel += 1) {
+          blurred[targetOffset + channel] = Math.round(totals[channel] / count);
+        }
+        blurred[targetOffset + 3] = 255;
+      }
+    }
+    const sharp = measureAquachekProSharpness(png.width, png.height, (x, y) => {
+      const offset = (y * png.width + x) * 4;
+      return [png.data[offset], png.data[offset + 1], png.data[offset + 2]];
+    });
+    const outOfFocus = measureAquachekProSharpness(png.width, png.height, (x, y) => {
+      const offset = (y * png.width + x) * 4;
+      return [blurred[offset], blurred[offset + 1], blurred[offset + 2]];
+    });
+
+    expect(sharp.sampleCount).toBeGreaterThan(1_000);
+    expect(sharp.variance).toBeGreaterThan(1_000);
+    expect(outOfFocus.variance).toBeLessThan(120);
   });
 });

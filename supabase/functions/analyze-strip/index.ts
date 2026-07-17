@@ -39,6 +39,7 @@ import {
   confidenceFromDistances,
   getFixedPadSampleRegions,
   getFixedWhiteReferenceRegion,
+  measureAquachekProSharpness,
 } from '../_shared/aquachek-pro-reference.js';
 
 type StatusTone = 'success' | 'warning' | 'danger';
@@ -122,6 +123,8 @@ interface ColorAnalysisEvidence {
   padRgbs: Rgb[];
   selectedValues: Partial<Record<StripParameter, number>>;
   whiteReference?: Rgb;
+  sharpnessVariance?: number;
+  minimumSharpnessVariance?: number;
 }
 
 interface AnalysisEvidence {
@@ -212,10 +215,11 @@ const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
 const REQUIRED_CONSENSUS_RUNS = 2;
-const ANALYSIS_VERSION = 'aquachek-pro-v5-hybrid-color';
+const ANALYSIS_VERSION = 'aquachek-pro-v6-quality-color-separation';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.6;
+const MIN_AQUACHEK_SHARPNESS_VARIANCE = 120;
 
 class EdgeAnalysisError extends Error {
   code: 'unavailable' | 'invalid_strip';
@@ -674,6 +678,11 @@ function analyzeCv(image: DecodedImage, brand: StripBrand): CvResult | null {
   if (isAquachekPro(brand)) {
     const pads = samplePads(image, 4);
     const whiteReference = sampleWhiteReference(image);
+    const sharpness = measureAquachekProSharpness(
+      image.width,
+      image.height,
+      (x: number, y: number) => getPixelRgb(image, x, y),
+    );
     const analysis = analyzeAquachekProDiscretePadRgbs(pads, {
       whiteReference,
     });
@@ -688,6 +697,8 @@ function analyzeCv(image: DecodedImage, brand: StripBrand): CvResult | null {
         padRgbs: pads,
         selectedValues: analysis.values,
         whiteReference,
+        sharpnessVariance: sharpness.variance,
+        minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
       },
     };
   }
@@ -1083,7 +1094,10 @@ function combineAiRuns(
     );
   }
 
-  if (confidencePassedRuns.length < REQUIRED_CONSENSUS_RUNS || meanConfidence < MIN_ACCEPTED_MEAN_CONFIDENCE) {
+  if (
+    !isAquachekPro(brand) &&
+    (confidencePassedRuns.length < REQUIRED_CONSENSUS_RUNS || meanConfidence < MIN_ACCEPTED_MEAN_CONFIDENCE)
+  ) {
     return reject(
       'low_confidence',
       'רמת הביטחון בצבעי הסטיק נמוכה מדי. יש לצלם שוב באור טבעי ואחיד וללא השתקפות.',
@@ -1100,6 +1114,17 @@ function combineAiRuns(
         'low_confidence',
         'לא הצלחנו לקרוא את צבעי הפדים בצורה אמינה. יש לצלם שוב כשהסטיק ישר וממלא את המסגרת.',
         ['The deterministic color analyzer could not decode the AquaChek Pro image.'],
+      );
+    }
+
+    const sharpnessVariance = cvResult.evidence?.sharpnessVariance ?? 0;
+    if (sharpnessVariance < MIN_AQUACHEK_SHARPNESS_VARIANCE) {
+      return reject(
+        'blurry',
+        'התמונה מטושטשת מדי לקריאה אמינה. יש לצלם שוב כשהסטיק חד ויציב.',
+        [
+          `Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} is below ${MIN_AQUACHEK_SHARPNESS_VARIANCE}.`,
+        ],
       );
     }
 
@@ -1141,7 +1166,7 @@ function combineAiRuns(
       brand,
       values,
       'ai',
-      Math.min(meanConfidence, cvResult.confidence),
+      cvResult.confidence,
       {
         provider,
         model,
@@ -1154,6 +1179,7 @@ function combineAiRuns(
         accepted: true,
         acceptanceReasons: [
           `At least ${REQUIRED_CONSENSUS_RUNS} Gemini runs validated image quality and four complete pads.`,
+          `Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} passed the ${MIN_AQUACHEK_SHARPNESS_VARIANCE} minimum.`,
           'All readings matched the nearest discrete AquaChek Pro manufacturer-chart color.',
         ],
         evidence,
