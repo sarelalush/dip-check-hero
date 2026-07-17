@@ -21,6 +21,7 @@ mobile/dip-check-hero/
 *.keystore
 *.p12
 *.pem
+work/aquachek-synthetic-dataset/
 
 # Wrangler / Cloudflare
 .wrangler/

@@ -30,6 +30,14 @@
 // chart calibration per physical strip/bottle lot. No browser APIs are used.
 
 import { Image as ImageScript } from 'https://deno.land/x/imagescript@1.2.15/mod.ts';
+import {
+  AQUACHEK_PRO_REFS as PRO_REFS,
+  analyzeAquachekProPadRgbs,
+  bestMatch,
+  confidenceFromDistances,
+  getFixedPadSampleRegions,
+  getFixedWhiteReferenceRegion,
+} from '../_shared/aquachek-pro-reference.js';
 
 type StatusTone = 'success' | 'warning' | 'danger';
 type AnalysisSource = 'ai';
@@ -181,11 +189,6 @@ interface ColorRef {
   rgb: Rgb;
 }
 
-interface MatchResult {
-  value: number;
-  distance: number;
-}
-
 interface DecodedImage {
   width: number;
   height: number;
@@ -283,44 +286,6 @@ const STRIP_BRANDS: StripBrand[] = [
 ];
 
 const DEFAULT_BRAND_ID = 'aquachek-pro-5in1';
-
-const PRO_COMBINED_PAD_COLORS: Array<{ tc: number; bromine: number; rgb: Rgb }> = [
-  { tc: 0, bromine: 0, rgb: [254, 254, 168] },
-  { tc: 0.5, bromine: 1, rgb: [242, 254, 170] },
-  { tc: 1, bromine: 2, rgb: [231, 245, 160] },
-  { tc: 3, bromine: 5, rgb: [184, 216, 140] },
-  { tc: 5, bromine: 10, rgb: [100, 180, 105] },
-  { tc: 10, bromine: 20, rgb: [55, 140, 80] },
-];
-
-const PRO_REFS: Partial<Record<StripParameter, ColorRef[]>> = {
-  totalChlorine: PRO_COMBINED_PAD_COLORS.map((ref) => ({ value: ref.tc, rgb: ref.rgb })),
-  bromine: PRO_COMBINED_PAD_COLORS.map((ref) => ({ value: ref.bromine, rgb: ref.rgb })),
-  freeChlorine: [
-    { value: 0, rgb: [254, 254, 204] },
-    { value: 0.5, rgb: [247, 235, 228] },
-    { value: 1, rgb: [235, 215, 225] },
-    { value: 3, rgb: [220, 180, 210] },
-    { value: 5, rgb: [190, 125, 192] },
-    { value: 10, rgb: [130, 55, 160] },
-    { value: 20, rgb: [70, 15, 100] },
-  ],
-  ph: [
-    { value: 6.2, rgb: [242, 200, 90] },
-    { value: 6.8, rgb: [240, 170, 130] },
-    { value: 7.2, rgb: [235, 150, 150] },
-    { value: 7.8, rgb: [220, 130, 165] },
-    { value: 8.4, rgb: [195, 110, 170] },
-  ],
-  alkalinity: [
-    { value: 0, rgb: [227, 192, 64] },
-    { value: 40, rgb: [164, 169, 51] },
-    { value: 80, rgb: [137, 159, 58] },
-    { value: 120, rgb: [85, 130, 90] },
-    { value: 180, rgb: [55, 105, 100] },
-    { value: 240, rgb: [40, 90, 120] },
-  ],
-};
 
 const YELLOW_REFS: Partial<Record<StripParameter, ColorRef[]>> = {
   freeChlorine: [
@@ -638,60 +603,6 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function rgbToLab([r, g, b]: Rgb): [number, number, number] {
-  const f = (value: number) => {
-    const n = value / 255;
-    return n > 0.04045 ? ((n + 0.055) / 1.055) ** 2.4 : n / 12.92;
-  };
-  const rLinear = f(r);
-  const gLinear = f(g);
-  const bLinear = f(b);
-  const x = rLinear * 0.4124 + gLinear * 0.3576 + bLinear * 0.1805;
-  const y = rLinear * 0.2126 + gLinear * 0.7152 + bLinear * 0.0722;
-  const z = rLinear * 0.0193 + gLinear * 0.1192 + bLinear * 0.9505;
-  const labF = (n: number) => (n > 0.008856 ? Math.cbrt(n) : 7.787 * n + 16 / 116);
-  const fx = labF(x / 0.95047);
-  const fy = labF(y / 1.0);
-  const fz = labF(z / 1.08883);
-  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
-}
-
-function deltaE(a: Rgb, b: Rgb) {
-  const labA = rgbToLab(a);
-  const labB = rgbToLab(b);
-  return Math.sqrt((labA[0] - labB[0]) ** 2 + (labA[1] - labB[1]) ** 2 + (labA[2] - labB[2]) ** 2);
-}
-
-function bestMatch(rgb: Rgb, refs: ColorRef[]): MatchResult {
-  const lab = rgbToLab(rgb);
-  let best = refs[0];
-  let bestDistance = Number.POSITIVE_INFINITY;
-  let second = refs[0];
-  let secondDistance = Number.POSITIVE_INFINITY;
-
-  for (const ref of refs) {
-    const distance = Math.sqrt(
-      (lab[0] - rgbToLab(ref.rgb)[0]) ** 2 +
-        (lab[1] - rgbToLab(ref.rgb)[1]) ** 2 +
-        (lab[2] - rgbToLab(ref.rgb)[2]) ** 2,
-    );
-    if (distance < bestDistance) {
-      second = best;
-      secondDistance = bestDistance;
-      best = ref;
-      bestDistance = distance;
-    } else if (distance < secondDistance) {
-      second = ref;
-      secondDistance = distance;
-    }
-  }
-
-  const totalDistance = bestDistance + secondDistance;
-  const bestWeight = totalDistance > 0 ? secondDistance / totalDistance : 1;
-  const value = best.value * bestWeight + second.value * (1 - bestWeight);
-  return { value, distance: bestDistance };
-}
-
 function getPixelRgb(image: DecodedImage, x: number, y: number): Rgb {
   return ImageScript.colorToRGB(image.getPixelAt(x, y)) as Rgb;
 }
@@ -735,41 +646,25 @@ function sampleAverageRgb(image: DecodedImage, x: number, y: number, width: numb
 }
 
 function samplePads(image: DecodedImage, padCount: number) {
-  const centerX = image.width / 2;
-  const top = image.height * 0.2;
-  const padStep = (image.height * 0.6) / padCount;
-  const sampleWidth = Math.max(20, Math.min(64, image.width * 0.05));
-  const sampleHeight = Math.max(20, Math.min(64, padStep * 0.5));
-
-  return Array.from({ length: padCount }, (_, index) => {
-    const x = centerX - sampleWidth / 2;
-    const y = top + padStep * (index + 0.5) - sampleHeight / 2;
-    return sampleAverageRgb(image, x, y, sampleWidth, sampleHeight);
-  });
+  return getFixedPadSampleRegions(image.width, image.height, padCount).map((region) =>
+    sampleAverageRgb(image, region.x, region.y, region.width, region.height),
+  );
 }
 
-function confidenceFromDistances(distances: number[]) {
-  const averageDistance = distances.reduce((sum, distance) => sum + distance, 0) / distances.length;
-  return clamp(1 - averageDistance / 50, 0.18, 0.95);
+function sampleWhiteReference(image: DecodedImage) {
+  const region = getFixedWhiteReferenceRegion(image.width, image.height);
+  return sampleAverageRgb(image, region.x, region.y, region.width, region.height);
 }
 
 function analyzeCv(image: DecodedImage, brand: StripBrand): CvResult | null {
   if (isAquachekPro(brand)) {
     const pads = samplePads(image, 4);
-    const totalChlorine = bestMatch(pads[0], PRO_REFS.totalChlorine!);
-    const bromine = bestMatch(pads[0], PRO_REFS.bromine!);
-    const freeChlorine = bestMatch(pads[1], PRO_REFS.freeChlorine!);
-    const ph = bestMatch(pads[2], PRO_REFS.ph!);
-    const alkalinity = bestMatch(pads[3], PRO_REFS.alkalinity!);
+    const analysis = analyzeAquachekProPadRgbs(pads, {
+      whiteReference: sampleWhiteReference(image),
+    });
     return {
-      values: {
-        totalChlorine: Number(totalChlorine.value.toFixed(1)),
-        bromine: Number(bromine.value.toFixed(1)),
-        freeChlorine: Number(freeChlorine.value.toFixed(1)),
-        ph: Number(ph.value.toFixed(1)),
-        alkalinity: Math.round(alkalinity.value),
-      },
-      confidence: confidenceFromDistances([totalChlorine.distance, freeChlorine.distance, ph.distance, alkalinity.distance]),
+      values: analysis.values,
+      confidence: analysis.confidence,
       notes: 'CV fallback used fixed pad sampling and color-chart matching.',
     };
   }

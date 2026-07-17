@@ -9,7 +9,11 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:aquachek": "vitest run tests/aquachek-pro-reference.test.ts",
+    "generate:aquachek-fixtures": "node scripts/aquachek-synthetic/generate-dataset.mjs",
+    "evaluate:aquachek-fixtures": "node scripts/aquachek-synthetic/evaluate-dataset.mjs"
   },
   "dependencies": {
     "@cloudflare/vite-plugin": "^1.25.5",
