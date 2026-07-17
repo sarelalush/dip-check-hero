@@ -35,10 +35,12 @@ import { Image as ImageScript } from 'https://deno.land/x/imagescript@1.2.15/mod
 import {
   AQUACHEK_PRO_REFS as PRO_REFS,
   analyzeAquachekProDiscretePadRgbs,
+  analyzeAquachekProStructure,
   bestMatch,
   confidenceFromDistances,
   getFixedPadSampleRegions,
   getFixedWhiteReferenceRegion,
+  hasMinimumAquachekStructureConfidence,
   measureAquachekProSharpness,
 } from '../_shared/aquachek-pro-reference.js';
 
@@ -125,6 +127,7 @@ interface ColorAnalysisEvidence {
   whiteReference?: Rgb;
   sharpnessVariance?: number;
   minimumSharpnessVariance?: number;
+  structure?: ReturnType<typeof analyzeAquachekProStructure>;
 }
 
 interface AnalysisEvidence {
@@ -137,6 +140,11 @@ interface AnalysisEvidence {
   expectedPhysicalPadCount: number;
   detectedPhysicalPadCounts: number[];
   fullyVisiblePadRuns: number;
+  singleStripRuns: number;
+  continuousBodyRuns: number;
+  intactPadRuns: number;
+  correctPadOrderRuns: number;
+  noExtraPadRuns: number;
   requiredParameters: StripParameter[];
   parameters: Partial<Record<StripParameter, ParameterAnalysisEvidence>>;
   colorAnalysis?: ColorAnalysisEvidence;
@@ -176,6 +184,14 @@ interface AiRunData {
   failureReason: FailureReason;
   physicalPadCount: number;
   allPadsFullyVisible: boolean;
+  hasExactlyOneStrip: boolean;
+  hasSingleContinuousStripBody: boolean;
+  allPadsIntact: boolean;
+  padOrderMatchesSelectedBrand: boolean;
+  hasExtraPadLikeRegions: boolean;
+  visiblePadCenterYs: number[];
+  padIntegrity: boolean[];
+  stripBodyEvidence: 'clear_shared_body' | 'ambiguous' | 'none';
   values: Partial<Record<StripParameter, number>>;
   confidence: number;
   notes: string;
@@ -215,10 +231,11 @@ const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
 const REQUIRED_CONSENSUS_RUNS = 2;
-const ANALYSIS_VERSION = 'aquachek-pro-v6-quality-color-separation';
+const ANALYSIS_VERSION = 'aquachek-pro-v11-model-structure-confidence-gate';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.6;
+const MIN_AQUACHEK_STRUCTURE_CONFIDENCE = 0.5;
 const MIN_AQUACHEK_SHARPNESS_VARIANCE = 120;
 
 class EdgeAnalysisError extends Error {
@@ -683,6 +700,11 @@ function analyzeCv(image: DecodedImage, brand: StripBrand): CvResult | null {
       image.height,
       (x: number, y: number) => getPixelRgb(image, x, y),
     );
+    const structure = analyzeAquachekProStructure(
+      image.width,
+      image.height,
+      (x: number, y: number) => getPixelRgb(image, x, y),
+    );
     const analysis = analyzeAquachekProDiscretePadRgbs(pads, {
       whiteReference,
     });
@@ -699,6 +721,7 @@ function analyzeCv(image: DecodedImage, brand: StripBrand): CvResult | null {
         whiteReference,
         sharpnessVariance: sharpness.variance,
         minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
+        structure,
       },
     };
   }
@@ -752,6 +775,7 @@ ${isPro
 FIRST determine if the image actually shows a pool/spa test strip (a thin plastic strip with multiple colored pads).
 If NOT, set isStrip=false, confidence=0, all values=0, and put a short Hebrew note.
 If the image shows a different strip type/brand/model than "${brand.nameHe}", classify it as unsupported_strip.
+The app intentionally sends a very tight crop. A valid crop can have a flat or artificial-looking background, clean rectangular edges, uniform colors, or no hand/container visible. Never reject it merely as a "graphic", "illustration", "render", or "representation". Decide from the visible strip geometry only.
 
 Before reading any values, count the separate PHYSICAL REAGENT PADS that are actually visible in the image:
 - Count only real reagent pads attached to the plastic strip.
@@ -760,6 +784,23 @@ Before reading any values, count the separate PHYSICAL REAGENT PADS that are act
 - Set physicalPadCount to the number you can directly see and set allPadsFullyVisible=true only when every pad is completely visible and none is cropped.
 - This selected strip must show exactly ${expectedPhysicalPadCount} complete physical pads. If the count is different, or any pad is only partly visible, set failureReason="framing", isStrip=false, confidence=0, and all values=0.
 - A strip with only 3 visible pads is INVALID even when the remaining colors are sharp and readable. Never estimate the missing measurement.
+- Scan the entire primary strip from wet tip to handle before deciding the count. Do not stop after finding the expected four pads.
+- For EVERY distinct colored pad-like rectangle on the primary body, append its vertical center to visiblePadCenterYs as a normalized number from 0.0 at the image top to 1.0 at the image bottom. Return these centers in ascending order. Two colored regions separated by a visible neutral stripe are two candidates, even when they are unusually close together.
+- physicalPadCount MUST equal visiblePadCenterYs.length. An extra fifth candidate cannot be ignored merely because four expected sample positions are also visible.
+
+Then complete this STRUCTURAL CHECKLIST independently of the pad count:
+- Judge structure from the PRIMARY STRIP CANDIDATE only: the long narrow neutral-colored body carrying the reagent pads. The body can be hidden underneath each pad; visible side margins, gaps, and/or handle sections are sufficient evidence that the pads share one body. Ignore unrelated background objects, isolated colored rectangles, shadows, glare, surface texture, printed marks, and image borders.
+- hasExactlyOneStrip=false only when a second object is itself recognizably a test strip: it must have its own long narrow body with one or more attached reagent pads. A colored object, chart swatch, reflection, shadow, or strip-shaped background edge is NOT a second strip.
+- hasSingleContinuousStripBody=false only when the pads truly float independently with no shared neutral body/margins at all, or the primary body is physically separated or cut through. The body being hidden beneath reagent pads is normal. Uneven illumination, shadows, highlights, perspective, printed marks, pad gaps, clean synthetic-looking edges, and a handle extending outside the tight crop do NOT break body continuity.
+- allPadsIntact=false only for a clear physical defect: a reagent pad is cropped by the image boundary, covered by a finger/object, torn, divided into separate pieces, or has a foreign opaque stripe cutting through it. Natural pad texture, mottling, noise, wet gradients, glare, shadows, and minor edge softness do NOT make a pad non-intact.
+- Return padIntegrity with one boolean for every item in visiblePadCenterYs, in the same order. A pad split by a neutral/opaque stripe, visibly occluded, or cropped is false. padIntegrity.length MUST equal visiblePadCenterYs.length and allPadsIntact MUST equal padIntegrity.every(Boolean).
+- padOrderMatchesSelectedBrand=false only when there is clear visual evidence that complete pads were geometrically permuted, or the visible strip architecture belongs to another brand. Unusual water chemistry, pale/strong valid colors, lighting, texture, or uncertainty about a color value are NOT evidence of swapped order. When structure matches but a color is ambiguous, keep this true and use low_confidence instead.
+- hasExtraPadLikeRegions=true only when an additional reagent pad is visibly attached to and aligned on the SAME primary strip body. An isolated colored object, background decoration, reflection, shadow, stain, or chart swatch outside that body is never an extra pad.
+- Set stripBodyEvidence="clear_shared_body" only when a neutral plastic carrier is visibly shared by all candidates: look for continuous side margins, neutral gaps between candidates, and/or a neutral handle extending beyond them. Set it to "none" when colored rectangles merely float in a vertical column on the background without shared plastic. Use "ambiguous" when this cannot be verified. A valid result requires clear_shared_body.
+- If hasExactlyOneStrip=false or hasSingleContinuousStripBody=false, set isStrip=false and failureReason="not_strip" (or "framing" for two strips).
+- If allPadsIntact=false or hasExtraPadLikeRegions=true, set isStrip=false and failureReason="framing".
+- If padOrderMatchesSelectedBrand=false, set isStrip=false and failureReason="unsupported_strip".
+- Never accept an image merely because four colored rectangles can be sampled. All checklist fields must pass.
 
 Classify failureReason as one of:
 - "none": clear, usable strip
@@ -820,11 +861,47 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
   const reportedPadCount = Number(args.physicalPadCount ?? 0);
   const physicalPadCount = Number.isFinite(reportedPadCount) ? Math.max(0, Math.round(reportedPadCount)) : 0;
   const allPadsFullyVisible = args.allPadsFullyVisible === true;
-  const padGatePassed = physicalPadCount === expectedPhysicalPadCount && allPadsFullyVisible;
+  const hasExactlyOneStrip = args.hasExactlyOneStrip === true;
+  const hasSingleContinuousStripBody = args.hasSingleContinuousStripBody === true;
+  const allPadsIntact = args.allPadsIntact === true;
+  const padOrderMatchesSelectedBrand = args.padOrderMatchesSelectedBrand === true;
+  const hasExtraPadLikeRegions = args.hasExtraPadLikeRegions === true;
+  const visiblePadCenterYs = Array.isArray(args.visiblePadCenterYs)
+    ? args.visiblePadCenterYs
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value >= 0 && value <= 1)
+        .sort((a, b) => a - b)
+    : [];
+  const padIntegrity = Array.isArray(args.padIntegrity)
+    ? args.padIntegrity.map((value) => value === true)
+    : [];
+  const stripBodyEvidence = ['clear_shared_body', 'ambiguous', 'none'].includes(String(args.stripBodyEvidence))
+    ? (args.stripBodyEvidence as AiRunData['stripBodyEvidence'])
+    : 'none';
+  const groundedStructurePassed =
+    visiblePadCenterYs.length === physicalPadCount &&
+    visiblePadCenterYs.length === expectedPhysicalPadCount &&
+    padIntegrity.length === physicalPadCount &&
+    padIntegrity.every(Boolean) &&
+    stripBodyEvidence === 'clear_shared_body';
+  const padGatePassed =
+    physicalPadCount === expectedPhysicalPadCount &&
+    allPadsFullyVisible &&
+    hasExactlyOneStrip &&
+    hasSingleContinuousStripBody &&
+    allPadsIntact &&
+    padOrderMatchesSelectedBrand &&
+    !hasExtraPadLikeRegions &&
+    groundedStructurePassed;
   const reportedFailureReason = (args.failureReason ?? 'none') as FailureReason;
-  const failureReason = !padGatePassed && ['none', 'low_confidence'].includes(reportedFailureReason)
-    ? 'framing'
-    : reportedFailureReason;
+  let failureReason = reportedFailureReason;
+  if (!padGatePassed && ['none', 'low_confidence'].includes(failureReason)) {
+    failureReason = !hasExactlyOneStrip || !hasSingleContinuousStripBody
+      ? 'not_strip'
+      : !padOrderMatchesSelectedBrand
+        ? 'unsupported_strip'
+        : 'framing';
+  }
 
   return {
     ok: true,
@@ -833,6 +910,14 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
       failureReason,
       physicalPadCount,
       allPadsFullyVisible,
+      hasExactlyOneStrip,
+      hasSingleContinuousStripBody,
+      allPadsIntact,
+      padOrderMatchesSelectedBrand,
+      hasExtraPadLikeRegions,
+      visiblePadCenterYs,
+      padIntegrity,
+      stripBodyEvidence,
       values,
       confidence: Number(args.confidence ?? 0.5),
       notes: String(args.notes ?? ''),
@@ -870,6 +955,23 @@ function buildGeminiResponseSchema() {
       notes: { type: 'STRING' },
       physicalPadCount: { type: 'INTEGER' },
       allPadsFullyVisible: { type: 'BOOLEAN' },
+      hasExactlyOneStrip: { type: 'BOOLEAN' },
+      hasSingleContinuousStripBody: { type: 'BOOLEAN' },
+      allPadsIntact: { type: 'BOOLEAN' },
+      padOrderMatchesSelectedBrand: { type: 'BOOLEAN' },
+      hasExtraPadLikeRegions: { type: 'BOOLEAN' },
+      visiblePadCenterYs: {
+        type: 'ARRAY',
+        items: { type: 'NUMBER' },
+      },
+      padIntegrity: {
+        type: 'ARRAY',
+        items: { type: 'BOOLEAN' },
+      },
+      stripBodyEvidence: {
+        type: 'STRING',
+        enum: ['clear_shared_body', 'ambiguous', 'none'],
+      },
       values: {
         type: 'OBJECT',
         properties: valueProperties,
@@ -883,6 +985,14 @@ function buildGeminiResponseSchema() {
       'notes',
       'physicalPadCount',
       'allPadsFullyVisible',
+      'hasExactlyOneStrip',
+      'hasSingleContinuousStripBody',
+      'allPadsIntact',
+      'padOrderMatchesSelectedBrand',
+      'hasExtraPadLikeRegions',
+      'visiblePadCenterYs',
+      'padIntegrity',
+      'stripBodyEvidence',
       'values',
     ],
   };
@@ -1026,7 +1136,16 @@ function combineAiRuns(
         run.data.isStrip === true &&
         (run.data.failureReason === 'none' || colorReadingUncertaintyOnly) &&
         run.data.physicalPadCount === expectedPhysicalPadCount &&
-        run.data.allPadsFullyVisible === true
+        run.data.allPadsFullyVisible === true &&
+        run.data.hasExactlyOneStrip === true &&
+        run.data.hasSingleContinuousStripBody === true &&
+        run.data.allPadsIntact === true &&
+        run.data.padOrderMatchesSelectedBrand === true &&
+        run.data.hasExtraPadLikeRegions === false &&
+        run.data.visiblePadCenterYs.length === expectedPhysicalPadCount &&
+        run.data.padIntegrity.length === expectedPhysicalPadCount &&
+        run.data.padIntegrity.every(Boolean) &&
+        run.data.stripBodyEvidence === 'clear_shared_body'
       );
     },
   );
@@ -1044,6 +1163,11 @@ function combineAiRuns(
     expectedPhysicalPadCount,
     detectedPhysicalPadCounts: okRuns.map((run) => run.data.physicalPadCount),
     fullyVisiblePadRuns: okRuns.filter((run) => run.data.allPadsFullyVisible).length,
+    singleStripRuns: okRuns.filter((run) => run.data.hasExactlyOneStrip).length,
+    continuousBodyRuns: okRuns.filter((run) => run.data.hasSingleContinuousStripBody).length,
+    intactPadRuns: okRuns.filter((run) => run.data.allPadsIntact).length,
+    correctPadOrderRuns: okRuns.filter((run) => run.data.padOrderMatchesSelectedBrand).length,
+    noExtraPadRuns: okRuns.filter((run) => !run.data.hasExtraPadLikeRegions).length,
     requiredParameters: [...brand.parameters],
     parameters: {},
     ...(cvResult?.evidence ? { colorAnalysis: cvResult.evidence } : {}),
@@ -1088,7 +1212,7 @@ function combineAiRuns(
         `Only ${qualityPassedRuns.length} of ${okRuns.length} completed runs passed image quality.`,
         ...qualityFailures.map(
           (run) =>
-            `Quality gate failed: ${run.data.failureReason}; detected ${run.data.physicalPadCount}/${expectedPhysicalPadCount} complete pads.`,
+            `Quality gate failed: ${run.data.failureReason}; pads=${run.data.physicalPadCount}/${expectedPhysicalPadCount}; groundedCenters=${run.data.visiblePadCenterYs.length}; integrity=${run.data.padIntegrity.join(',')}; bodyEvidence=${run.data.stripBodyEvidence}; oneStrip=${run.data.hasExactlyOneStrip}; continuousBody=${run.data.hasSingleContinuousStripBody}; intactPads=${run.data.allPadsIntact}; correctOrder=${run.data.padOrderMatchesSelectedBrand}; extraPad=${run.data.hasExtraPadLikeRegions}.`,
         ),
       ],
     );
@@ -1109,11 +1233,44 @@ function combineAiRuns(
   }
 
   if (isAquachekPro(brand)) {
+    const structureConfidences = qualityPassedRuns.map((run) => Number(run.data.confidence ?? 0));
+    const strongestStructureConfidence = structureConfidences.length > 0
+      ? Math.max(...structureConfidences)
+      : 0;
+    if (
+      !hasMinimumAquachekStructureConfidence(
+        structureConfidences,
+        MIN_AQUACHEK_STRUCTURE_CONFIDENCE,
+      )
+    ) {
+      return reject(
+        'low_confidence',
+        'המבנה או סדר הפדים אינם ודאיים. יש לצלם שוב את כל הסטיק כשאר ארבעת הפדים שלמים ומסודרים מלמעלה למטה.',
+        [
+          `All model structure checks were below ${MIN_AQUACHEK_STRUCTURE_CONFIDENCE}; strongest confidence was ${strongestStructureConfidence.toFixed(3)}.`,
+        ],
+      );
+    }
+
     if (!cvResult) {
       return reject(
         'low_confidence',
         'לא הצלחנו לקרוא את צבעי הפדים בצורה אמינה. יש לצלם שוב כשהסטיק ישר וממלא את המסגרת.',
         ['The deterministic color analyzer could not decode the AquaChek Pro image.'],
+      );
+    }
+
+    const structure = cvResult.evidence?.structure;
+    if (!structure?.passed) {
+      const missingCarrier = structure?.hasNeutralCarrier === false;
+      return reject(
+        missingCarrier ? 'not_strip' : 'framing',
+        missingCarrier
+          ? 'לא זוהה גוף סטיק לבן ורציף במרכז התמונה. יש לחתוך את התמונה כך שרק סטיק הבדיקה המלא יופיע.'
+          : 'מבנה הפדים אינו תקין. יש לוודא שכל ארבעת הפדים שלמים, נפרדים ונמצאים על סטיק אחד.',
+        [
+          `Deterministic structure gate failed: carrier=${structure?.hasNeutralCarrier ?? false}; bands=${structure?.colorBands?.length ?? 0}; oversized=${structure?.hasOversizedBand ?? false}; splitOrExtra=${structure?.hasSplitOrExtraBands ?? false}.`,
+        ],
       );
     }
 
@@ -1179,6 +1336,7 @@ function combineAiRuns(
         accepted: true,
         acceptanceReasons: [
           `At least ${REQUIRED_CONSENSUS_RUNS} Gemini runs validated image quality and four complete pads.`,
+          `At least one Gemini structure check reached ${MIN_AQUACHEK_STRUCTURE_CONFIDENCE} confidence.`,
           `Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} passed the ${MIN_AQUACHEK_SHARPNESS_VARIANCE} minimum.`,
           'All readings matched the nearest discrete AquaChek Pro manufacturer-chart color.',
         ],

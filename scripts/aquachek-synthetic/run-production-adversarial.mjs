@@ -69,6 +69,12 @@ const CONCURRENCY = Math.max(1, Math.min(4, Number(process.env.E2E_CONCURRENCY |
 const RESET = process.env.RESET_ADVERSARIAL === '1';
 const PREPARE_ONLY = process.env.E2E_PREPARE_ONLY === '1';
 const SMOKE_ONLY = process.env.E2E_SMOKE_ONLY === '1';
+const VARIANT_FILTER = new Set(
+  String(process.env.E2E_VARIANTS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean),
+);
 const PARAMS = ['totalChlorine', 'bromine', 'freeChlorine', 'ph', 'alkalinity'];
 const VALID_PER_VARIANT = 10;
 const INVALID_PER_VARIANT = 5;
@@ -733,8 +739,9 @@ async function callProduction(fixture) {
         error.nonRetryable = true;
         throw error;
       }
-      if ((response.status === 429 || response.status >= 500) && attempt < 3) {
+      if (response.status === 429 || response.status >= 500) {
         lastError = new Error(`HTTP ${response.status}: ${payload.message ?? payload.code ?? 'retryable error'}`);
+        if (attempt >= 3) break;
       } else {
         const actual = parseActual(payload);
         const matches = fixture.expected
@@ -778,7 +785,7 @@ async function callProduction(fixture) {
     } finally {
       clearTimeout(timeout);
     }
-    await new Promise((resolve) => setTimeout(resolve, 1_500 * attempt));
+    await new Promise((resolve) => setTimeout(resolve, 5_000 * attempt));
   }
 
   return {
@@ -792,7 +799,7 @@ async function callProduction(fixture) {
     expected: fixture.expected,
     ok: false,
     accepted: false,
-    acceptanceCorrect: fixture.expectedAccepted === false,
+    acceptanceCorrect: false,
     exactMatch: false,
     error: lastError instanceof Error ? lastError.message : String(lastError),
   };
@@ -836,10 +843,10 @@ function summarize(results) {
       failureReasons: {},
     };
     entry.count += 1;
-    if (result.accepted) entry.accepted += 1;
+    if (result.error) entry.requestErrors += 1;
+    else if (result.accepted) entry.accepted += 1;
     else entry.rejected += 1;
     if (result.exactMatch) entry.exactMatches += 1;
-    if (result.error) entry.requestErrors += 1;
     if (result.failureReason) {
       entry.failureReasons[result.failureReason] =
         (entry.failureReasons[result.failureReason] ?? 0) + 1;
@@ -982,7 +989,13 @@ if (RESET) {
   await mkdir(invalidDirectory, { recursive: true });
 }
 
-const selected = await selectCases();
+const allSelected = await selectCases();
+const selected = VARIANT_FILTER.size
+  ? allSelected.filter((fixture) => VARIANT_FILTER.has(fixture.variant))
+  : allSelected;
+if (VARIANT_FILTER.size && selected.length === 0) {
+  throw new Error(`No fixtures matched E2E_VARIANTS=${[...VARIANT_FILTER].join(',')}`);
+}
 if (PREPARE_ONLY) {
   console.log(
     JSON.stringify(
@@ -1031,6 +1044,8 @@ if (SMOKE_ONLY) {
         accepted: result.accepted,
         exactMatch: result.exactMatch,
         failureReason: result.failureReason,
+        notes: result.notes,
+        consensus: result.consensus,
         model: result.model,
         analysisVersion: result.analysisVersion,
         elapsedMs: result.elapsedMs,
@@ -1085,3 +1100,7 @@ console.log(
     2,
   ),
 );
+
+if (finalReport.summary.requestErrors > 0 || !finalReport.summary.expectedModelOnly) {
+  process.exitCode = 1;
+}

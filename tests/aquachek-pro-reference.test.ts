@@ -5,7 +5,9 @@ import {
   AQUACHEK_PRO_REFS,
   analyzeAquachekProDiscretePadRgbs,
   analyzeAquachekProPadRgbs,
+  analyzeAquachekProStructure,
   getFixedPadSampleRegions,
+  hasMinimumAquachekStructureConfidence,
   measureAquachekProSharpness,
 } from '../supabase/functions/_shared/aquachek-pro-reference.js';
 import {
@@ -146,5 +148,62 @@ describe('AquaChek Pro reference chart', () => {
     expect(sharp.sampleCount).toBeGreaterThan(1_000);
     expect(sharp.variance).toBeGreaterThan(1_000);
     expect(outOfFocus.variance).toBeLessThan(120);
+  });
+
+  it('accepts a valid centered four-pad carrier structure', () => {
+    const { png } = renderSyntheticStrip(enumerateCanonicalCases()[417], VALID_VARIANTS[0]);
+    const structure = analyzeAquachekProStructure(png.width, png.height, (x, y) => {
+      const offset = (y * png.width + x) * 4;
+      return [png.data[offset], png.data[offset + 1], png.data[offset + 2]];
+    });
+
+    expect(structure.passed).toBe(true);
+    expect(structure.hasNeutralCarrier).toBe(true);
+    expect(structure.hasOversizedBand).toBe(false);
+    expect(structure.hasSplitOrExtraBands).toBe(false);
+  });
+
+  it('rejects an extra pad merged between two legal pads', () => {
+    const { png } = renderSyntheticStrip(enumerateCanonicalCases()[417], VALID_VARIANTS[0]);
+    const regions = getFixedPadSampleRegions(png.width, png.height, 4);
+    const first = regions[0];
+    const second = regions[1];
+    const startY = Math.round((first.y + first.height + second.y) / 2) - 8;
+    for (let y = startY; y < startY + 16; y += 1) {
+      for (let x = 32; x < 64; x += 1) {
+        const offset = (y * png.width + x) * 4;
+        [png.data[offset], png.data[offset + 1], png.data[offset + 2]] = [114, 84, 169];
+      }
+    }
+    const structure = analyzeAquachekProStructure(png.width, png.height, (x, y) => {
+      const offset = (y * png.width + x) * 4;
+      return [png.data[offset], png.data[offset + 1], png.data[offset + 2]];
+    });
+
+    expect(structure.passed).toBe(false);
+    expect(structure.hasOversizedBand).toBe(true);
+  });
+
+  it('rejects four colored decoys without a neutral strip carrier', () => {
+    const width = 96;
+    const height = 288;
+    const background: [number, number, number] = [22, 139, 178];
+    const structure = analyzeAquachekProStructure(width, height, () => background);
+
+    expect(structure.passed).toBe(false);
+    expect(structure.hasNeutralCarrier).toBe(false);
+  });
+
+  it('rejects unanimous weak model structure guesses', () => {
+    expect(hasMinimumAquachekStructureConfidence([0.3, 0.3, 0.3], 0.5)).toBe(false);
+  });
+
+  it('accepts when at least one structure pass reaches the minimum confidence', () => {
+    expect(hasMinimumAquachekStructureConfidence([0.3, 0.5, 0.3], 0.5)).toBe(true);
+  });
+
+  it('rejects missing and non-numeric structure confidence', () => {
+    expect(hasMinimumAquachekStructureConfidence([], 0.5)).toBe(false);
+    expect(hasMinimumAquachekStructureConfidence([Number.NaN, undefined, null], 0.5)).toBe(false);
   });
 });

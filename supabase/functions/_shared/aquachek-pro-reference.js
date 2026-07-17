@@ -273,6 +273,113 @@ export function getFixedWhiteReferenceRegion(imageWidth, imageHeight) {
 }
 
 /**
+ * Validate the centered strip geometry independently of the vision model.
+ * Pale reagent pads may blend into the carrier, so fewer than four detected
+ * color bands is allowed. Extra-long or split bands are not.
+ *
+ * @param {number} imageWidth
+ * @param {number} imageHeight
+ * @param {(x: number, y: number) => Rgb} getRgb
+ */
+export function analyzeAquachekProStructure(imageWidth, imageHeight, getRgb) {
+  const centerX = imageWidth / 2;
+  const laneHalfWidth = Math.max(2, Math.round(imageWidth * 0.035));
+  const averageRegion = (startY, endY) => {
+    const totals = [0, 0, 0];
+    let count = 0;
+    for (let y = Math.max(0, Math.floor(startY)); y < Math.min(imageHeight, Math.ceil(endY)); y += 1) {
+      for (
+        let x = Math.max(0, Math.floor(centerX - laneHalfWidth));
+        x < Math.min(imageWidth, Math.ceil(centerX + laneHalfWidth));
+        x += 1
+      ) {
+        const rgb = getRgb(x, y);
+        totals[0] += rgb[0];
+        totals[1] += rgb[1];
+        totals[2] += rgb[2];
+        count += 1;
+      }
+    }
+    return /** @type {Rgb} */ (totals.map((value) => (count ? value / count : 0)));
+  };
+
+  const carrierReference = averageRegion(imageHeight * 0.09, imageHeight * 0.15);
+  const carrierLuminance =
+    carrierReference[0] * 0.2126 + carrierReference[1] * 0.7152 + carrierReference[2] * 0.0722;
+  const carrierChroma = Math.max(...carrierReference) - Math.min(...carrierReference);
+  const hasNeutralCarrier = carrierLuminance >= 105 && carrierChroma <= 80;
+  const expectedStep = (imageHeight * 0.6) / 4;
+  const minimumBandHeight = Math.max(3, expectedStep * 0.14);
+  const maximumBandHeight = expectedStep * 1.28;
+  const mergeGap = Math.max(2, expectedStep * 0.08);
+  const colorThreshold = 32;
+  const rawBands = [];
+  let activeStart = null;
+
+  for (let y = Math.floor(imageHeight * 0.15); y <= Math.ceil(imageHeight * 0.85); y += 1) {
+    const row = averageRegion(y, y + 1);
+    const distance = Math.sqrt(
+      (row[0] - carrierReference[0]) ** 2 +
+        (row[1] - carrierReference[1]) ** 2 +
+        (row[2] - carrierReference[2]) ** 2,
+    );
+    if (distance >= colorThreshold && activeStart === null) activeStart = y;
+    if (distance < colorThreshold && activeStart !== null) {
+      rawBands.push({ startY: activeStart, endY: y - 1 });
+      activeStart = null;
+    }
+  }
+  if (activeStart !== null) rawBands.push({ startY: activeStart, endY: Math.ceil(imageHeight * 0.85) });
+
+  const mergedBands = [];
+  for (const band of rawBands) {
+    const previous = mergedBands.at(-1);
+    if (previous && band.startY - previous.endY - 1 <= mergeGap) previous.endY = band.endY;
+    else mergedBands.push({ ...band });
+  }
+  const colorBands = mergedBands
+    .map((band) => ({ ...band, height: band.endY - band.startY + 1 }))
+    .filter((band) => band.height >= minimumBandHeight);
+  const hasOversizedBand = colorBands.some((band) => band.height > maximumBandHeight);
+  const hasSplitOrExtraBands = colorBands.length > 4;
+
+  return {
+    passed: hasNeutralCarrier && !hasOversizedBand && !hasSplitOrExtraBands,
+    hasNeutralCarrier,
+    carrierReference,
+    carrierLuminance,
+    carrierChroma,
+    colorBands,
+    hasOversizedBand,
+    hasSplitOrExtraBands,
+    thresholds: {
+      colorDistance: colorThreshold,
+      minimumBandHeight,
+      maximumBandHeight,
+      mergeGap,
+    },
+  };
+}
+
+/**
+ * Require at least one independent model pass to express meaningful
+ * confidence in the physical strip structure. This prevents a unanimous set
+ * of weak guesses from being promoted by otherwise strong color matching.
+ *
+ * @param {unknown[]} confidences
+ * @param {number} minimumConfidence
+ */
+export function hasMinimumAquachekStructureConfidence(
+  confidences,
+  minimumConfidence = 0.5,
+) {
+  return confidences.some((confidence) => {
+    const numericConfidence = Number(confidence);
+    return Number.isFinite(numericConfidence) && numericConfidence >= minimumConfidence;
+  });
+}
+
+/**
  * Estimate focus quality inside the central AquaChek strip area using the
  * variance of a five-point luminance Laplacian. This only measures spatial
  * detail; it never modifies or normalizes reagent-pad colors.
