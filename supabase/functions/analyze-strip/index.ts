@@ -12,8 +12,8 @@
 // 1. Download the uploaded image from Storage or imageUrl.
 // 2. Decode it only for diagnostics. Never alter pad colors before analysis.
 // 3. Run the AI analyzer three times in parallel.
-// 4. Snap every reading to the manufacturer's discrete chart and require
-//    exact agreement across all runs before accepting a result.
+// 4. Snap every reading to the manufacturer's discrete chart and require a
+//    high-confidence 2-of-3 majority before accepting a result.
 // 5. AI decides whether the uploaded image is a valid supported strip.
 // 6. If AI cannot validate the strip, return a clear invalid response.
 // 7. If the AI provider is unavailable, return a service-unavailable response.
@@ -109,6 +109,8 @@ interface AnalysisEvidence {
   method: 'repeated-model-discrete-consensus';
   requiredRuns: number;
   successfulRuns: number;
+  qualityPassedRuns: number;
+  confidencePassedRuns: number;
   runConfidences: number[];
   requiredParameters: StripParameter[];
   parameters: Partial<Record<StripParameter, ParameterAnalysisEvidence>>;
@@ -188,9 +190,10 @@ interface DecodedImage {
 const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
-const ANALYSIS_VERSION = 'aquachek-pro-v2-strict';
-const MIN_ACCEPTED_RUN_CONFIDENCE = 0.8;
-const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.85;
+const REQUIRED_CONSENSUS_RUNS = 2;
+const ANALYSIS_VERSION = 'aquachek-pro-v3-majority';
+const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
+const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
 
 class EdgeAnalysisError extends Error {
   code: 'unavailable' | 'invalid_strip';
@@ -1041,17 +1044,28 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
   if (!okRuns.length) return null;
 
   const runConfidences = okRuns.map((run) => Number(run.data.confidence ?? 0));
+  const qualityPassedRuns = okRuns.filter(
+    (run) => run.data.isStrip === true && run.data.failureReason === 'none',
+  );
+  const confidencePassedRuns = qualityPassedRuns.filter(
+    (run) => Number(run.data.confidence ?? 0) >= MIN_ACCEPTED_RUN_CONFIDENCE,
+  );
+  const confidencePassedValues = confidencePassedRuns.map((run) => Number(run.data.confidence ?? 0));
   const evidence: AnalysisEvidence = {
     method: 'repeated-model-discrete-consensus',
     requiredRuns: MULTI_SHOT_RUNS,
     successfulRuns: okRuns.length,
+    qualityPassedRuns: qualityPassedRuns.length,
+    confidencePassedRuns: confidencePassedRuns.length,
     runConfidences,
     requiredParameters: [...brand.parameters],
     parameters: {},
   };
   const provider = okRuns[0]?.data.provider;
   const model = okRuns[0]?.data.model;
-  const meanConfidence = runConfidences.reduce((sum, confidence) => sum + confidence, 0) / runConfidences.length;
+  const meanConfidence = confidencePassedValues.length
+    ? confidencePassedValues.reduce((sum, confidence) => sum + confidence, 0) / confidencePassedValues.length
+    : 0;
 
   const reject = (reason: FailureReason, note: string, acceptanceReasons: string[]) =>
     buildInvalidStripResult(request, brand, 'ai', safeFailureReason(reason), note, {
@@ -1064,18 +1078,16 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
       evidence,
     });
 
-  if (okRuns.length !== MULTI_SHOT_RUNS) {
+  if (okRuns.length < REQUIRED_CONSENSUS_RUNS) {
     return reject(
       'low_confidence',
-      'לא התקבלו שלוש קריאות מלאות. יש לצלם שוב כדי למנוע תוצאה חלקית.',
-      [`Only ${okRuns.length} of ${MULTI_SHOT_RUNS} analysis runs completed.`],
+      'לא התקבלו מספיק קריאות מלאות. יש לצלם שוב כדי למנוע תוצאה חלקית.',
+      [`Only ${okRuns.length} analysis run completed; ${REQUIRED_CONSENSUS_RUNS} are required.`],
     );
   }
 
-  const qualityFailures = okRuns.filter(
-    (run) => run.data.isStrip !== true || run.data.failureReason !== 'none',
-  );
-  if (qualityFailures.length) {
+  const qualityFailures = okRuns.filter((run) => !qualityPassedRuns.includes(run));
+  if (qualityPassedRuns.length < REQUIRED_CONSENSUS_RUNS) {
     const reasonCounts = new Map<FailureReason, number>();
     for (const run of qualityFailures) {
       reasonCounts.set(run.data.failureReason, (reasonCounts.get(run.data.failureReason) ?? 0) + 1);
@@ -1085,20 +1097,20 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
     return reject(
       dominantReason,
       notes || 'אחת מקריאות האיכות זיהתה בעיה בצילום. יש לצלם שוב סטיק מלא, חד וללא סנוור.',
-      qualityFailures.map((run) => `Quality gate failed: ${run.data.failureReason}.`),
+      [
+        `Only ${qualityPassedRuns.length} of ${okRuns.length} completed runs passed image quality.`,
+        ...qualityFailures.map((run) => `Quality gate failed: ${run.data.failureReason}.`),
+      ],
     );
   }
 
-  if (
-    runConfidences.some((confidence) => confidence < MIN_ACCEPTED_RUN_CONFIDENCE) ||
-    meanConfidence < MIN_ACCEPTED_MEAN_CONFIDENCE
-  ) {
+  if (confidencePassedRuns.length < REQUIRED_CONSENSUS_RUNS || meanConfidence < MIN_ACCEPTED_MEAN_CONFIDENCE) {
     return reject(
       'low_confidence',
       'רמת הביטחון בצבעי הסטיק נמוכה מדי. יש לצלם שוב באור טבעי ואחיד וללא השתקפות.',
       [
-        `Every run must be at least ${MIN_ACCEPTED_RUN_CONFIDENCE}.`,
-        `Mean confidence must be at least ${MIN_ACCEPTED_MEAN_CONFIDENCE}.`,
+        `${REQUIRED_CONSENSUS_RUNS} runs must each be at least ${MIN_ACCEPTED_RUN_CONFIDENCE}.`,
+        `Mean confidence of supporting runs must be at least ${MIN_ACCEPTED_MEAN_CONFIDENCE}.`,
       ],
     );
   }
@@ -1106,7 +1118,7 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
   const values: Partial<Record<StripParameter, number>> = {};
   for (const parameter of brand.parameters) {
     const chartValues = manufacturerLevelsFor(brand, parameter);
-    const rawValues = okRuns
+    const rawValues = confidencePassedRuns
       .map((run) => run.data.values[parameter])
       .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
     const snappedValues = rawValues
@@ -1119,21 +1131,21 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
       snappedValues,
       selectedValue,
       agreementCount,
-      requiredAgreement: MULTI_SHOT_RUNS,
+      requiredAgreement: REQUIRED_CONSENSUS_RUNS,
     };
     evidence.parameters[parameter] = parameterEvidence;
 
     if (
       chartValues.length === 0 ||
-      rawValues.length !== MULTI_SHOT_RUNS ||
-      snappedValues.length !== MULTI_SHOT_RUNS ||
-      agreementCount !== MULTI_SHOT_RUNS ||
+      rawValues.length < REQUIRED_CONSENSUS_RUNS ||
+      snappedValues.length < REQUIRED_CONSENSUS_RUNS ||
+      agreementCount < REQUIRED_CONSENSUS_RUNS ||
       typeof selectedValue !== 'number'
     ) {
       return reject(
         'low_confidence',
         `לא התקבלה התאמה חד-משמעית עבור ${PARAM_META[parameter].name}. יש לצלם שוב ללא צל או סנוור.`,
-        [`No unanimous manufacturer-level match for ${parameter}.`],
+        [`No ${REQUIRED_CONSENSUS_RUNS}-run manufacturer-level majority for ${parameter}.`],
       );
     }
 
@@ -1141,13 +1153,13 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
   }
 
   if (isAquachekPro(brand)) {
-    const totalChlorine = evidence.parameters.totalChlorine?.snappedValues ?? [];
-    const bromine = evidence.parameters.bromine?.snappedValues ?? [];
-    const combinedPadMatches = totalChlorine.every((value, index) => {
-      const chlorineIndex = PRO_REFS.totalChlorine?.findIndex((reference) => reference.value === value) ?? -1;
-      const bromineIndex = PRO_REFS.bromine?.findIndex((reference) => reference.value === bromine[index]) ?? -2;
-      return chlorineIndex >= 0 && chlorineIndex === bromineIndex;
-    });
+    const chlorineIndex = PRO_REFS.totalChlorine?.findIndex(
+      (reference) => reference.value === values.totalChlorine,
+    ) ?? -1;
+    const bromineIndex = PRO_REFS.bromine?.findIndex(
+      (reference) => reference.value === values.bromine,
+    ) ?? -2;
+    const combinedPadMatches = chlorineIndex >= 0 && chlorineIndex === bromineIndex;
 
     if (!combinedPadMatches) {
       return reject(
@@ -1158,8 +1170,9 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
     }
   }
 
-  const notes = uniqueNonEmpty(okRuns.map((run) => run.data.notes));
-  return buildResult(request, brand, values, 'ai', Math.min(...runConfidences), {
+  const notes = uniqueNonEmpty(confidencePassedRuns.map((run) => run.data.notes));
+  const ignoredRuns = Math.max(0, MULTI_SHOT_RUNS - confidencePassedRuns.length);
+  return buildResult(request, brand, values, 'ai', Math.min(...confidencePassedValues), {
     provider,
     model,
     notes: notes.join(' ') || undefined,
@@ -1169,7 +1182,11 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
     failureReason: 'none',
     analysisVersion: ANALYSIS_VERSION,
     accepted: true,
-    acceptanceReasons: ['All quality gates passed.', 'All manufacturer-level readings agreed 3/3.'],
+    acceptanceReasons: [
+      `At least ${REQUIRED_CONSENSUS_RUNS} runs passed image quality and confidence gates.`,
+      `Every manufacturer-level reading reached a ${REQUIRED_CONSENSUS_RUNS}-run majority.`,
+      ...(ignoredRuns > 0 ? [`Ignored ${ignoredRuns} non-supporting analysis run.`] : []),
+    ],
     evidence,
   });
 }
@@ -1480,7 +1497,11 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
   const aiResult = combineAiRuns(aiRuns, body, brand);
   if (aiResult) {
     console.log('Gemini strip analysis selected', {
+      accepted: aiResult.accepted,
+      acceptanceReasons: aiResult.acceptanceReasons,
+      analysisVersion: aiResult.analysisVersion,
       confidence: aiResult.confidence,
+      evidence: aiResult.evidence,
       failureReason: aiResult.failureReason,
       model: aiResult.model,
       source: aiResult.source,
