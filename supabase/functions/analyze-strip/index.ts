@@ -112,6 +112,9 @@ interface AnalysisEvidence {
   qualityPassedRuns: number;
   confidencePassedRuns: number;
   runConfidences: number[];
+  expectedPhysicalPadCount: number;
+  detectedPhysicalPadCounts: number[];
+  fullyVisiblePadRuns: number;
   requiredParameters: StripParameter[];
   parameters: Partial<Record<StripParameter, ParameterAnalysisEvidence>>;
 }
@@ -148,6 +151,8 @@ interface StripAnalysisResult {
 interface AiRunData {
   isStrip: boolean;
   failureReason: FailureReason;
+  physicalPadCount: number;
+  allPadsFullyVisible: boolean;
   values: Partial<Record<StripParameter, number>>;
   confidence: number;
   notes: string;
@@ -191,7 +196,7 @@ const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
 const REQUIRED_CONSENSUS_RUNS = 2;
-const ANALYSIS_VERSION = 'aquachek-pro-v3-majority';
+const ANALYSIS_VERSION = 'aquachek-pro-v4-pad-gate';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
 
@@ -807,6 +812,8 @@ function buildSystemPrompt(brand: StripBrand) {
       ].join('\n')
     : brand.parameters.map((parameter, index) => `${index + 1}. ${parameter} - ${PARAM_HINTS[parameter]}`).join('\n');
 
+  const expectedPhysicalPadCount = isPro ? 4 : brand.parameters.length;
+
   return `You are an expert pool/spa water test strip analyzer.
 The user is using this strip brand: "${brand.nameHe}".
 ${isPro
@@ -816,6 +823,14 @@ ${isPro
 FIRST determine if the image actually shows a pool/spa test strip (a thin plastic strip with multiple colored pads).
 If NOT, set isStrip=false, confidence=0, all values=0, and put a short Hebrew note.
 If the image shows a different strip type/brand/model than "${brand.nameHe}", classify it as unsupported_strip.
+
+Before reading any values, count the separate PHYSICAL REAGENT PADS that are actually visible in the image:
+- Count only real reagent pads attached to the plastic strip.
+- Do NOT count white gaps, the plastic handle, shadows, glare, printed marks, or stains as pads.
+- Do NOT infer or reconstruct a hidden, removed, cropped, or missing pad from the expected strip layout.
+- Set physicalPadCount to the number you can directly see and set allPadsFullyVisible=true only when every pad is completely visible and none is cropped.
+- This selected strip must show exactly ${expectedPhysicalPadCount} complete physical pads. If the count is different, or any pad is only partly visible, set failureReason="framing", isStrip=false, confidence=0, and all values=0.
+- A strip with only 3 visible pads is INVALID even when the remaining colors are sharp and readable. Never estimate the missing measurement.
 
 Classify failureReason as one of:
 - "none": clear, usable strip
@@ -872,11 +887,23 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
     }
   }
 
+  const expectedPhysicalPadCount = isAquachekPro(brand) ? 4 : brand.parameters.length;
+  const reportedPadCount = Number(args.physicalPadCount ?? 0);
+  const physicalPadCount = Number.isFinite(reportedPadCount) ? Math.max(0, Math.round(reportedPadCount)) : 0;
+  const allPadsFullyVisible = args.allPadsFullyVisible === true;
+  const padGatePassed = physicalPadCount === expectedPhysicalPadCount && allPadsFullyVisible;
+  const reportedFailureReason = (args.failureReason ?? 'none') as FailureReason;
+  const failureReason = !padGatePassed && ['none', 'low_confidence'].includes(reportedFailureReason)
+    ? 'framing'
+    : reportedFailureReason;
+
   return {
     ok: true,
     data: {
-      isStrip: Boolean(args.isStrip),
-      failureReason: (args.failureReason ?? 'none') as FailureReason,
+      isStrip: Boolean(args.isStrip) && padGatePassed,
+      failureReason,
+      physicalPadCount,
+      allPadsFullyVisible,
       values,
       confidence: Number(args.confidence ?? 0.5),
       notes: String(args.notes ?? ''),
@@ -912,13 +939,23 @@ function buildGeminiResponseSchema() {
       },
       confidence: { type: 'NUMBER' },
       notes: { type: 'STRING' },
+      physicalPadCount: { type: 'INTEGER' },
+      allPadsFullyVisible: { type: 'BOOLEAN' },
       values: {
         type: 'OBJECT',
         properties: valueProperties,
         required: PARAM_KEYS,
       },
     },
-    required: ['isStrip', 'failureReason', 'confidence', 'notes', 'values'],
+    required: [
+      'isStrip',
+      'failureReason',
+      'confidence',
+      'notes',
+      'physicalPadCount',
+      'allPadsFullyVisible',
+      'values',
+    ],
   };
 }
 
@@ -1043,9 +1080,14 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
   const okRuns = runs.filter((run): run is Extract<AiRunResponse, { ok: true }> => run.ok);
   if (!okRuns.length) return null;
 
+  const expectedPhysicalPadCount = isAquachekPro(brand) ? 4 : brand.parameters.length;
   const runConfidences = okRuns.map((run) => Number(run.data.confidence ?? 0));
   const qualityPassedRuns = okRuns.filter(
-    (run) => run.data.isStrip === true && run.data.failureReason === 'none',
+    (run) =>
+      run.data.isStrip === true &&
+      run.data.failureReason === 'none' &&
+      run.data.physicalPadCount === expectedPhysicalPadCount &&
+      run.data.allPadsFullyVisible === true,
   );
   const confidencePassedRuns = qualityPassedRuns.filter(
     (run) => Number(run.data.confidence ?? 0) >= MIN_ACCEPTED_RUN_CONFIDENCE,
@@ -1058,6 +1100,9 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
     qualityPassedRuns: qualityPassedRuns.length,
     confidencePassedRuns: confidencePassedRuns.length,
     runConfidences,
+    expectedPhysicalPadCount,
+    detectedPhysicalPadCounts: okRuns.map((run) => run.data.physicalPadCount),
+    fullyVisiblePadRuns: okRuns.filter((run) => run.data.allPadsFullyVisible).length,
     requiredParameters: [...brand.parameters],
     parameters: {},
   };
@@ -1099,7 +1144,10 @@ function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, bran
       notes || 'אחת מקריאות האיכות זיהתה בעיה בצילום. יש לצלם שוב סטיק מלא, חד וללא סנוור.',
       [
         `Only ${qualityPassedRuns.length} of ${okRuns.length} completed runs passed image quality.`,
-        ...qualityFailures.map((run) => `Quality gate failed: ${run.data.failureReason}.`),
+        ...qualityFailures.map(
+          (run) =>
+            `Quality gate failed: ${run.data.failureReason}; detected ${run.data.physicalPadCount}/${expectedPhysicalPadCount} complete pads.`,
+        ),
       ],
     );
   }
