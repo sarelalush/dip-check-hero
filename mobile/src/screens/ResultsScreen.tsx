@@ -80,7 +80,12 @@ function getResultCards(result: StripAnalysisResult): DosageRecommendation[] {
 
 function isInvalidStripResult(result?: StripAnalysisResult | null) {
   if (!result) return false;
-  return result.isValidStrip === false || result.failureReason === 'not_strip' || result.failureReason === 'unsupported_strip';
+  return (
+    result.accepted === false ||
+    result.isValidStrip === false ||
+    result.lowConfidence === true ||
+    Boolean(result.failureReason && result.failureReason !== 'none')
+  );
 }
 
 function enrichResultWithDosage(result: StripAnalysisResult, pool?: Pool, savedDosage?: StripAnalysisResult['dosage']): StripAnalysisResult {

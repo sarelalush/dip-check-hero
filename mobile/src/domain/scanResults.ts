@@ -27,6 +27,26 @@ export interface ScanResultParameter {
   status: ScanParameterStatus;
   recommendation: string;
   progress: number;
+  confidence?: number;
+  evidence?: ParameterAnalysisEvidence;
+}
+
+export interface ParameterAnalysisEvidence {
+  chartValues: number[];
+  rawValues: number[];
+  snappedValues: number[];
+  selectedValue?: number;
+  agreementCount: number;
+  requiredAgreement: number;
+}
+
+export interface AnalysisEvidence {
+  method: 'repeated-model-discrete-consensus';
+  requiredRuns: number;
+  successfulRuns: number;
+  runConfidences: number[];
+  requiredParameters: ScanParameterKey[];
+  parameters: Partial<Record<ScanParameterKey, ParameterAnalysisEvidence>>;
 }
 
 export interface StripAnalysisResult {
@@ -41,9 +61,22 @@ export interface StripAnalysisResult {
   provider?: 'gemini';
   model?: string;
   confidence?: number;
+  analysisVersion?: string;
+  accepted?: boolean;
+  acceptanceReasons?: string[];
+  evidence?: AnalysisEvidence;
   lowConfidence?: boolean;
   isValidStrip?: boolean;
-  failureReason?: 'none' | 'not_strip' | 'blurry' | 'lighting' | 'framing' | 'low_confidence' | 'unsupported_strip';
+  failureReason?:
+    | 'none'
+    | 'not_strip'
+    | 'blurry'
+    | 'lighting'
+    | 'framing'
+    | 'low_confidence'
+    | 'unsupported_strip'
+    | 'ai_error'
+    | 'unknown';
   notes?: string;
   shotsUsed?: number;
   overallStatus: {

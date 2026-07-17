@@ -222,8 +222,9 @@ async function rebuildAnalysisResultFromReadings(record: SavedHistoryRecord, row
     model: row.model ?? undefined,
     confidence: row.confidence ?? undefined,
     lowConfidence: row.low_confidence,
-    isValidStrip: true,
-    failureReason: 'none',
+    accepted: !row.low_confidence,
+    isValidStrip: !row.low_confidence,
+    failureReason: row.low_confidence ? 'low_confidence' : 'none',
     overallStatus: {
       label: row.overall_status ?? (hasWarning ? 'נדרש תיקון קל' : 'המים מאוזנים'),
       tone: hasWarning ? 'warning' : 'success',
@@ -329,7 +330,11 @@ export function mapLocalTestToCloud(
     recommendation: normalizedRecord.dosageResult?.summary ?? normalizedRecord.resultSummary,
     raw_result: toJson(resultsPayload),
     error_message: normalizedRecord.imageUploadError ?? null,
-    is_billable: normalizedRecord.analysisResult?.isValidStrip !== false,
+    is_billable:
+      normalizedRecord.analysisResult?.accepted !== false &&
+      normalizedRecord.analysisResult?.isValidStrip !== false &&
+      normalizedRecord.analysisResult?.lowConfidence !== true &&
+      (!normalizedRecord.analysisResult?.failureReason || normalizedRecord.analysisResult.failureReason === 'none'),
     analyzed_at: new Date(normalizedRecord.testedAt).toISOString(),
     created_at: new Date(normalizedRecord.createdAt).toISOString(),
     updated_at: new Date(normalizedRecord.updatedAt ?? normalizedRecord.createdAt).toISOString(),
@@ -339,7 +344,7 @@ export function mapLocalTestToCloud(
 function mapParameterToReading(parameter: ScanResultParameter, testId: string, accountId: string): TestReadingInsert {
   return {
     account_id: accountId,
-    confidence: null,
+    confidence: parameter.confidence ?? null,
     label: parameter.name,
     max_value: parameter.idealRange.max,
     min_value: parameter.idealRange.min,

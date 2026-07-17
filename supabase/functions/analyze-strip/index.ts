@@ -3,7 +3,6 @@
 // Source-of-truth web files:
 // - src/utils/analyzeStripImage.ts
 // - src/lib/strip-analysis.functions.ts
-// - src/utils/whiteBalance.ts
 // - src/utils/colorUtils.ts
 // - src/config/brandSwatches.ts
 // - src/config/stripBrands.ts
@@ -11,9 +10,10 @@
 //
 // Pipeline:
 // 1. Download the uploaded image from Storage or imageUrl.
-// 2. Decode it with ImageScript, then apply a gray-world white balance when possible.
+// 2. Decode it only for diagnostics. Never alter pad colors before analysis.
 // 3. Run the AI analyzer three times in parallel.
-// 4. Combine numeric readings with median/agreement confidence.
+// 4. Snap every reading to the manufacturer's discrete chart and require
+//    exact agreement across all runs before accepting a result.
 // 5. AI decides whether the uploaded image is a valid supported strip.
 // 6. If AI cannot validate the strip, return a clear invalid response.
 // 7. If the AI provider is unavailable, return a service-unavailable response.
@@ -92,6 +92,26 @@ interface ScanResultParameter {
   };
   recommendation: string;
   progress: number;
+  confidence?: number;
+  evidence?: ParameterAnalysisEvidence;
+}
+
+interface ParameterAnalysisEvidence {
+  chartValues: number[];
+  rawValues: number[];
+  snappedValues: number[];
+  selectedValue?: number;
+  agreementCount: number;
+  requiredAgreement: number;
+}
+
+interface AnalysisEvidence {
+  method: 'repeated-model-discrete-consensus';
+  requiredRuns: number;
+  successfulRuns: number;
+  runConfidences: number[];
+  requiredParameters: StripParameter[];
+  parameters: Partial<Record<StripParameter, ParameterAnalysisEvidence>>;
 }
 
 interface StripAnalysisResult {
@@ -106,6 +126,10 @@ interface StripAnalysisResult {
   provider?: AiProviderName;
   model?: string;
   confidence: number;
+  analysisVersion?: string;
+  accepted?: boolean;
+  acceptanceReasons?: string[];
+  evidence?: AnalysisEvidence;
   lowConfidence?: boolean;
   isValidStrip?: boolean;
   failureReason?: FailureReason;
@@ -159,16 +183,14 @@ interface DecodedImage {
   width: number;
   height: number;
   getPixelAt: (x: number, y: number) => number;
-  setPixelAt?: (x: number, y: number, color: number) => void;
-  encode?: (quality?: number) => Promise<Uint8Array> | Uint8Array;
-  encodeJPEG?: (quality?: number) => Promise<Uint8Array> | Uint8Array;
 }
 
 const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
-const CONFIDENCE_WARN_THRESHOLD = 0.55;
-const CONFIDENCE_BLOCK_THRESHOLD = 0.4;
+const ANALYSIS_VERSION = 'aquachek-pro-v2-strict';
+const MIN_ACCEPTED_RUN_CONFIDENCE = 0.8;
+const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.85;
 
 class EdgeAnalysisError extends Error {
   code: 'unavailable' | 'invalid_strip';
@@ -270,9 +292,8 @@ const PRO_REFS: Partial<Record<StripParameter, ColorRef[]>> = {
     { value: 0, rgb: [254, 254, 204] },
     { value: 0.5, rgb: [247, 235, 228] },
     { value: 1, rgb: [235, 215, 225] },
-    { value: 2, rgb: [220, 180, 210] },
-    { value: 4, rgb: [200, 140, 195] },
-    { value: 6, rgb: [175, 110, 190] },
+    { value: 3, rgb: [220, 180, 210] },
+    { value: 5, rgb: [190, 125, 192] },
     { value: 10, rgb: [130, 55, 160] },
     { value: 20, rgb: [70, 15, 100] },
   ],
@@ -345,37 +366,21 @@ Pad 1 - Total Chlorine + Total Bromine (yellow -> green -> dark green).
   Level 0    (TC 0   / TB 0)   -> very pale cream-yellow  (R254 G254 B168)
   Level 0.5  (TC 0.5 / TB 1)   -> pale yellow-green       (R242 G254 B170)
   Level 1    (TC 1   / TB 2)   -> light yellow-green      (R231 G245 B160)
-  Level 2    (TC ~2  / TB 5)   -> light green             (R184 G216 B140)
-  Level 3    (TC 3   / TB ~7)  -> medium green            (R144 G198 B120)
+  Level 3    (TC 3   / TB 5)   -> light green             (R184 G216 B140)
   Level 5    (TC 5   / TB 10)  -> darker green            (R100 G180 B105)
   Level 10   (TC 10  / TB 20)  -> very dark green         (R55  G140 B80)
 
 Pad 2 - Free Chlorine (cream -> pink -> PURPLE, NOT orange or red).
-  Scale: 0, 0.5, 1, 2, 4, 6, 10, 20
+  Scale: 0, 0.5, 1, 3, 5, 10, 20
   FC 0    -> pale cream              (R254 G254 B204)
   FC 0.5  -> very pale pink-cream    (R247 G235 B228)
   FC 1    -> pale pink/lavender      (R235 G215 B225)
-  FC 2    -> light pink              (R220 G180 B210)
-  FC 4    -> pink                    (R200 G140 B195)
-  FC 6    -> medium purple-pink      (R175 G110 B190)
+  FC 3    -> light purple            (R220 G180 B210)
+  FC 5    -> purple                  (R190 G125 B192)
   FC 10   -> dark purple             (R130 G55  B160)
   FC 20   -> very dark purple        (R70  G15  B100)
 
 Pad 3 - pH (yellow -> peach -> salmon -> PINK -> MAGENTA).
-  CRITICAL OVERRIDE - IGNORE any prior training that says AquaChek pH
-  goes to "red" or "dark red". On THIS strip the high-pH end is PINK /
-  MAGENTA, NOT red. Apply this color->value map STRICTLY:
-
-    * Pad mostly YELLOW (G > R-20, B < 120)               -> pH 6.2
-    * Pad PEACH / light salmon (R>230, G 160-185, B<150)  -> pH 6.8
-    * Pad SALMON-PINK (R>225, G 140-165, B 140-165)       -> pH 7.2
-    * Pad clear PINK (R 210-230, G 120-140, B 150-180)    -> pH 7.8
-    * Pad MAGENTA / hot pink (R<210, G<130, B>155, and
-      B/R ratio > 0.78)                                   -> pH 8.4
-
-  HARD RULE: if the pad is visibly pink/magenta (B channel >= G channel,
-  or B > 150 with R < 230), the answer is 8.2-8.4. Reporting 7.8 for a
-  pink pad is WRONG - 7.8 is a duller pink with less blue.
   Scale: 6.2, 6.8, 7.2, 7.8, 8.4
   pH 6.2  -> yellow              (R245 G215 B100)
   pH 6.8  -> peach               (R240 G170 B130)
@@ -461,14 +466,14 @@ function parameterProgress(value: number, min: number, max: number) {
   return Math.max(6, Math.min(96, Math.round(((value - low) / (high - low)) * 100)));
 }
 
-function calibratePhForBrand(value: number, brandId: string) {
-  if (brandId === 'aquachek-pro-5in1' && value >= 7.75 && value <= 7.9) return 8.3;
-  return value;
-}
-
-function buildParameter(brandId: string, key: StripParameter, rawValue: number): ScanResultParameter {
+function buildParameter(
+  key: StripParameter,
+  rawValue: number,
+  confidence?: number,
+  evidence?: ParameterAnalysisEvidence,
+): ScanResultParameter {
   const meta = PARAM_META[key];
-  const value = key === 'ph' ? calibratePhForBrand(Number(rawValue), brandId) : Number(rawValue);
+  const value = Number(rawValue);
   const status = parameterStatus(value, meta.min, meta.max);
 
   return {
@@ -487,6 +492,8 @@ function buildParameter(brandId: string, key: StripParameter, rawValue: number):
         ? `${meta.name} בטווח תקין.`
         : `נדרש תיקון קל עבור ${meta.name}.`,
     progress: parameterProgress(value, meta.min, meta.max),
+    confidence,
+    evidence,
   };
 }
 
@@ -504,13 +511,22 @@ function buildResult(
     shotsUsed?: number;
     isValidStrip?: boolean;
     failureReason?: FailureReason;
+    analysisVersion?: string;
+    accepted?: boolean;
+    acceptanceReasons?: string[];
+    evidence?: AnalysisEvidence;
   } = {},
 ): StripAnalysisResult {
   const parameters = brand.parameters
     .map((parameter) => {
       const value = values[parameter];
       return typeof value === 'number' && !Number.isNaN(value)
-        ? buildParameter(brand.id, parameter, Number(value.toFixed(parameter === 'ph' ? 2 : 1)))
+        ? buildParameter(
+            parameter,
+            Number(value.toFixed(parameter === 'ph' ? 2 : 1)),
+            confidence,
+            options.evidence?.parameters[parameter],
+          )
         : null;
     })
     .filter((parameter): parameter is ScanResultParameter => Boolean(parameter));
@@ -530,6 +546,10 @@ function buildResult(
     provider: options.provider,
     model: options.model,
     confidence: Number(Math.max(0, Math.min(1, confidence)).toFixed(2)),
+    analysisVersion: options.analysisVersion,
+    accepted: options.accepted,
+    acceptanceReasons: options.acceptanceReasons,
+    evidence: options.evidence,
     lowConfidence: options.lowConfidence,
     isValidStrip: options.isValidStrip ?? true,
     failureReason: options.failureReason ?? 'none',
@@ -552,7 +572,15 @@ function buildInvalidStripResult(
   source: AnalysisSource,
   failureReason: FailureReason,
   note: string,
-  options: { provider?: AiProviderName; model?: string; shotsUsed?: number; confidence?: number } = {},
+  options: {
+    provider?: AiProviderName;
+    model?: string;
+    shotsUsed?: number;
+    confidence?: number;
+    analysisVersion?: string;
+    acceptanceReasons?: string[];
+    evidence?: AnalysisEvidence;
+  } = {},
 ): StripAnalysisResult {
   return {
     id: request.testId,
@@ -566,6 +594,10 @@ function buildInvalidStripResult(
     provider: options.provider,
     model: options.model,
     confidence: Number(Math.max(0, Math.min(1, options.confidence ?? 0.12)).toFixed(2)),
+    analysisVersion: options.analysisVersion ?? ANALYSIS_VERSION,
+    accepted: false,
+    acceptanceReasons: options.acceptanceReasons,
+    evidence: options.evidence,
     lowConfidence: true,
     isValidStrip: false,
     failureReason,
@@ -580,12 +612,6 @@ function buildInvalidStripResult(
   };
 }
 
-function median(nums: number[]) {
-  const sorted = [...nums].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-}
-
 function uniqueNonEmpty(values: Array<string | undefined | null>) {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -598,13 +624,6 @@ function uniqueNonEmpty(values: Array<string | undefined | null>) {
   }
 
   return result;
-}
-
-function agreementOf(values: number[], reference: number) {
-  if (values.length < 2) return 1;
-  const denom = Math.max(Math.abs(reference), 1);
-  const spread = (Math.max(...values) - Math.min(...values)) / denom;
-  return Math.max(0, Math.min(1, 1 - spread));
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -667,74 +686,6 @@ function bestMatch(rgb: Rgb, refs: ColorRef[]): MatchResult {
 
 function getPixelRgb(image: DecodedImage, x: number, y: number): Rgb {
   return ImageScript.colorToRGB(image.getPixelAt(x, y)) as Rgb;
-}
-
-function setPixelRgb(image: DecodedImage, x: number, y: number, r: number, g: number, b: number) {
-  if (!image.setPixelAt) return;
-  const toColor = (ImageScript as unknown as { rgbaToColor?: (r: number, g: number, b: number, a: number) => number }).rgbaToColor;
-  if (toColor) image.setPixelAt(x, y, toColor(clamp(Math.round(r), 0, 255), clamp(Math.round(g), 0, 255), clamp(Math.round(b), 0, 255), 255));
-}
-
-async function encodeImageToDataUrl(image: DecodedImage, fallbackBytes: Uint8Array, fallbackMimeType: string) {
-  try {
-    const encoder = image.encodeJPEG ?? image.encode;
-    if (!encoder) throw new Error('ImageScript encoder is unavailable.');
-    const encoded = await encoder.call(image, 92);
-    return `data:image/jpeg;base64,${bytesToBase64(encoded)}`;
-  } catch (error) {
-    console.warn('White-balance re-encode failed, using raw data URL', error);
-    return `data:${fallbackMimeType};base64,${bytesToBase64(fallbackBytes)}`;
-  }
-}
-
-async function applyWhiteBalance(image: DecodedImage, originalBytes: Uint8Array, mimeType: string) {
-  let rHighlights = 0;
-  let gHighlights = 0;
-  let bHighlights = 0;
-  let highlightCount = 0;
-  let rAll = 0;
-  let gAll = 0;
-  let bAll = 0;
-  let allCount = 0;
-  const stride = Math.max(1, Math.floor(Math.max(image.width, image.height) / 320));
-
-  for (let y = 0; y < image.height; y += stride) {
-    for (let x = 0; x < image.width; x += stride) {
-      const [r, g, b] = getPixelRgb(image, x, y);
-      const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-      rAll += r;
-      gAll += g;
-      bAll += b;
-      allCount += 1;
-      if (luma > 180 && luma < 250) {
-        rHighlights += r;
-        gHighlights += g;
-        bHighlights += b;
-        highlightCount += 1;
-      }
-    }
-  }
-
-  const useHighlights = highlightCount > allCount * 0.02;
-  const meanR = (useHighlights ? rHighlights / highlightCount : rAll / allCount) || 1;
-  const meanG = (useHighlights ? gHighlights / highlightCount : gAll / allCount) || 1;
-  const meanB = (useHighlights ? bHighlights / highlightCount : bAll / allCount) || 1;
-  const gray = (meanR + meanG + meanB) / 3;
-  const scaleR = gray / meanR;
-  const scaleG = gray / meanG;
-  const scaleB = gray / meanB;
-  const maxDev = Math.max(Math.abs(scaleR - 1), Math.abs(scaleG - 1), Math.abs(scaleB - 1));
-
-  if (maxDev >= 0.03 && image.setPixelAt) {
-    for (let y = 0; y < image.height; y += 1) {
-      for (let x = 0; x < image.width; x += 1) {
-        const [r, g, b] = getPixelRgb(image, x, y);
-        setPixelRgb(image, x, y, r * scaleR, g * scaleG, b * scaleB);
-      }
-    }
-  }
-
-  return encodeImageToDataUrl(image, originalBytes, mimeType);
 }
 
 function bytesToBase64(bytes: Uint8Array) {
@@ -880,10 +831,10 @@ If the strip IS readable, read each pad above by comparing its color to the
 manufacturer chart for that brand. Critical rules:
 - Read pads in the EXACT printed order listed above. Do not reorder by your
   own assumptions about which color "should" be which parameter.
-- Interpolate between two nearest reference levels when the pad color is
-  between them; do not snap only to listed values.
-- Account for white balance: if the whole image has a yellow/blue cast,
-  mentally neutralize it before comparing colors.
+- Return exactly one of the printed manufacturer levels for each pad. Never
+  interpolate and never invent an intermediate value.
+- Do not apply a guessed white-balance correction. If lighting, glare, or a
+  color cast makes the nearest printed level uncertain, return low_confidence.
 ${isPro ? AQUACHEK_PRO_CHART : ''}${isYellow ? AQUACHEK_YELLOW_CHART : ''}
 Return only JSON that matches the provided response schema. Only include real
 readings for the parameters listed above - leave the others as 0.`;
@@ -914,7 +865,7 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
   for (const parameter of brand.parameters) {
     const rawValue = rawValues[parameter];
     if (typeof rawValue === 'number') {
-      values[parameter] = parameter === 'ph' ? calibratePhForBrand(Number(rawValue), brand.id) : Number(rawValue);
+      values[parameter] = Number(rawValue);
     }
   }
 
@@ -1054,106 +1005,172 @@ async function analyzeWithAiProvider(dataUrl: string, brand: StripBrand): Promis
   return analyzeWithGemini(dataUrl, brand, provider);
 }
 
+function manufacturerLevelsFor(brand: StripBrand, parameter: StripParameter) {
+  const references = isAquachekPro(brand)
+    ? PRO_REFS[parameter]
+    : isAquachekYellow(brand)
+      ? YELLOW_REFS[parameter]
+      : undefined;
+
+  return references?.map((reference) => reference.value) ?? [];
+}
+
+function snapToManufacturerLevel(value: number, levels: number[]) {
+  if (!levels.length) return undefined;
+
+  return levels.reduce((nearest, level) =>
+    Math.abs(level - value) < Math.abs(nearest - value) ? level : nearest,
+  levels[0]);
+}
+
+function mostCommonValue(values: number[]): [number | undefined, number] {
+  const counts = new Map<number, number>();
+  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [undefined, 0];
+}
+
+function safeFailureReason(reason: FailureReason): FailureReason {
+  return ['not_strip', 'blurry', 'lighting', 'framing', 'unsupported_strip', 'low_confidence'].includes(reason)
+    ? reason
+    : 'low_confidence';
+}
+
 function combineAiRuns(runs: AiRunResponse[], request: AnalyzeStripRequest, brand: StripBrand): StripAnalysisResult | null {
   const okRuns = runs.filter((run): run is Extract<AiRunResponse, { ok: true }> => run.ok);
-  const invalidRuns = okRuns.filter(
-    (run) =>
-      run.data.isStrip === false &&
-      ['not_strip', 'blurry', 'lighting', 'framing', 'unsupported_strip'].includes(run.data.failureReason),
+  if (!okRuns.length) return null;
+
+  const runConfidences = okRuns.map((run) => Number(run.data.confidence ?? 0));
+  const evidence: AnalysisEvidence = {
+    method: 'repeated-model-discrete-consensus',
+    requiredRuns: MULTI_SHOT_RUNS,
+    successfulRuns: okRuns.length,
+    runConfidences,
+    requiredParameters: [...brand.parameters],
+    parameters: {},
+  };
+  const provider = okRuns[0]?.data.provider;
+  const model = okRuns[0]?.data.model;
+  const meanConfidence = runConfidences.reduce((sum, confidence) => sum + confidence, 0) / runConfidences.length;
+
+  const reject = (reason: FailureReason, note: string, acceptanceReasons: string[]) =>
+    buildInvalidStripResult(request, brand, 'ai', safeFailureReason(reason), note, {
+      provider,
+      model,
+      shotsUsed: okRuns.length,
+      confidence: meanConfidence,
+      analysisVersion: ANALYSIS_VERSION,
+      acceptanceReasons,
+      evidence,
+    });
+
+  if (okRuns.length !== MULTI_SHOT_RUNS) {
+    return reject(
+      'low_confidence',
+      'לא התקבלו שלוש קריאות מלאות. יש לצלם שוב כדי למנוע תוצאה חלקית.',
+      [`Only ${okRuns.length} of ${MULTI_SHOT_RUNS} analysis runs completed.`],
+    );
+  }
+
+  const qualityFailures = okRuns.filter(
+    (run) => run.data.isStrip !== true || run.data.failureReason !== 'none',
   );
-  if (okRuns.length > 0 && invalidRuns.length > okRuns.length / 2) {
+  if (qualityFailures.length) {
     const reasonCounts = new Map<FailureReason, number>();
-    for (const run of invalidRuns) {
+    for (const run of qualityFailures) {
       reasonCounts.set(run.data.failureReason, (reasonCounts.get(run.data.failureReason) ?? 0) + 1);
     }
-    const [dominantReason = 'not_strip'] = [...reasonCounts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [];
-    const notes = uniqueNonEmpty(invalidRuns.map((run) => run.data.notes)).join(' ');
-    return buildInvalidStripResult(
-      request,
-      brand,
-      'ai',
+    const [dominantReason = 'low_confidence'] = [...reasonCounts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [];
+    const notes = uniqueNonEmpty(qualityFailures.map((run) => run.data.notes)).join(' ');
+    return reject(
       dominantReason,
-      notes || (dominantReason === 'unsupported_strip'
-        ? 'הסטיק שצולם אינו תואם לסוג הסטיק שנבחר. יש לבחור סטיק נתמך ולצלם שוב.'
-        : 'לא זוהה סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.'),
-      {
-        provider: invalidRuns[0]?.data.provider,
-        model: invalidRuns[0]?.data.model,
-        shotsUsed: invalidRuns.length,
-        confidence: invalidRuns.reduce((sum, run) => sum + (run.data.confidence ?? 0), 0) / invalidRuns.length,
-      },
+      notes || 'אחת מקריאות האיכות זיהתה בעיה בצילום. יש לצלם שוב סטיק מלא, חד וללא סנוור.',
+      qualityFailures.map((run) => `Quality gate failed: ${run.data.failureReason}.`),
     );
   }
 
-  const stripRuns = okRuns.filter((run) => run.data.isStrip);
-  if (!stripRuns.length) return null;
+  if (
+    runConfidences.some((confidence) => confidence < MIN_ACCEPTED_RUN_CONFIDENCE) ||
+    meanConfidence < MIN_ACCEPTED_MEAN_CONFIDENCE
+  ) {
+    return reject(
+      'low_confidence',
+      'רמת הביטחון בצבעי הסטיק נמוכה מדי. יש לצלם שוב באור טבעי ואחיד וללא השתקפות.',
+      [
+        `Every run must be at least ${MIN_ACCEPTED_RUN_CONFIDENCE}.`,
+        `Mean confidence must be at least ${MIN_ACCEPTED_MEAN_CONFIDENCE}.`,
+      ],
+    );
+  }
 
   const values: Partial<Record<StripParameter, number>> = {};
-  const agreements: number[] = [];
   for (const parameter of brand.parameters) {
-    const parameterValues = stripRuns
+    const chartValues = manufacturerLevelsFor(brand, parameter);
+    const rawValues = okRuns
       .map((run) => run.data.values[parameter])
-      .filter((value): value is number => typeof value === 'number' && !Number.isNaN(value));
-    if (!parameterValues.length) continue;
-    const med = median(parameterValues);
-    values[parameter] = Number(med.toFixed(2));
-    agreements.push(agreementOf(parameterValues, med));
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    const snappedValues = rawValues
+      .map((value) => snapToManufacturerLevel(value, chartValues))
+      .filter((value): value is number => typeof value === 'number');
+    const [selectedValue, agreementCount] = mostCommonValue(snappedValues);
+    const parameterEvidence: ParameterAnalysisEvidence = {
+      chartValues,
+      rawValues,
+      snappedValues,
+      selectedValue,
+      agreementCount,
+      requiredAgreement: MULTI_SHOT_RUNS,
+    };
+    evidence.parameters[parameter] = parameterEvidence;
+
+    if (
+      chartValues.length === 0 ||
+      rawValues.length !== MULTI_SHOT_RUNS ||
+      snappedValues.length !== MULTI_SHOT_RUNS ||
+      agreementCount !== MULTI_SHOT_RUNS ||
+      typeof selectedValue !== 'number'
+    ) {
+      return reject(
+        'low_confidence',
+        `לא התקבלה התאמה חד-משמעית עבור ${PARAM_META[parameter].name}. יש לצלם שוב ללא צל או סנוור.`,
+        [`No unanimous manufacturer-level match for ${parameter}.`],
+      );
+    }
+
+    values[parameter] = selectedValue;
   }
 
-  if (Object.keys(values).length === 0) {
-    return buildInvalidStripResult(
-      request,
-      brand,
-      'ai',
-      'low_confidence',
-      'לא התקבלו ערכים מהימנים מהתמונה. יש לצלם שוב את הסטיק באור טוב ובתוך המסגרת.',
-      {
-        provider: stripRuns[0]?.data.provider,
-        model: stripRuns[0]?.data.model,
-        shotsUsed: stripRuns.length,
-        confidence: stripRuns.reduce((sum, run) => sum + (run.data.confidence ?? 0), 0) / stripRuns.length,
-      },
-    );
+  if (isAquachekPro(brand)) {
+    const totalChlorine = evidence.parameters.totalChlorine?.snappedValues ?? [];
+    const bromine = evidence.parameters.bromine?.snappedValues ?? [];
+    const combinedPadMatches = totalChlorine.every((value, index) => {
+      const chlorineIndex = PRO_REFS.totalChlorine?.findIndex((reference) => reference.value === value) ?? -1;
+      const bromineIndex = PRO_REFS.bromine?.findIndex((reference) => reference.value === bromine[index]) ?? -2;
+      return chlorineIndex >= 0 && chlorineIndex === bromineIndex;
+    });
+
+    if (!combinedPadMatches) {
+      return reject(
+        'low_confidence',
+        'הקריאה המשולבת של כלור כללי וברום אינה עקבית. יש לצלם שוב את הסטיק.',
+        ['Total chlorine and bromine did not resolve to the same combined-pad chart index.'],
+      );
+    }
   }
 
-  const meanConfidence = stripRuns.reduce((sum, run) => sum + (run.data.confidence ?? 0.5), 0) / stripRuns.length;
-  const meanAgreement = agreements.length ? agreements.reduce((sum, agreement) => sum + agreement, 0) / agreements.length : 1;
-  const consensusConfidence = meanConfidence * (0.6 + 0.4 * meanAgreement);
-  const lowConfidence = consensusConfidence < CONFIDENCE_WARN_THRESHOLD;
-
-  if (consensusConfidence < CONFIDENCE_BLOCK_THRESHOLD) {
-    return buildInvalidStripResult(
-      request,
-      brand,
-      'ai',
-      'low_confidence',
-      'הבדיקה לא הייתה ברורה מספיק לניתוח אמין. יש לצלם שוב סטיק מלא, חד ומואר היטב.',
-      {
-        provider: stripRuns[0]?.data.provider,
-        model: stripRuns[0]?.data.model,
-        shotsUsed: stripRuns.length,
-        confidence: consensusConfidence,
-      },
-    );
-  }
-
-  const notes: string[] = [];
-  const providers = Array.from(new Set(stripRuns.map((run) => run.data.provider))).join(', ');
-  const models = Array.from(new Set(stripRuns.map((run) => run.data.model))).join(', ');
-  if (providers) notes.push(`AI provider: ${providers}.`);
-  if (models) notes.push(`AI model: ${models}.`);
-  if (stripRuns.length < MULTI_SHOT_RUNS) notes.push(`בוצעו ${stripRuns.length} מתוך ${MULTI_SHOT_RUNS} ניתוחי AI.`);
-  if (lowConfidence) notes.push('ביטחון נמוך - מומלץ לצלם שוב באור טבעי ועל רקע בהיר.');
-  for (const run of stripRuns) {
-    if (run.data.notes) notes.push(run.data.notes);
-  }
-
-  return buildResult(request, brand, values, 'ai', consensusConfidence, {
-    lowConfidence,
-    provider: stripRuns[0]?.data.provider,
-    model: stripRuns[0]?.data.model,
-    notes: uniqueNonEmpty(notes).join(' ') || undefined,
-    shotsUsed: stripRuns.length,
+  const notes = uniqueNonEmpty(okRuns.map((run) => run.data.notes));
+  return buildResult(request, brand, values, 'ai', Math.min(...runConfidences), {
+    provider,
+    model,
+    notes: notes.join(' ') || undefined,
+    shotsUsed: okRuns.length,
+    lowConfidence: false,
+    isValidStrip: true,
+    failureReason: 'none',
+    analysisVersion: ANALYSIS_VERSION,
+    accepted: true,
+    acceptanceReasons: ['All quality gates passed.', 'All manufacturer-level readings agreed 3/3.'],
+    evidence,
   });
 }
 
@@ -1441,9 +1458,13 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
 
   try {
     image = (await ImageScript.decode(imageBytes)) as DecodedImage;
-    dataUrl = await applyWhiteBalance(image, imageBytes, mimeType);
+    console.log('Decoded source image without color modification', {
+      width: image.width,
+      height: image.height,
+      mimeType,
+    });
   } catch (error) {
-    console.warn('remote image decode or white balance failed; continuing with raw image data for AI', error);
+    console.warn('remote image decode failed; continuing with raw image data for AI', error);
   }
 
   console.log('Starting Gemini strip analysis', {
