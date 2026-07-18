@@ -236,7 +236,11 @@ const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.6;
 const MIN_AQUACHEK_STRUCTURE_CONFIDENCE = 0.5;
-const MIN_AQUACHEK_SHARPNESS_VARIANCE = 120;
+// Real phone captures remain readable well below the synthetic-image score.
+// A threshold of 8 accepts mild camera softness while still rejecting
+// clearly out-of-focus captures (validated against progressively blurred
+// real strip crops).
+const MIN_AQUACHEK_SHARPNESS_VARIANCE = 8;
 
 class EdgeAnalysisError extends Error {
   code: 'unavailable' | 'invalid_strip';

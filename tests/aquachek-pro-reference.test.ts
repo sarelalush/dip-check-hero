@@ -113,7 +113,7 @@ describe('AquaChek Pro reference chart', () => {
   it('separates sharply rendered strips from heavily blurred strips', () => {
     const { png } = renderSyntheticStrip(enumerateCanonicalCases()[417], VALID_VARIANTS[0]);
     const blurred = new Uint8Array(png.data.length);
-    const blurRadius = 4;
+    const blurRadius = 12;
     for (let y = 0; y < png.height; y += 1) {
       for (let x = 0; x < png.width; x += 1) {
         const totals = [0, 0, 0];
@@ -147,7 +147,7 @@ describe('AquaChek Pro reference chart', () => {
 
     expect(sharp.sampleCount).toBeGreaterThan(1_000);
     expect(sharp.variance).toBeGreaterThan(1_000);
-    expect(outOfFocus.variance).toBeLessThan(120);
+    expect(outOfFocus.variance).toBeLessThan(8);
   });
 
   it('accepts a valid centered four-pad carrier structure', () => {

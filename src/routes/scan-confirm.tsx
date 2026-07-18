@@ -249,8 +249,9 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
     setImgBox({ x, y, w: drawW, h: drawH });
     setRect((prev) => {
       if (prev) return prev;
-      // Default crop: ~middle 40% width, 70% height of the image area.
-      const cw = drawW * 0.45;
+      // Start near the proportions of a test strip while leaving enough
+      // context for the user to position the crop precisely.
+      const cw = drawW * 0.28;
       const ch = drawH * 0.75;
       return {
         x: x + (drawW - cw) / 2,
@@ -285,7 +286,9 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
     if (!d || !rect || !imgBox) return;
     const dx = e.clientX - d.startX;
     const dy = e.clientY - d.startY;
-    const minSize = 40;
+    // Keep the selection usable on small screens while allowing a crop that
+    // is genuinely tight around a narrow physical test strip.
+    const minSize = 12;
     const left = imgBox.x;
     const top = imgBox.y;
     const right = imgBox.x + imgBox.w;

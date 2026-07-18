@@ -21,12 +21,8 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 export async function cropToWhite(
   dataUrl: string,
   rect: CropRectNorm,
-  opts: { outWidth?: number; outHeight?: number; padding?: number } = {},
+  opts: { maxDimension?: number; paddingRatio?: number } = {},
 ): Promise<string> {
-  const outW = opts.outWidth ?? 640;
-  const outH = opts.outHeight ?? 800;
-  const padding = opts.padding ?? 60;
-
   const img = await loadImage(dataUrl);
   const w = img.naturalWidth;
   const h = img.naturalHeight;
@@ -37,6 +33,19 @@ export async function cropToWhite(
   const cropW = Math.max(1, Math.round(rect.w * w));
   const cropH = Math.max(1, Math.round(rect.h * h));
 
+  // Preserve the user's crop aspect ratio instead of placing a narrow strip
+  // inside a fixed canvas with large white margins. Keep only a tiny safety
+  // border so the strip edges are not accidentally clipped.
+  const maxDimension = opts.maxDimension ?? 1_600;
+  const paddingRatio = opts.paddingRatio ?? 0.015;
+  const naturalLongSide = Math.max(cropW, cropH);
+  const scale = Math.min(1, maxDimension / naturalLongSide);
+  const contentW = Math.max(1, Math.round(cropW * scale));
+  const contentH = Math.max(1, Math.round(cropH * scale));
+  const padding = Math.max(1, Math.round(Math.min(contentW, contentH) * paddingRatio));
+  const outW = contentW + padding * 2;
+  const outH = contentH + padding * 2;
+
   const out = document.createElement("canvas");
   out.width = outW;
   out.height = outH;
@@ -45,14 +54,6 @@ export async function cropToWhite(
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, outW, outH);
 
-  const availW = outW - padding * 2;
-  const availH = outH - padding * 2;
-  const scale = Math.min(availW / cropW, availH / cropH);
-  const drawW = cropW * scale;
-  const drawH = cropH * scale;
-  const dx = (outW - drawW) / 2;
-  const dy = (outH - drawH) / 2;
-
-  ctx.drawImage(img, cropX, cropY, cropW, cropH, dx, dy, drawW, drawH);
-  return out.toDataURL("image/jpeg", 0.93);
+  ctx.drawImage(img, cropX, cropY, cropW, cropH, padding, padding, contentW, contentH);
+  return out.toDataURL("image/jpeg", 0.95);
 }
