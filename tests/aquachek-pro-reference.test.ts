@@ -163,6 +163,26 @@ describe('AquaChek Pro reference chart', () => {
     expect(structure.hasSplitOrExtraBands).toBe(false);
   });
 
+  it('uses exposed neutral carrier when a reagent pad fills the old reference window', () => {
+    const { png } = renderSyntheticStrip(enumerateCanonicalCases()[417], VALID_VARIANTS[0]);
+    const startY = Math.floor(png.height * 0.09);
+    const endY = Math.ceil(png.height * 0.15);
+    for (let y = startY; y < endY; y += 1) {
+      for (let x = Math.floor(png.width * 0.43); x < Math.ceil(png.width * 0.57); x += 1) {
+        const offset = (y * png.width + x) * 4;
+        [png.data[offset], png.data[offset + 1], png.data[offset + 2]] = [228, 71, 135];
+      }
+    }
+    const structure = analyzeAquachekProStructure(png.width, png.height, (x, y) => {
+      const offset = (y * png.width + x) * 4;
+      return [png.data[offset], png.data[offset + 1], png.data[offset + 2]];
+    });
+
+    expect(structure.passed).toBe(true);
+    expect(structure.carrierChroma).toBeLessThanOrEqual(20);
+    expect(structure.hasOversizedBand).toBe(false);
+  });
+
   it('rejects an extra pad merged between two legal pads', () => {
     const { png } = renderSyntheticStrip(enumerateCanonicalCases()[417], VALID_VARIANTS[0]);
     const regions = getFixedPadSampleRegions(png.width, png.height, 4);

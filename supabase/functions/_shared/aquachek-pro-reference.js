@@ -303,7 +303,27 @@ export function analyzeAquachekProStructure(imageWidth, imageHeight, getRgb) {
     return /** @type {Rgb} */ (totals.map((value) => (count ? value / count : 0)));
   };
 
-  const carrierReference = averageRegion(imageHeight * 0.09, imageHeight * 0.15);
+  // A tight crop can place the first reagent pad inside the old fixed reference
+  // window. Estimate the carrier from the brightest neutral lane rows instead,
+  // which correspond to the exposed white strip between and below the pads.
+  const neutralRows = [];
+  for (let y = Math.floor(imageHeight * 0.08); y <= Math.ceil(imageHeight * 0.92); y += 1) {
+    const row = averageRegion(y, y + 1);
+    const luminance = row[0] * 0.2126 + row[1] * 0.7152 + row[2] * 0.0722;
+    const chroma = Math.max(...row) - Math.min(...row);
+    if (luminance >= 120 && chroma <= 55) neutralRows.push({ row, luminance });
+  }
+  neutralRows.sort((left, right) => right.luminance - left.luminance);
+  const carrierCandidates = neutralRows.slice(
+    0,
+    Math.max(5, Math.ceil(neutralRows.length * 0.2)),
+  );
+  const carrierReference = carrierCandidates.length
+    ? /** @type {Rgb} */ ([0, 1, 2].map((channel) =>
+        carrierCandidates.reduce((sum, candidate) => sum + candidate.row[channel], 0) /
+        carrierCandidates.length
+      ))
+    : averageRegion(imageHeight * 0.09, imageHeight * 0.15);
   const carrierLuminance =
     carrierReference[0] * 0.2126 + carrierReference[1] * 0.7152 + carrierReference[2] * 0.0722;
   const carrierChroma = Math.max(...carrierReference) - Math.min(...carrierReference);
