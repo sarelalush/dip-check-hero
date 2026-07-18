@@ -211,7 +211,7 @@ function ScanConfirmScreen() {
   );
 }
 
-type Handle = "move" | "tl" | "tr" | "bl" | "br";
+type Handle = "move" | "tl" | "tr" | "bl" | "br" | "l" | "r" | "t" | "b";
 
 interface CropperProps {
   src: string;
@@ -251,7 +251,7 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
       if (prev) return prev;
       // Start near the proportions of a test strip while leaving enough
       // context for the user to position the crop precisely.
-      const cw = drawW * 0.28;
+      const cw = drawW * 0.22;
       const ch = drawH * 0.75;
       return {
         x: x + (drawW - cw) / 2,
@@ -272,7 +272,7 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
     if (!rect) return;
     e.preventDefault();
     e.stopPropagation();
-    (e.target as Element).setPointerCapture(e.pointerId);
+    e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = {
       handle,
       startX: e.clientX,
@@ -288,7 +288,8 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
     const dy = e.clientY - d.startY;
     // Keep the selection usable on small screens while allowing a crop that
     // is genuinely tight around a narrow physical test strip.
-    const minSize = 12;
+    const minWidth = 6;
+    const minHeight = 18;
     const left = imgBox.x;
     const top = imgBox.y;
     const right = imgBox.x + imgBox.w;
@@ -302,17 +303,25 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
       let x2 = x + w;
       let y2 = y + h;
       if (d.handle === "tl") {
-        x = Math.max(left, Math.min(x2 - minSize, x + dx));
-        y = Math.max(top, Math.min(y2 - minSize, y + dy));
+        x = Math.max(left, Math.min(x2 - minWidth, x + dx));
+        y = Math.max(top, Math.min(y2 - minHeight, y + dy));
       } else if (d.handle === "tr") {
-        x2 = Math.min(right, Math.max(x + minSize, x2 + dx));
-        y = Math.max(top, Math.min(y2 - minSize, y + dy));
+        x2 = Math.min(right, Math.max(x + minWidth, x2 + dx));
+        y = Math.max(top, Math.min(y2 - minHeight, y + dy));
       } else if (d.handle === "bl") {
-        x = Math.max(left, Math.min(x2 - minSize, x + dx));
-        y2 = Math.min(bottom, Math.max(y + minSize, y2 + dy));
+        x = Math.max(left, Math.min(x2 - minWidth, x + dx));
+        y2 = Math.min(bottom, Math.max(y + minHeight, y2 + dy));
       } else if (d.handle === "br") {
-        x2 = Math.min(right, Math.max(x + minSize, x2 + dx));
-        y2 = Math.min(bottom, Math.max(y + minSize, y2 + dy));
+        x2 = Math.min(right, Math.max(x + minWidth, x2 + dx));
+        y2 = Math.min(bottom, Math.max(y + minHeight, y2 + dy));
+      } else if (d.handle === "l") {
+        x = Math.max(left, Math.min(x2 - minWidth, x + dx));
+      } else if (d.handle === "r") {
+        x2 = Math.min(right, Math.max(x + minWidth, x2 + dx));
+      } else if (d.handle === "t") {
+        y = Math.max(top, Math.min(y2 - minHeight, y + dy));
+      } else if (d.handle === "b") {
+        y2 = Math.min(bottom, Math.max(y + minHeight, y2 + dy));
       }
       w = x2 - x;
       h = y2 - y;
@@ -389,21 +398,53 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
                 <div className="absolute top-1/3 left-0 h-px w-full bg-white/30" />
                 <div className="absolute top-2/3 left-0 h-px w-full bg-white/30" />
               </div>
-              {/* Corner handles */}
+              {/* Corner handles. The invisible hit area stays large even when
+                  the crop becomes narrower than the visible controls. */}
               {(["tl", "tr", "bl", "br"] as const).map((h) => (
                 <div
                   key={h}
                   onPointerDown={(e) => startDrag(e, h)}
-                  className="absolute h-7 w-7 rounded-full border-2 border-primary bg-white"
+                  className="absolute z-20 flex h-11 w-11 items-center justify-center"
                   style={{
-                    left: h.endsWith("l") ? -14 : "auto",
-                    right: h.endsWith("r") ? -14 : "auto",
-                    top: h.startsWith("t") ? -14 : "auto",
-                    bottom: h.startsWith("b") ? -14 : "auto",
+                    left: h.endsWith("l") ? -22 : "auto",
+                    right: h.endsWith("r") ? -22 : "auto",
+                    top: h.startsWith("t") ? -22 : "auto",
+                    bottom: h.startsWith("b") ? -22 : "auto",
                     touchAction: "none",
                   }}
-                />
+                >
+                  <span className="h-5 w-5 rounded-full border-2 border-primary bg-white shadow" />
+                </div>
               ))}
+
+              {/* Independent edge handles make a very narrow strip crop easy:
+                  left/right change width only; top/bottom change height only. */}
+              {(["l", "r", "t", "b"] as const).map((h) => {
+                const vertical = h === "l" || h === "r";
+                return (
+                  <div
+                    key={h}
+                    onPointerDown={(e) => startDrag(e, h)}
+                    className="absolute z-30 flex items-center justify-center"
+                    style={{
+                      left: h === "l" ? -22 : h === "r" ? "auto" : "50%",
+                      right: h === "r" ? -22 : "auto",
+                      top: h === "t" ? -22 : h === "b" ? "auto" : "50%",
+                      bottom: h === "b" ? -22 : "auto",
+                      width: vertical ? 44 : 64,
+                      height: vertical ? 64 : 44,
+                      transform: vertical ? "translateY(-50%)" : "translateX(-50%)",
+                      touchAction: "none",
+                    }}
+                  >
+                    <span
+                      className={`rounded-full border-2 border-primary bg-white shadow ${
+                        vertical ? "h-9 w-3" : "h-3 w-9"
+                      }`}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </>
         )}
