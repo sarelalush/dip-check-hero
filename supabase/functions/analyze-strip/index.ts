@@ -43,6 +43,7 @@ import {
   getLocalizedPadSampleRegions,
   hasMinimumAquachekStructureConfidence,
   measureAquachekProSharpness,
+  refineAquachekProPadCenterYs,
 } from '../_shared/aquachek-pro-reference.js';
 
 type StatusTone = 'success' | 'warning' | 'danger';
@@ -708,16 +709,49 @@ function analyzeCv(image: DecodedImage, brand: StripBrand, normalizedCenterYs?: 
       image.height,
       (x: number, y: number) => getPixelRgb(image, x, y),
     );
-    const pads = samplePads(image, 4, normalizedCenterYs);
+    const refinedCenterYs = refineAquachekProPadCenterYs(
+      image.height,
+      structure.colorBands,
+      normalizedCenterYs,
+    );
     const whiteReference = structure.carrierReference ?? sampleWhiteReference(image);
     const sharpness = measureAquachekProSharpness(
       image.width,
       image.height,
       (x: number, y: number) => getPixelRgb(image, x, y),
     );
-    const analysis = analyzeAquachekProDiscretePadRgbs(pads, {
-      whiteReference,
+    const candidates = [
+      { centerYs: normalizedCenterYs, localization: 'model-consensus' },
+      { centerYs: refinedCenterYs, localization: 'structure-refined' },
+    ].filter(
+      (candidate, index, entries) =>
+        candidate.centerYs?.length === 4 &&
+        entries.findIndex((entry) =>
+          entry.centerYs?.every((center, centerIndex) =>
+            Math.abs(center - (candidate.centerYs?.[centerIndex] ?? center)) < 0.0001
+          )
+        ) === index,
+    ).map((candidate) => {
+      const pads = samplePads(image, 4, candidate.centerYs);
+      return {
+        ...candidate,
+        analysis: analyzeAquachekProDiscretePadRgbs(pads, { whiteReference }),
+        pads,
+      };
     });
+    if (candidates.length === 0) {
+      const pads = samplePads(image, 4);
+      candidates.push({
+        analysis: analyzeAquachekProDiscretePadRgbs(pads, { whiteReference }),
+        centerYs: undefined,
+        localization: 'fixed-fallback',
+        pads,
+      });
+    }
+    const selected = candidates.reduce((best, candidate) =>
+      candidate.analysis.confidence > best.analysis.confidence ? candidate : best
+    );
+    const { analysis, pads } = selected;
     return {
       values: analysis.values,
       confidence: analysis.confidence,
@@ -728,8 +762,14 @@ function analyzeCv(image: DecodedImage, brand: StripBrand, normalizedCenterYs?: 
         margins: analysis.margins,
         padRgbs: pads,
         selectedValues: analysis.values,
-        padCenterYs: normalizedCenterYs,
-        padLocalization: normalizedCenterYs?.length === 4 ? 'model-consensus' : 'fixed-fallback',
+        padCenterYs: selected.centerYs,
+        modelPadCenterYs: normalizedCenterYs,
+        padLocalization: selected.localization,
+        localizationCandidates: candidates.map((candidate) => ({
+          confidence: candidate.analysis.confidence,
+          padCenterYs: candidate.centerYs,
+          padLocalization: candidate.localization,
+        })),
         whiteReference,
         sharpnessVariance: sharpness.variance,
         minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,

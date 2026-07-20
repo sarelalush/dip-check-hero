@@ -41,9 +41,9 @@ type RenderedImage = CropBox & {
 type ResizeHandle = 'topLeft' | 'top' | 'topRight' | 'right' | 'bottomRight' | 'bottom' | 'bottomLeft' | 'left';
 
 const POOL_BACKGROUND = require('../../assets/images/home-pool.png');
-const MIN_CROP_WIDTH = 10;
-const MIN_CROP_HEIGHT = 40;
-const CROP_NUDGE = 4;
+const MIN_CROP_WIDTH = 4;
+const MIN_CROP_HEIGHT = 20;
+const CROP_NUDGE = 2;
 const CROP_PADDING_RATIO = 0;
 
 function clamp(value: number, min: number, max: number) {
@@ -484,9 +484,7 @@ export function CropScanImageScreen({ navigation, route }: Props) {
                     },
                   ]}
                 >
-                  <View {...moveResponder.panHandlers} style={styles.moveArea}>
-                    <Text style={styles.cropHint}>גרור להזזה</Text>
-                  </View>
+                  <View {...moveResponder.panHandlers} style={styles.moveArea} />
                   <View {...resizeResponders.topLeft.panHandlers} style={[styles.cornerHandle, styles.topLeftHandle]} />
                   <View
                     {...resizeResponders.topRight.panHandlers}
@@ -692,43 +690,31 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     zIndex: 1,
   },
-  cropHint: {
-    backgroundColor: 'rgba(8,175,203,0.9)',
-    borderRadius: radius.round,
-    color: colors.white,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 12,
-    fontWeight: '900',
-    overflow: 'hidden',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    ...rtl.textCenter,
-  },
   cornerHandle: {
     backgroundColor: colors.primary,
     borderColor: colors.white,
-    borderRadius: 17,
+    borderRadius: 13,
     borderWidth: 3,
-    height: 34,
+    height: 26,
     position: 'absolute',
-    width: 34,
+    width: 26,
     zIndex: 10,
   },
   topLeftHandle: {
-    left: -18,
-    top: -18,
+    left: -14,
+    top: -14,
   },
   topRightHandle: {
-    right: -18,
-    top: -18,
+    right: -14,
+    top: -14,
   },
   bottomRightHandle: {
-    bottom: -18,
-    right: -18,
+    bottom: -14,
+    right: -14,
   },
   bottomLeftHandle: {
-    bottom: -18,
-    left: -18,
+    bottom: -14,
+    left: -14,
   },
   edgeHandle: {
     backgroundColor: colors.white,

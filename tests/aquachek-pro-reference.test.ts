@@ -10,6 +10,7 @@ import {
   getLocalizedPadSampleRegions,
   hasMinimumAquachekStructureConfidence,
   measureAquachekProSharpness,
+  refineAquachekProPadCenterYs,
 } from '../supabase/functions/_shared/aquachek-pro-reference.js';
 import {
   VALID_VARIANTS,
@@ -102,6 +103,35 @@ describe('AquaChek Pro reference chart', () => {
       0.09, 0.2, 0.34, 0.48,
     ]);
     expect(regions.every((region) => region.width >= 12 && region.height >= 10)).toBe(true);
+  });
+
+  it('reconstructs a pale missing first pad from the visible lower bands', () => {
+    const centers = refineAquachekProPadCenterYs(
+      760,
+      [
+        { startY: 190, endY: 216, height: 27 },
+        { startY: 261, endY: 325, height: 65 },
+        { startY: 376, endY: 440, height: 65 },
+      ],
+      [0.14, 0.29, 0.44, 0.59],
+    );
+
+    expect(centers).toHaveLength(4);
+    expect(centers?.[0]).toBeGreaterThan(0.05);
+    expect(centers?.[0]).toBeLessThan(0.13);
+    expect(centers?.[2]).toBeCloseTo(0.39, 1);
+    expect(centers?.[3]).toBeCloseTo(0.54, 1);
+  });
+
+  it('keeps model centers when fewer than two reagent bands are visible', () => {
+    const modelCenters = [0.1, 0.24, 0.38, 0.52];
+    expect(
+      refineAquachekProPadCenterYs(
+        700,
+        [{ startY: 250, endY: 300, height: 51 }],
+        modelCenters,
+      ),
+    ).toEqual(modelCenters);
   });
 
   it('rejects a non-four-pad input', () => {

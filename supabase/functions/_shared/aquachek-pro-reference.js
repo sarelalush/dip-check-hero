@@ -289,6 +289,77 @@ export function getLocalizedPadSampleRegions(imageWidth, imageHeight, normalized
   });
 }
 
+/**
+ * Refine model-reported pad centers using the regularly spaced reagent bands
+ * visible on the physical strip. Pale pads can blend into the white carrier,
+ * so the detected bands may represent only a subset of the four pads.
+ *
+ * @param {number} imageHeight
+ * @param {Array<{ startY: number, endY: number, height: number }>} colorBands
+ * @param {number[] | undefined} modelCenterYs
+ * @returns {number[] | undefined}
+ */
+export function refineAquachekProPadCenterYs(imageHeight, colorBands, modelCenterYs) {
+  if (
+    imageHeight <= 0 ||
+    !Array.isArray(modelCenterYs) ||
+    modelCenterYs.length !== 4 ||
+    colorBands.length < 2 ||
+    colorBands.length > 4
+  ) {
+    return modelCenterYs;
+  }
+
+  const bands = colorBands.map((band) => ({
+    center: ((band.startY + band.endY) / 2) / imageHeight,
+    weight: Math.max(0.2, band.height / Math.max(...colorBands.map((entry) => entry.height))),
+  }));
+  const assignments = [];
+  const collectAssignments = (nextSlot, selected) => {
+    if (selected.length === bands.length) {
+      assignments.push(selected);
+      return;
+    }
+    for (let slot = nextSlot; slot < 4; slot += 1) {
+      collectAssignments(slot + 1, [...selected, slot]);
+    }
+  };
+  collectAssignments(0, []);
+
+  let best = null;
+  for (const slots of assignments) {
+    const weightSum = bands.reduce((sum, band) => sum + band.weight, 0);
+    const meanSlot = bands.reduce((sum, band, index) => sum + band.weight * slots[index], 0) / weightSum;
+    const meanCenter = bands.reduce((sum, band) => sum + band.weight * band.center, 0) / weightSum;
+    const denominator = bands.reduce(
+      (sum, band, index) => sum + band.weight * (slots[index] - meanSlot) ** 2,
+      0,
+    );
+    if (denominator <= 0) continue;
+    const step = bands.reduce(
+      (sum, band, index) =>
+        sum + band.weight * (slots[index] - meanSlot) * (band.center - meanCenter),
+      0,
+    ) / denominator;
+    const start = meanCenter - step * meanSlot;
+    const centers = Array.from({ length: 4 }, (_, index) => start + step * index);
+    if (step < 0.07 || step > 0.22 || centers[0] < 0.01 || centers[3] > 0.95) continue;
+
+    const residual = bands.reduce(
+      (sum, band, index) => sum + band.weight * Math.abs(band.center - centers[slots[index]]),
+      0,
+    ) / weightSum;
+    const modelDistance = centers.reduce(
+      (sum, center, index) => sum + Math.abs(center - modelCenterYs[index]),
+      0,
+    ) / centers.length;
+    const score = residual * 2 + modelDistance * 0.35;
+    if (!best || score < best.score) best = { centers, score };
+  }
+
+  return best?.centers ?? modelCenterYs;
+}
+
 /** @param {number} imageWidth @param {number} imageHeight */
 export function getFixedWhiteReferenceRegion(imageWidth, imageHeight) {
   const width = Math.max(16, Math.min(40, imageWidth * 0.04));
