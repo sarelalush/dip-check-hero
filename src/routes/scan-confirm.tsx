@@ -9,6 +9,8 @@ import {
   Sparkles,
   Crop,
   X,
+  Minus,
+  Plus,
 } from "lucide-react";
 import { scanSession } from "@/utils/scanSession";
 import {
@@ -223,9 +225,7 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
   // Image draw rect inside wrap (pixels), once image loads.
-  const [imgBox, setImgBox] = useState<{ x: number; y: number; w: number; h: number } | null>(
-    null,
-  );
+  const [imgBox, setImgBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   // Crop rect in pixel coords relative to wrap.
   const [rect, setRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const dragRef = useRef<{
@@ -251,7 +251,7 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
       if (prev) return prev;
       // Start near the proportions of a test strip while leaving enough
       // context for the user to position the crop precisely.
-      const cw = drawW * 0.22;
+      const cw = drawW * 0.14;
       const ch = drawH * 0.75;
       return {
         x: x + (drawW - cw) / 2,
@@ -288,8 +288,8 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
     const dy = e.clientY - d.startY;
     // Keep the selection usable on small screens while allowing a crop that
     // is genuinely tight around a narrow physical test strip.
-    const minWidth = 6;
-    const minHeight = 18;
+    const minWidth = 2;
+    const minHeight = 12;
     const left = imgBox.x;
     const top = imgBox.y;
     const right = imgBox.x + imgBox.w;
@@ -333,6 +333,36 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
     dragRef.current = null;
   }
 
+  function setCropDimension(axis: "width" | "height", ratio: number) {
+    if (!imgBox) return;
+    setRect((current) => {
+      if (!current) return current;
+
+      const horizontal = axis === "width";
+      const boxSize = horizontal ? imgBox.w : imgBox.h;
+      const minSize = horizontal ? 2 : 12;
+      const nextSize = Math.max(minSize, Math.min(boxSize, boxSize * ratio));
+      const center = horizontal ? current.x + current.w / 2 : current.y + current.h / 2;
+      const boxStart = horizontal ? imgBox.x : imgBox.y;
+      const nextStart = Math.max(
+        boxStart,
+        Math.min(boxStart + boxSize - nextSize, center - nextSize / 2),
+      );
+
+      return horizontal
+        ? { ...current, x: nextStart, w: nextSize }
+        : { ...current, y: nextStart, h: nextSize };
+    });
+  }
+
+  function nudgeCropDimension(axis: "width" | "height", direction: -1 | 1) {
+    if (!rect || !imgBox) return;
+    const currentRatio = axis === "width" ? rect.w / imgBox.w : rect.h / imgBox.h;
+    // A quarter-percent step remains precise even when the strip is only a
+    // handful of displayed pixels wide.
+    setCropDimension(axis, currentRatio + direction * 0.0025);
+  }
+
   function apply() {
     if (!rect || !imgBox) return;
     const nx = (rect.x - imgBox.x) / imgBox.w;
@@ -342,8 +372,8 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
     onApply({
       x: Math.max(0, Math.min(1, nx)),
       y: Math.max(0, Math.min(1, ny)),
-      w: Math.max(0.01, Math.min(1, nw)),
-      h: Math.max(0.01, Math.min(1, nh)),
+      w: Math.max(0.002, Math.min(1, nw)),
+      h: Math.max(0.005, Math.min(1, nh)),
     });
   }
 
@@ -450,6 +480,27 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
         )}
       </div>
 
+      {rect && imgBox && (
+        <div className="grid grid-cols-2 gap-3 border-t border-white/10 bg-black px-4 py-3">
+          <CropDimensionControl
+            label="רוחב"
+            value={rect.w / imgBox.w}
+            min={0.003}
+            onChange={(value) => setCropDimension("width", value)}
+            onDecrease={() => nudgeCropDimension("width", -1)}
+            onIncrease={() => nudgeCropDimension("width", 1)}
+          />
+          <CropDimensionControl
+            label="גובה"
+            value={rect.h / imgBox.h}
+            min={0.02}
+            onChange={(value) => setCropDimension("height", value)}
+            onDecrease={() => nudgeCropDimension("height", -1)}
+            onIncrease={() => nudgeCropDimension("height", 1)}
+          />
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-3 px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-3">
         <button
           onClick={onCancel}
@@ -462,6 +513,65 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
           className="flex-[2] rounded-2xl bg-primary px-4 py-3 text-base font-bold text-primary-foreground shadow-[var(--shadow-soft)] active:scale-[0.98]"
         >
           אישור החיתוך
+        </button>
+      </div>
+    </div>
+  );
+}
+
+interface CropDimensionControlProps {
+  label: string;
+  value: number;
+  min: number;
+  onChange: (value: number) => void;
+  onDecrease: () => void;
+  onIncrease: () => void;
+}
+
+function CropDimensionControl({
+  label,
+  value,
+  min,
+  onChange,
+  onDecrease,
+  onIncrease,
+}: CropDimensionControlProps) {
+  return (
+    <div className="min-w-0" dir="ltr">
+      <div className="mb-1 flex items-center justify-between gap-2" dir="rtl">
+        <span className="text-xs font-semibold text-white/80">{label}</span>
+        <span className="text-[11px] tabular-nums text-white/55">
+          {Math.max(1, Math.round(value * 100))}%
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onDecrease}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 active:scale-95"
+          aria-label={`הקטן ${label}`}
+          title={`הקטן ${label}`}
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+        <input
+          type="range"
+          min={min}
+          max={1}
+          step={0.001}
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+          className="h-9 min-w-0 flex-1 accent-cyan-400"
+          aria-label={label}
+        />
+        <button
+          type="button"
+          onClick={onIncrease}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/10 active:scale-95"
+          aria-label={`הגדל ${label}`}
+          title={`הגדל ${label}`}
+        >
+          <Plus className="h-4 w-4" />
         </button>
       </div>
     </div>

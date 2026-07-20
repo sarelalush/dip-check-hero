@@ -41,7 +41,9 @@ type RenderedImage = CropBox & {
 type ResizeHandle = 'topLeft' | 'top' | 'topRight' | 'right' | 'bottomRight' | 'bottom' | 'bottomLeft' | 'left';
 
 const POOL_BACKGROUND = require('../../assets/images/home-pool.png');
-const MIN_CROP_SIZE = 70;
+const MIN_CROP_WIDTH = 10;
+const MIN_CROP_HEIGHT = 40;
+const CROP_NUDGE = 4;
 const CROP_PADDING_RATIO = 0;
 
 function clamp(value: number, min: number, max: number) {
@@ -58,8 +60,8 @@ function roundCrop(crop: ImageManipulator.ActionCrop['crop'], image: Size): Imag
 }
 
 function clampCrop(crop: CropBox, image: RenderedImage): CropBox {
-  const width = clamp(crop.width, MIN_CROP_SIZE, image.width);
-  const height = clamp(crop.height, MIN_CROP_SIZE, image.height);
+  const width = clamp(crop.width, MIN_CROP_WIDTH, image.width);
+  const height = clamp(crop.height, MIN_CROP_HEIGHT, image.height);
   const x = clamp(crop.x, 0, Math.max(0, image.width - width));
   const y = clamp(crop.y, 0, Math.max(0, image.height - height));
 
@@ -83,7 +85,7 @@ function computeRenderedImage(container: Size, image: Size): RenderedImage | nul
 }
 
 function createInitialCrop(image: RenderedImage): CropBox {
-  const width = image.width * 0.78;
+  const width = image.width * 0.2;
   const height = image.height * 0.78;
 
   return clampCrop(
@@ -97,7 +99,12 @@ function createInitialCrop(image: RenderedImage): CropBox {
   );
 }
 
-function resizeCrop(start: CropBox, gesture: PanResponderGestureState, handle: ResizeHandle, image: RenderedImage): CropBox {
+function resizeCrop(
+  start: CropBox,
+  gesture: PanResponderGestureState,
+  handle: ResizeHandle,
+  image: RenderedImage,
+): CropBox {
   const resizingLeft = handle === 'left' || handle === 'topLeft' || handle === 'bottomLeft';
   const resizingRight = handle === 'right' || handle === 'topRight' || handle === 'bottomRight';
   const resizingTop = handle === 'top' || handle === 'topLeft' || handle === 'topRight';
@@ -125,18 +132,18 @@ function resizeCrop(start: CropBox, gesture: PanResponderGestureState, handle: R
     nextHeight = start.height + gesture.dy;
   }
 
-  if (nextWidth < MIN_CROP_SIZE) {
+  if (nextWidth < MIN_CROP_WIDTH) {
     if (resizingLeft) {
-      nextX = start.x + start.width - MIN_CROP_SIZE;
+      nextX = start.x + start.width - MIN_CROP_WIDTH;
     }
-    nextWidth = MIN_CROP_SIZE;
+    nextWidth = MIN_CROP_WIDTH;
   }
 
-  if (nextHeight < MIN_CROP_SIZE) {
+  if (nextHeight < MIN_CROP_HEIGHT) {
     if (resizingTop) {
-      nextY = start.y + start.height - MIN_CROP_SIZE;
+      nextY = start.y + start.height - MIN_CROP_HEIGHT;
     }
-    nextHeight = MIN_CROP_SIZE;
+    nextHeight = MIN_CROP_HEIGHT;
   }
 
   if (nextX < 0) {
@@ -237,42 +244,48 @@ export function CropScanImageScreen({ navigation, route }: Props) {
     [],
   );
 
-  const resizeResponders = useMemo(
-    () => {
-      const handles: ResizeHandle[] = ['topLeft', 'top', 'topRight', 'right', 'bottomRight', 'bottom', 'bottomLeft', 'left'];
-      return handles.reduce(
-        (responders, handle) => {
-          responders[handle] = PanResponder.create({
-            onMoveShouldSetPanResponderCapture: () => true,
-            onMoveShouldSetPanResponder: () => true,
-            onStartShouldSetPanResponderCapture: () => true,
-            onStartShouldSetPanResponder: () => true,
-            onPanResponderGrant: () => {
-              activeHandleRef.current = handle;
-              gestureStart.current = cropRef.current;
-            },
-            onPanResponderMove: (_event, gesture) => {
-              const image = renderedImageRef.current;
-              if (!image || !gestureStart.current) return;
-              setCrop(resizeCrop(gestureStart.current, gesture, handle, image));
-            },
-            onPanResponderRelease: () => {
-              activeHandleRef.current = null;
-              gestureStart.current = null;
-            },
-            onPanResponderTerminate: () => {
-              activeHandleRef.current = null;
-              gestureStart.current = null;
-            },
-            onPanResponderTerminationRequest: () => false,
-          });
-          return responders;
-        },
-        {} as Record<ResizeHandle, ReturnType<typeof PanResponder.create>>,
-      );
-    },
-    [],
-  );
+  const resizeResponders = useMemo(() => {
+    const handles: ResizeHandle[] = [
+      'topLeft',
+      'top',
+      'topRight',
+      'right',
+      'bottomRight',
+      'bottom',
+      'bottomLeft',
+      'left',
+    ];
+    return handles.reduce(
+      (responders, handle) => {
+        responders[handle] = PanResponder.create({
+          onMoveShouldSetPanResponderCapture: () => true,
+          onMoveShouldSetPanResponder: () => true,
+          onStartShouldSetPanResponderCapture: () => true,
+          onStartShouldSetPanResponder: () => true,
+          onPanResponderGrant: () => {
+            activeHandleRef.current = handle;
+            gestureStart.current = cropRef.current;
+          },
+          onPanResponderMove: (_event, gesture) => {
+            const image = renderedImageRef.current;
+            if (!image || !gestureStart.current) return;
+            setCrop(resizeCrop(gestureStart.current, gesture, handle, image));
+          },
+          onPanResponderRelease: () => {
+            activeHandleRef.current = null;
+            gestureStart.current = null;
+          },
+          onPanResponderTerminate: () => {
+            activeHandleRef.current = null;
+            gestureStart.current = null;
+          },
+          onPanResponderTerminationRequest: () => false,
+        });
+        return responders;
+      },
+      {} as Record<ResizeHandle, ReturnType<typeof PanResponder.create>>,
+    );
+  }, []);
 
   function onPreviewLayout(event: LayoutChangeEvent) {
     const { height, width } = event.nativeEvent.layout;
@@ -285,8 +298,30 @@ export function CropScanImageScreen({ navigation, route }: Props) {
     setMessage('החיתוך אופס. גרור את הפינות עד שנשאר רק הסטיק.');
   }
 
+  function adjustCropDimension(axis: 'height' | 'width', direction: -1 | 1) {
+    const image = renderedImageRef.current;
+    const current = cropRef.current;
+    if (!image || !current) return;
+
+    const delta = CROP_NUDGE * direction;
+    const nextSize =
+      axis === 'width'
+        ? clamp(current.width + delta, MIN_CROP_WIDTH, image.width)
+        : clamp(current.height + delta, MIN_CROP_HEIGHT, image.height);
+    const sizeDelta = nextSize - current[axis];
+
+    setCrop(
+      clampCrop(
+        axis === 'width'
+          ? { ...current, width: nextSize, x: current.x - sizeDelta / 2 }
+          : { ...current, height: nextSize, y: current.y - sizeDelta / 2 },
+        image,
+      ),
+    );
+  }
+
   function validateCrop(current: CropBox) {
-    if (current.height < MIN_CROP_SIZE || current.width < MIN_CROP_SIZE) {
+    if (current.height < MIN_CROP_HEIGHT || current.width < MIN_CROP_WIDTH) {
       return 'החיתוך קטן מדי. הגדל את האזור כך שכל הסטיק ייכנס.';
     }
 
@@ -316,14 +351,10 @@ export function CropScanImageScreen({ navigation, route }: Props) {
         imageSize,
       );
 
-      const cropped = await ImageManipulator.manipulateAsync(
-        imageUri,
-        [{ crop: imageCrop }],
-        {
-          compress: 0.98,
-          format: ImageManipulator.SaveFormat.JPEG,
-        },
-      );
+      const cropped = await ImageManipulator.manipulateAsync(imageUri, [{ crop: imageCrop }], {
+        compress: 0.98,
+        format: ImageManipulator.SaveFormat.JPEG,
+      });
 
       const processingLog = [
         'source=gallery',
@@ -361,14 +392,15 @@ export function CropScanImageScreen({ navigation, route }: Props) {
     }
   }
 
-  const cropAbsolute = crop && renderedImage
-    ? {
-        height: crop.height,
-        width: crop.width,
-        x: renderedImage.x + crop.x,
-        y: renderedImage.y + crop.y,
-      }
-    : null;
+  const cropAbsolute =
+    crop && renderedImage
+      ? {
+          height: crop.height,
+          width: crop.width,
+          x: renderedImage.x + crop.x,
+          y: renderedImage.y + crop.y,
+        }
+      : null;
 
   return (
     <View style={styles.root}>
@@ -377,7 +409,10 @@ export function CropScanImageScreen({ navigation, route }: Props) {
       </ImageBackground>
 
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable onPress={() => navigation.goBack()} style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+        >
           <LineIcon name="close" color={colors.white} size={24} />
         </Pressable>
         <View style={styles.headerText}>
@@ -410,9 +445,23 @@ export function CropScanImageScreen({ navigation, route }: Props) {
 
             {cropAbsolute ? (
               <>
-                <View style={[styles.dim, { bottom: containerSize.height - cropAbsolute.y, left: 0, right: 0, top: 0 }]} />
-                <View style={[styles.dim, { bottom: 0, left: 0, right: 0, top: cropAbsolute.y + cropAbsolute.height }]} />
-                <View style={[styles.dim, { height: cropAbsolute.height, left: 0, top: cropAbsolute.y, width: cropAbsolute.x }]} />
+                <View
+                  style={[styles.dim, { bottom: containerSize.height - cropAbsolute.y, left: 0, right: 0, top: 0 }]}
+                />
+                <View
+                  style={[styles.dim, { bottom: 0, left: 0, right: 0, top: cropAbsolute.y + cropAbsolute.height }]}
+                />
+                <View
+                  style={[
+                    styles.dim,
+                    {
+                      height: cropAbsolute.height,
+                      left: 0,
+                      top: cropAbsolute.y,
+                      width: cropAbsolute.x,
+                    },
+                  ]}
+                />
                 <View
                   style={[
                     styles.dim,
@@ -439,9 +488,18 @@ export function CropScanImageScreen({ navigation, route }: Props) {
                     <Text style={styles.cropHint}>גרור להזזה</Text>
                   </View>
                   <View {...resizeResponders.topLeft.panHandlers} style={[styles.cornerHandle, styles.topLeftHandle]} />
-                  <View {...resizeResponders.topRight.panHandlers} style={[styles.cornerHandle, styles.topRightHandle]} />
-                  <View {...resizeResponders.bottomRight.panHandlers} style={[styles.cornerHandle, styles.bottomRightHandle]} />
-                  <View {...resizeResponders.bottomLeft.panHandlers} style={[styles.cornerHandle, styles.bottomLeftHandle]} />
+                  <View
+                    {...resizeResponders.topRight.panHandlers}
+                    style={[styles.cornerHandle, styles.topRightHandle]}
+                  />
+                  <View
+                    {...resizeResponders.bottomRight.panHandlers}
+                    style={[styles.cornerHandle, styles.bottomRightHandle]}
+                  />
+                  <View
+                    {...resizeResponders.bottomLeft.panHandlers}
+                    style={[styles.cornerHandle, styles.bottomLeftHandle]}
+                  />
                   <View {...resizeResponders.top.panHandlers} style={[styles.edgeHandle, styles.topHandle]} />
                   <View {...resizeResponders.right.panHandlers} style={[styles.edgeHandle, styles.rightHandle]} />
                   <View {...resizeResponders.bottom.panHandlers} style={[styles.edgeHandle, styles.bottomHandle]} />
@@ -454,16 +512,74 @@ export function CropScanImageScreen({ navigation, route }: Props) {
 
         <View style={styles.panel}>
           <Text style={styles.message}>{message}</Text>
+          <View style={styles.dimensionControls}>
+            <DimensionControl
+              label="רוחב"
+              onDecrease={() => adjustCropDimension('width', -1)}
+              onIncrease={() => adjustCropDimension('width', 1)}
+              value={crop && renderedImage ? Math.round((crop.width / renderedImage.width) * 100) : 0}
+            />
+            <DimensionControl
+              label="גובה"
+              onDecrease={() => adjustCropDimension('height', -1)}
+              onIncrease={() => adjustCropDimension('height', 1)}
+              value={crop && renderedImage ? Math.round((crop.height / renderedImage.height) * 100) : 0}
+            />
+          </View>
           <View style={styles.quickActions}>
             <Pressable onPress={resetCrop} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
               <Text style={styles.secondaryText}>אפס מסגרת</Text>
             </Pressable>
-            <Pressable onPress={() => navigation.goBack()} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>
+            <Pressable
+              onPress={() => navigation.goBack()}
+              style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+            >
               <Text style={styles.secondaryText}>בחר תמונה אחרת</Text>
             </Pressable>
           </View>
-          <PrimaryButton busy={busy} disabled={!crop || !renderedImage} icon="check" label="השתמש בתמונה" onPress={useCroppedImage} />
+          <PrimaryButton
+            busy={busy}
+            disabled={!crop || !renderedImage}
+            icon="check"
+            label="השתמש בתמונה"
+            onPress={useCroppedImage}
+          />
         </View>
+      </View>
+    </View>
+  );
+}
+
+function DimensionControl({
+  label,
+  onDecrease,
+  onIncrease,
+  value,
+}: {
+  label: string;
+  onDecrease: () => void;
+  onIncrease: () => void;
+  value: number;
+}) {
+  return (
+    <View style={styles.dimensionControl}>
+      <Text style={styles.dimensionLabel}>{label}</Text>
+      <View style={styles.dimensionActions}>
+        <Pressable
+          accessibilityLabel={`הקטן ${label}`}
+          onPress={onDecrease}
+          style={({ pressed }) => [styles.dimensionButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.dimensionButtonText}>−</Text>
+        </Pressable>
+        <Text style={styles.dimensionValue}>{value}%</Text>
+        <Pressable
+          accessibilityLabel={`הגדל ${label}`}
+          onPress={onIncrease}
+          style={({ pressed }) => [styles.dimensionButton, pressed && styles.pressed]}
+        >
+          <Text style={styles.dimensionButtonText}>+</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -661,6 +777,57 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     lineHeight: 22,
+    ...rtl.textCenter,
+  },
+  dimensionControls: {
+    flexDirection: 'row-reverse',
+    gap: spacing.sm,
+  },
+  dimensionControl: {
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.borderStrong,
+    borderRadius: 14,
+    borderWidth: 1,
+    flex: 1,
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+  },
+  dimensionLabel: {
+    color: colors.primaryDeep,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
+    ...rtl.textCenter,
+  },
+  dimensionActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  dimensionButton: {
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderColor: colors.borderStrong,
+    borderRadius: 16,
+    borderWidth: 1,
+    height: 32,
+    justifyContent: 'center',
+    width: 32,
+  },
+  dimensionButtonText: {
+    color: colors.primary,
+    fontSize: 22,
+    fontWeight: '900',
+    lineHeight: 24,
+  },
+  dimensionValue: {
+    color: colors.text,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '800',
+    minWidth: 34,
     ...rtl.textCenter,
   },
   quickActions: {
