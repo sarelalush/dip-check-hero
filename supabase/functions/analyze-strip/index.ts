@@ -237,6 +237,8 @@ const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
 const REQUIRED_CONSENSUS_RUNS = 2;
+const PROVIDER_RECOVERY_ATTEMPTS = 1;
+const PROVIDER_RECOVERY_DELAY_MS = 1_000;
 const ANALYSIS_VERSION = 'aquachek-pro-v14-crop-stable-localization';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
@@ -1209,6 +1211,49 @@ async function analyzeWithAiProvider(dataUrl: string, brand: StripBrand): Promis
   return analyzeWithGemini(dataUrl, brand, provider);
 }
 
+function sleep(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function analyzeWithProviderRecovery(dataUrl: string, brand: StripBrand): Promise<AiRunResponse[]> {
+  const runs = await Promise.all(
+    Array.from({ length: MULTI_SHOT_RUNS }, () => analyzeWithAiProvider(dataUrl, brand)),
+  );
+
+  let successfulRuns = runs.filter((run) => run.ok).length;
+  if (successfulRuns >= REQUIRED_CONSENSUS_RUNS) return runs;
+
+  if (runs.some((run) => !run.ok && run.error === 'missing_ai_key')) {
+    return runs;
+  }
+
+  console.warn('Gemini analysis batch did not reach consensus; starting provider recovery', {
+    errors: runs
+      .filter((run): run is Extract<AiRunResponse, { ok: false }> => !run.ok)
+      .map((run) => run.error),
+    successfulRuns,
+  });
+
+  for (
+    let attempt = 1;
+    attempt <= PROVIDER_RECOVERY_ATTEMPTS && successfulRuns < REQUIRED_CONSENSUS_RUNS;
+    attempt += 1
+  ) {
+    await sleep(PROVIDER_RECOVERY_DELAY_MS * attempt);
+    const recoveryRun = await analyzeWithAiProvider(dataUrl, brand);
+    runs.push(recoveryRun);
+    if (recoveryRun.ok) successfulRuns += 1;
+
+    console.log('Gemini provider recovery attempt completed', {
+      attempt,
+      error: recoveryRun.ok ? undefined : recoveryRun.error,
+      successfulRuns,
+    });
+  }
+
+  return runs;
+}
+
 function manufacturerLevelsFor(brand: StripBrand, parameter: StripParameter) {
   const references = isAquachekPro(brand)
     ? PRO_REFS[parameter]
@@ -1841,11 +1886,21 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     testId: body.testId,
   });
 
-  const aiRuns = await Promise.all(
-    Array.from({ length: MULTI_SHOT_RUNS }, () => analyzeWithAiProvider(dataUrl, brand)),
-  );
+  const aiRuns = await analyzeWithProviderRecovery(dataUrl, brand);
   const localizedPadCenterYs = isAquachekPro(brand) ? consensusPadCenterYs(aiRuns, 4) : undefined;
-  const cvResult = image && isAquachekPro(brand) ? analyzeCv(image, brand, localizedPadCenterYs) : null;
+  let cvResult: CvResult | null = null;
+  if (image && isAquachekPro(brand)) {
+    try {
+      cvResult = analyzeCv(image, brand, localizedPadCenterYs);
+    } catch (error) {
+      // Deterministic CV is supporting evidence. A sampling failure must not
+      // hide a valid Gemini result or its actionable provider error.
+      console.warn('Deterministic color analysis failed; continuing without CV evidence', {
+        message: error instanceof Error ? error.message : String(error),
+        testId: body.testId,
+      });
+    }
+  }
   const aiResult = combineAiRuns(aiRuns, body, brand, cvResult);
   if (aiResult) {
     console.log('Gemini strip analysis selected', {
