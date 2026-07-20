@@ -260,6 +260,35 @@ export function getFixedPadSampleRegions(imageWidth, imageHeight, padCount = 4) 
   }));
 }
 
+/**
+ * Build conservative sampling boxes around normalized pad centers reported by
+ * the independent structure checks. The boxes stay well inside each pad so
+ * carrier gaps and pad shadows cannot contaminate the color average.
+ *
+ * @param {number} imageWidth
+ * @param {number} imageHeight
+ * @param {number[]} normalizedCenterYs
+ */
+export function getLocalizedPadSampleRegions(imageWidth, imageHeight, normalizedCenterYs) {
+  const centers = normalizedCenterYs.map((center) => center * imageHeight);
+  const sampleWidth = Math.max(12, Math.min(64, imageWidth * 0.16));
+
+  return centers.map((centerY, index) => {
+    const previousGap = index > 0 ? centerY - centers[index - 1] : Number.POSITIVE_INFINITY;
+    const nextGap = index < centers.length - 1 ? centers[index + 1] - centerY : Number.POSITIVE_INFINITY;
+    const nearestGap = Math.min(previousGap, nextGap);
+    const finiteGap = Number.isFinite(nearestGap) ? nearestGap : imageHeight * 0.12;
+    const sampleHeight = Math.max(10, Math.min(64, finiteGap * 0.38));
+
+    return {
+      x: imageWidth / 2 - sampleWidth / 2,
+      y: centerY - sampleHeight / 2,
+      width: sampleWidth,
+      height: sampleHeight,
+    };
+  });
+}
+
 /** @param {number} imageWidth @param {number} imageHeight */
 export function getFixedWhiteReferenceRegion(imageWidth, imageHeight) {
   const width = Math.max(16, Math.min(40, imageWidth * 0.04));

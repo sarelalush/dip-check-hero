@@ -40,6 +40,7 @@ import {
   confidenceFromDistances,
   getFixedPadSampleRegions,
   getFixedWhiteReferenceRegion,
+  getLocalizedPadSampleRegions,
   hasMinimumAquachekStructureConfidence,
   measureAquachekProSharpness,
 } from '../_shared/aquachek-pro-reference.js';
@@ -124,6 +125,8 @@ interface ColorAnalysisEvidence {
   margins: Partial<Record<StripParameter, number>>;
   padRgbs: Rgb[];
   selectedValues: Partial<Record<StripParameter, number>>;
+  padCenterYs?: number[];
+  padLocalization?: 'model-consensus' | 'fixed-fallback';
   whiteReference?: Rgb;
   sharpnessVariance?: number;
   minimumSharpnessVariance?: number;
@@ -231,7 +234,7 @@ const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
 const REQUIRED_CONSENSUS_RUNS = 2;
-const ANALYSIS_VERSION = 'aquachek-pro-v11-model-structure-confidence-gate';
+const ANALYSIS_VERSION = 'aquachek-pro-v12-consensus-pad-localization';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.6;
@@ -684,8 +687,11 @@ function sampleAverageRgb(image: DecodedImage, x: number, y: number, width: numb
   return [r / count, g / count, b / count];
 }
 
-function samplePads(image: DecodedImage, padCount: number) {
-  return getFixedPadSampleRegions(image.width, image.height, padCount).map((region) =>
+function samplePads(image: DecodedImage, padCount: number, normalizedCenterYs?: number[]) {
+  const regions = normalizedCenterYs?.length === padCount
+    ? getLocalizedPadSampleRegions(image.width, image.height, normalizedCenterYs)
+    : getFixedPadSampleRegions(image.width, image.height, padCount);
+  return regions.map((region) =>
     sampleAverageRgb(image, region.x, region.y, region.width, region.height),
   );
 }
@@ -695,16 +701,16 @@ function sampleWhiteReference(image: DecodedImage) {
   return sampleAverageRgb(image, region.x, region.y, region.width, region.height);
 }
 
-function analyzeCv(image: DecodedImage, brand: StripBrand): CvResult | null {
+function analyzeCv(image: DecodedImage, brand: StripBrand, normalizedCenterYs?: number[]): CvResult | null {
   if (isAquachekPro(brand)) {
-    const pads = samplePads(image, 4);
-    const whiteReference = sampleWhiteReference(image);
-    const sharpness = measureAquachekProSharpness(
+    const structure = analyzeAquachekProStructure(
       image.width,
       image.height,
       (x: number, y: number) => getPixelRgb(image, x, y),
     );
-    const structure = analyzeAquachekProStructure(
+    const pads = samplePads(image, 4, normalizedCenterYs);
+    const whiteReference = structure.carrierReference ?? sampleWhiteReference(image);
+    const sharpness = measureAquachekProSharpness(
       image.width,
       image.height,
       (x: number, y: number) => getPixelRgb(image, x, y),
@@ -722,6 +728,8 @@ function analyzeCv(image: DecodedImage, brand: StripBrand): CvResult | null {
         margins: analysis.margins,
         padRgbs: pads,
         selectedValues: analysis.values,
+        padCenterYs: normalizedCenterYs,
+        padLocalization: normalizedCenterYs?.length === 4 ? 'model-consensus' : 'fixed-fallback',
         whiteReference,
         sharpnessVariance: sharpness.variance,
         minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
@@ -749,6 +757,49 @@ function analyzeCv(image: DecodedImage, brand: StripBrand): CvResult | null {
   }
 
   return null;
+}
+
+function isQualityPassedRun(
+  run: Extract<AiRunResponse, { ok: true }>,
+  expectedPhysicalPadCount: number,
+  allowColorReadingUncertainty = false,
+) {
+  const acceptedFailureReason =
+    run.data.failureReason === 'none' ||
+    (allowColorReadingUncertainty && run.data.failureReason === 'low_confidence');
+
+  return (
+    run.data.isStrip === true &&
+    acceptedFailureReason &&
+    run.data.physicalPadCount === expectedPhysicalPadCount &&
+    run.data.allPadsFullyVisible === true &&
+    run.data.hasExactlyOneStrip === true &&
+    run.data.hasSingleContinuousStripBody === true &&
+    run.data.allPadsIntact === true &&
+    run.data.padOrderMatchesSelectedBrand === true &&
+    run.data.hasExtraPadLikeRegions === false &&
+    run.data.visiblePadCenterYs.length === expectedPhysicalPadCount &&
+    run.data.padIntegrity.length === expectedPhysicalPadCount &&
+    run.data.padIntegrity.every(Boolean) &&
+    run.data.stripBodyEvidence === 'clear_shared_body'
+  );
+}
+
+function consensusPadCenterYs(runs: AiRunResponse[], padCount: number): number[] | undefined {
+  const candidates = runs
+    .filter((run): run is Extract<AiRunResponse, { ok: true }> => run.ok)
+    .filter((run) => isQualityPassedRun(run, padCount, true))
+    .map((run) => run.data.visiblePadCenterYs)
+    .filter((centers) => centers.length === padCount);
+  if (candidates.length < REQUIRED_CONSENSUS_RUNS) return undefined;
+
+  return Array.from({ length: padCount }, (_, index) => {
+    const values = candidates.map((centers) => centers[index]).sort((left, right) => left - right);
+    const middle = Math.floor(values.length / 2);
+    return values.length % 2 === 1
+      ? values[middle]
+      : (values[middle - 1] + values[middle]) / 2;
+  });
 }
 
 function buildSystemPrompt(brand: StripBrand) {
@@ -1130,28 +1181,8 @@ function combineAiRuns(
 
   const expectedPhysicalPadCount = isAquachekPro(brand) ? 4 : brand.parameters.length;
   const runConfidences = okRuns.map((run) => Number(run.data.confidence ?? 0));
-  const qualityPassedRuns = okRuns.filter(
-    (run) => {
-      const colorReadingUncertaintyOnly =
-        isAquachekPro(brand) &&
-        run.data.isStrip === true &&
-        run.data.failureReason === 'low_confidence';
-      return (
-        run.data.isStrip === true &&
-        (run.data.failureReason === 'none' || colorReadingUncertaintyOnly) &&
-        run.data.physicalPadCount === expectedPhysicalPadCount &&
-        run.data.allPadsFullyVisible === true &&
-        run.data.hasExactlyOneStrip === true &&
-        run.data.hasSingleContinuousStripBody === true &&
-        run.data.allPadsIntact === true &&
-        run.data.padOrderMatchesSelectedBrand === true &&
-        run.data.hasExtraPadLikeRegions === false &&
-        run.data.visiblePadCenterYs.length === expectedPhysicalPadCount &&
-        run.data.padIntegrity.length === expectedPhysicalPadCount &&
-        run.data.padIntegrity.every(Boolean) &&
-        run.data.stripBodyEvidence === 'clear_shared_body'
-      );
-    },
+  const qualityPassedRuns = okRuns.filter((run) =>
+    isQualityPassedRun(run, expectedPhysicalPadCount, isAquachekPro(brand)),
   );
   const confidencePassedRuns = qualityPassedRuns.filter(
     (run) => Number(run.data.confidence ?? 0) >= MIN_ACCEPTED_RUN_CONFIDENCE,
@@ -1728,7 +1759,8 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
   const aiRuns = await Promise.all(
     Array.from({ length: MULTI_SHOT_RUNS }, () => analyzeWithAiProvider(dataUrl, brand)),
   );
-  const cvResult = image && isAquachekPro(brand) ? analyzeCv(image, brand) : null;
+  const localizedPadCenterYs = isAquachekPro(brand) ? consensusPadCenterYs(aiRuns, 4) : undefined;
+  const cvResult = image && isAquachekPro(brand) ? analyzeCv(image, brand, localizedPadCenterYs) : null;
   const aiResult = combineAiRuns(aiRuns, body, brand, cvResult);
   if (aiResult) {
     console.log('Gemini strip analysis selected', {

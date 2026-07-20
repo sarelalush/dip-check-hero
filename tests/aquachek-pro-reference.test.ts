@@ -7,6 +7,7 @@ import {
   analyzeAquachekProPadRgbs,
   analyzeAquachekProStructure,
   getFixedPadSampleRegions,
+  getLocalizedPadSampleRegions,
   hasMinimumAquachekStructureConfidence,
   measureAquachekProSharpness,
 } from '../supabase/functions/_shared/aquachek-pro-reference.js';
@@ -92,6 +93,15 @@ describe('AquaChek Pro reference chart', () => {
     expect(regions.map((region) => Number((region.y + region.height / 2).toFixed(1)))).toEqual([
       105.6, 163.2, 220.8, 278.4,
     ]);
+  });
+
+  it('samples localized real-strip pads instead of assuming fixed vertical spacing', () => {
+    const regions = getLocalizedPadSampleRegions(140, 700, [0.09, 0.2, 0.34, 0.48]);
+    expect(regions).toHaveLength(4);
+    expect(regions.map((region) => Number(((region.y + region.height / 2) / 700).toFixed(2)))).toEqual([
+      0.09, 0.2, 0.34, 0.48,
+    ]);
+    expect(regions.every((region) => region.width >= 12 && region.height >= 10)).toBe(true);
   });
 
   it('rejects a non-four-pad input', () => {
