@@ -8,6 +8,7 @@ import {
   analyzeAquachekProStructure,
   getFixedPadSampleRegions,
   getLocalizedPadSampleRegions,
+  locateAquachekProStripCenterX,
   hasMinimumAquachekStructureConfidence,
   hasUsableAquachekPadEvidence,
   measureAquachekProSharpness,
@@ -104,6 +105,34 @@ describe('AquaChek Pro reference chart', () => {
       0.09, 0.2, 0.34, 0.48,
     ]);
     expect(regions.every((region) => region.width >= 12 && region.height >= 10)).toBe(true);
+  });
+
+  it('samples pads around a detected off-center strip', () => {
+    const regions = getLocalizedPadSampleRegions(
+      200,
+      700,
+      [0.09, 0.2, 0.34, 0.48],
+      0.68,
+    );
+    expect(regions.every((region) => Math.abs(region.x + region.width / 2 - 136) < 0.01)).toBe(true);
+  });
+
+  it('locates an off-center carrier from the neutral gaps between pads', () => {
+    const width = 200;
+    const height = 700;
+    const centerYs = [0.15, 0.29, 0.43, 0.57];
+    const getRgb = (x: number, y: number): [number, number, number] => {
+      const insideCarrier = x >= 126 && x <= 166;
+      const insidePad = centerYs.some((center) => Math.abs(y / height - center) < 0.035);
+      if (insideCarrier && insidePad) return [210, 75, 145];
+      if (insideCarrier) return [248, 248, 244];
+      return [152, 132, 106];
+    };
+    const location = locateAquachekProStripCenterX(width, height, getRgb, centerYs);
+
+    expect(location.centerX).toBeGreaterThan(140);
+    expect(location.centerX).toBeLessThan(152);
+    expect(location.confidence).toBeGreaterThan(0.5);
   });
 
   it('reconstructs a pale missing first pad from the visible lower bands', () => {

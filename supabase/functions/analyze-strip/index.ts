@@ -41,6 +41,7 @@ import {
   getFixedPadSampleRegions,
   getFixedWhiteReferenceRegion,
   getLocalizedPadSampleRegions,
+  locateAquachekProStripCenterX,
   hasMinimumAquachekStructureConfidence,
   hasUsableAquachekPadEvidence,
   measureAquachekProSharpness,
@@ -236,7 +237,7 @@ const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
 const REQUIRED_CONSENSUS_RUNS = 2;
-const ANALYSIS_VERSION = 'aquachek-pro-v13-real-photo-tolerance';
+const ANALYSIS_VERSION = 'aquachek-pro-v14-crop-stable-localization';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.5;
@@ -689,9 +690,19 @@ function sampleAverageRgb(image: DecodedImage, x: number, y: number, width: numb
   return [r / count, g / count, b / count];
 }
 
-function samplePads(image: DecodedImage, padCount: number, normalizedCenterYs?: number[]) {
+function samplePads(
+  image: DecodedImage,
+  padCount: number,
+  normalizedCenterYs?: number[],
+  normalizedCenterX = 0.5,
+) {
   const regions = normalizedCenterYs?.length === padCount
-    ? getLocalizedPadSampleRegions(image.width, image.height, normalizedCenterYs)
+    ? getLocalizedPadSampleRegions(
+        image.width,
+        image.height,
+        normalizedCenterYs,
+        normalizedCenterX,
+      )
     : getFixedPadSampleRegions(image.width, image.height, padCount);
   return regions.map((region) =>
     sampleAverageRgb(image, region.x, region.y, region.width, region.height),
@@ -705,10 +716,17 @@ function sampleWhiteReference(image: DecodedImage) {
 
 function analyzeCv(image: DecodedImage, brand: StripBrand, normalizedCenterYs?: number[]): CvResult | null {
   if (isAquachekPro(brand)) {
+    const horizontalLocalization = locateAquachekProStripCenterX(
+      image.width,
+      image.height,
+      (x: number, y: number) => getPixelRgb(image, x, y),
+      normalizedCenterYs,
+    );
     const structure = analyzeAquachekProStructure(
       image.width,
       image.height,
       (x: number, y: number) => getPixelRgb(image, x, y),
+      horizontalLocalization.centerX,
     );
     const refinedCenterYs = refineAquachekProPadCenterYs(
       image.height,
@@ -720,6 +738,7 @@ function analyzeCv(image: DecodedImage, brand: StripBrand, normalizedCenterYs?: 
       image.width,
       image.height,
       (x: number, y: number) => getPixelRgb(image, x, y),
+      horizontalLocalization.centerX,
     );
     const candidates = [
       { centerYs: normalizedCenterYs, localization: 'model-consensus' },
@@ -733,7 +752,12 @@ function analyzeCv(image: DecodedImage, brand: StripBrand, normalizedCenterYs?: 
           )
         ) === index,
     ).map((candidate) => {
-      const pads = samplePads(image, 4, candidate.centerYs);
+      const pads = samplePads(
+        image,
+        4,
+        candidate.centerYs,
+        horizontalLocalization.normalizedCenterX,
+      );
       return {
         ...candidate,
         analysis: analyzeAquachekProDiscretePadRgbs(pads, { whiteReference }),
@@ -775,6 +799,7 @@ function analyzeCv(image: DecodedImage, brand: StripBrand, normalizedCenterYs?: 
         sharpnessVariance: sharpness.variance,
         minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
         structure,
+        horizontalLocalization,
       },
     };
   }

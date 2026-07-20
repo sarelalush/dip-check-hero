@@ -268,10 +268,17 @@ export function getFixedPadSampleRegions(imageWidth, imageHeight, padCount = 4) 
  * @param {number} imageWidth
  * @param {number} imageHeight
  * @param {number[]} normalizedCenterYs
+ * @param {number} [normalizedCenterX]
  */
-export function getLocalizedPadSampleRegions(imageWidth, imageHeight, normalizedCenterYs) {
+export function getLocalizedPadSampleRegions(
+  imageWidth,
+  imageHeight,
+  normalizedCenterYs,
+  normalizedCenterX = 0.5,
+) {
   const centers = normalizedCenterYs.map((center) => center * imageHeight);
   const sampleWidth = Math.max(12, Math.min(64, imageWidth * 0.16));
+  const centerX = Math.max(0, Math.min(1, normalizedCenterX)) * imageWidth;
 
   return centers.map((centerY, index) => {
     const previousGap = index > 0 ? centerY - centers[index - 1] : Number.POSITIVE_INFINITY;
@@ -281,12 +288,153 @@ export function getLocalizedPadSampleRegions(imageWidth, imageHeight, normalized
     const sampleHeight = Math.max(10, Math.min(64, finiteGap * 0.38));
 
     return {
-      x: imageWidth / 2 - sampleWidth / 2,
+      x: centerX - sampleWidth / 2,
       y: centerY - sampleHeight / 2,
       width: sampleWidth,
       height: sampleHeight,
     };
   });
+}
+
+/**
+ * Locate the strip horizontally from the exposed white carrier between pads.
+ * This makes color sampling independent of small differences in a user's crop.
+ * The internal gaps are much more reliable than the outer background because
+ * they must all belong to the same continuous strip body.
+ *
+ * @param {number} imageWidth
+ * @param {number} imageHeight
+ * @param {(x: number, y: number) => Rgb} getRgb
+ * @param {number[] | undefined} normalizedCenterYs
+ * @returns {{ centerX: number, normalizedCenterX: number, confidence: number, segment: { startX: number, endX: number } | null }}
+ */
+export function locateAquachekProStripCenterX(
+  imageWidth,
+  imageHeight,
+  getRgb,
+  normalizedCenterYs,
+) {
+  const fallbackCenterX = imageWidth / 2;
+  if (
+    imageWidth < 8 ||
+    imageHeight < 8 ||
+    !Array.isArray(normalizedCenterYs) ||
+    normalizedCenterYs.length !== 4
+  ) {
+    return {
+      centerX: fallbackCenterX,
+      normalizedCenterX: 0.5,
+      confidence: 0,
+      segment: null,
+    };
+  }
+
+  const centers = normalizedCenterYs
+    .map((center) => Math.max(0, Math.min(1, Number(center))))
+    .sort((left, right) => left - right);
+  const internalGapRows = centers.slice(0, -1).map((center, index) =>
+    Math.round(((center + centers[index + 1]) / 2) * imageHeight)
+  );
+  const gaps = centers.slice(1).map((center, index) => center - centers[index]);
+  const sortedGaps = [...gaps].sort((left, right) => left - right);
+  const medianGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
+  const handleStart = centers.at(-1) + medianGap * 0.45;
+  const handleEnd = Math.min(0.94, centers.at(-1) + medianGap * 1.65);
+  const handleRows = handleEnd > handleStart + 0.03
+    ? Array.from({ length: 9 }, (_, index) =>
+        Math.round((handleStart + (handleEnd - handleStart) * (index / 8)) * imageHeight)
+      )
+    : [];
+  // A long exposed handle is the strongest horizontal locator. Tight crops
+  // may omit it, in which case the three internal carrier gaps remain enough.
+  const gapRows = [...internalGapRows, ...handleRows];
+  const rowRadius = Math.max(1, Math.min(4, Math.round(imageHeight * 0.004)));
+  const laneRadius = Math.max(1, Math.min(3, Math.round(imageWidth * 0.008)));
+  const scores = [];
+
+  for (let x = 0; x < imageWidth; x += 1) {
+    let total = 0;
+    for (const centerY of gapRows) {
+      const channels = [0, 0, 0];
+      let count = 0;
+      for (let y = centerY - rowRadius; y <= centerY + rowRadius; y += 1) {
+        if (y < 0 || y >= imageHeight) continue;
+        for (let sampleX = x - laneRadius; sampleX <= x + laneRadius; sampleX += 1) {
+          if (sampleX < 0 || sampleX >= imageWidth) continue;
+          const rgb = getRgb(sampleX, y);
+          channels[0] += rgb[0];
+          channels[1] += rgb[1];
+          channels[2] += rgb[2];
+          count += 1;
+        }
+      }
+      const rgb = channels.map((channel) => channel / Math.max(1, count));
+      const luminance = rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+      const chroma = Math.max(...rgb) - Math.min(...rgb);
+      const brightnessScore = Math.max(0, Math.min(1, (luminance - 145) / 90));
+      const neutralityScore = Math.max(0, Math.min(1, (70 - chroma) / 55));
+      total += brightnessScore * neutralityScore;
+    }
+    scores.push(total / gapRows.length);
+  }
+
+  const maximumScore = Math.max(...scores);
+  if (!Number.isFinite(maximumScore) || maximumScore < 0.28) {
+    return {
+      centerX: fallbackCenterX,
+      normalizedCenterX: 0.5,
+      confidence: 0,
+      segment: null,
+    };
+  }
+
+  const threshold = Math.max(0.28, maximumScore * 0.82);
+  const segments = [];
+  let activeStart = null;
+  for (let x = 0; x <= imageWidth; x += 1) {
+    const isActive = x < imageWidth && scores[x] >= threshold;
+    if (isActive && activeStart === null) activeStart = x;
+    if (!isActive && activeStart !== null) {
+      const endX = x - 1;
+      if (endX - activeStart + 1 >= Math.max(3, imageWidth * 0.025)) {
+        const segmentScores = scores.slice(activeStart, endX + 1);
+        segments.push({
+          startX: activeStart,
+          endX,
+          averageScore:
+            segmentScores.reduce((sum, score) => sum + score, 0) / segmentScores.length,
+        });
+      }
+      activeStart = null;
+    }
+  }
+
+  if (segments.length === 0) {
+    const centerX = scores.indexOf(maximumScore);
+    return {
+      centerX,
+      normalizedCenterX: centerX / imageWidth,
+      confidence: maximumScore * 0.5,
+      segment: { startX: centerX, endX: centerX },
+    };
+  }
+
+  const selected = segments.reduce((best, segment) => {
+    const segmentCenter = (segment.startX + segment.endX) / 2;
+    const centerDistance = Math.abs(segmentCenter - fallbackCenterX) / imageWidth;
+    const width = segment.endX - segment.startX + 1;
+    const plausibleWidth = Math.min(1, width / Math.max(1, imageWidth * 0.18));
+    const rank = segment.averageScore + plausibleWidth * 0.08 - centerDistance * 0.12;
+    return !best || rank > best.rank ? { ...segment, rank } : best;
+  }, null);
+  const centerX = (selected.startX + selected.endX) / 2;
+
+  return {
+    centerX,
+    normalizedCenterX: centerX / imageWidth,
+    confidence: Math.max(0, Math.min(1, selected.averageScore)),
+    segment: { startX: selected.startX, endX: selected.endX },
+  };
 }
 
 /**
@@ -310,9 +458,13 @@ export function refineAquachekProPadCenterYs(imageHeight, colorBands, modelCente
     return modelCenterYs;
   }
 
+  const maximumBandHeight = Math.max(...colorBands.map((entry) => entry.height));
   const bands = colorBands.map((band) => ({
     center: ((band.startY + band.endY) / 2) / imageHeight,
-    weight: Math.max(0.2, band.height / Math.max(...colorBands.map((entry) => entry.height))),
+    // A pale pad often produces only a short colored fragment near one edge.
+    // Squared weighting lets complete bands define the regular four-pad grid
+    // without allowing those partial fragments to pull a center downward.
+    weight: Math.max(0.05, (band.height / maximumBandHeight) ** 2),
   }));
   const assignments = [];
   const collectAssignments = (nextSlot, selected) => {
@@ -380,9 +532,15 @@ export function getFixedWhiteReferenceRegion(imageWidth, imageHeight) {
  * @param {number} imageWidth
  * @param {number} imageHeight
  * @param {(x: number, y: number) => Rgb} getRgb
+ * @param {number} [requestedCenterX]
  */
-export function analyzeAquachekProStructure(imageWidth, imageHeight, getRgb) {
-  const centerX = imageWidth / 2;
+export function analyzeAquachekProStructure(
+  imageWidth,
+  imageHeight,
+  getRgb,
+  requestedCenterX = imageWidth / 2,
+) {
+  const centerX = Math.max(0, Math.min(imageWidth - 1, requestedCenterX));
   const laneHalfWidth = Math.max(2, Math.round(imageWidth * 0.035));
   const averageRegion = (startY, endY) => {
     const totals = [0, 0, 0];
@@ -478,6 +636,7 @@ export function analyzeAquachekProStructure(imageWidth, imageHeight, getRgb) {
       maximumBandHeight,
       mergeGap,
     },
+    centerX,
   };
 }
 
@@ -541,10 +700,18 @@ export function hasUsableAquachekPadEvidence(evidence, expectedPadCount = 4) {
  * @param {number} imageWidth
  * @param {number} imageHeight
  * @param {(x: number, y: number) => Rgb} getRgb
+ * @param {number} [requestedCenterX]
  */
-export function measureAquachekProSharpness(imageWidth, imageHeight, getRgb) {
-  const startX = Math.max(1, Math.floor(imageWidth * 0.24));
-  const endX = Math.min(imageWidth - 1, Math.ceil(imageWidth * 0.76));
+export function measureAquachekProSharpness(
+  imageWidth,
+  imageHeight,
+  getRgb,
+  requestedCenterX = imageWidth / 2,
+) {
+  const centerX = Math.max(0, Math.min(imageWidth - 1, requestedCenterX));
+  const halfWidth = Math.max(8, imageWidth * 0.26);
+  const startX = Math.max(1, Math.floor(centerX - halfWidth));
+  const endX = Math.min(imageWidth - 1, Math.ceil(centerX + halfWidth));
   const startY = Math.max(1, Math.floor(imageHeight * 0.04));
   const endY = Math.min(imageHeight - 1, Math.ceil(imageHeight * 0.96));
   const luminance = (x, y) => {
