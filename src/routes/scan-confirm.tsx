@@ -138,7 +138,7 @@ function ScanConfirmScreen() {
         {original && (
           <div className="mt-4">
             <p className="mb-2 text-center text-sm font-semibold text-foreground">
-              💡 כוון את החיתוך סביב הסטיק והשאר מעט רקע מכל צד
+              💡 כוון את החיתוך סביב הסטיק — נשמור 20% מרווח מכל צד
             </p>
             <button
               onClick={() => setCropping(true)}
@@ -152,7 +152,7 @@ function ScanConfirmScreen() {
               </span>
             </button>
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              אין להצמיד את הקווים לגוף הסטיק — נשמור גם מרווח ביטחון קטן אוטומטית
+              גם אם הקווים צמודים לסטיק, החיתוך הסופי יכלול מרווח ביטחון אוטומטי
             </p>
           </div>
         )}
@@ -387,7 +387,7 @@ function ManualCropper({ src, onCancel, onApply }: CropperProps) {
         >
           <X className="h-5 w-5" />
         </button>
-        <span className="text-center text-sm font-bold">סמן את הסטיק עם מעט רקע מסביב</span>
+        <span className="text-center text-sm font-bold">סמן את הסטיק — נשמור 20% מרווח מכל צד</span>
         <span className="w-9" />
       </div>
 

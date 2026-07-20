@@ -20,7 +20,7 @@ const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
 
 /**
- * Preserve a small amount of the original scene around a manual crop.
+ * Preserve 20% of the selected width on both horizontal sides.
  * The strip detector needs visible carrier edges and a little contrasting
  * background; an exact edge-to-edge crop can remove both signals.
  */
@@ -33,7 +33,7 @@ export function addCropSafetyMargin(
   const w = clamp(rect.w, 0.0001, 1 - x);
   const h = clamp(rect.h, 0.0001, 1 - y);
   const horizontalPadding = Math.max(
-    w * (options.horizontalRatio ?? 0.15),
+    w * (options.horizontalRatio ?? 0.2),
     options.minHorizontal ?? 0.006,
   );
   const verticalPadding = Math.max(

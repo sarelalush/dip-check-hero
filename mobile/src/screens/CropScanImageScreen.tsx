@@ -44,7 +44,7 @@ const POOL_BACKGROUND = require('../../assets/images/home-pool.png');
 const MIN_CROP_WIDTH = 4;
 const MIN_CROP_HEIGHT = 20;
 const CROP_NUDGE = 2;
-const CROP_HORIZONTAL_PADDING_RATIO = 0.15;
+const CROP_HORIZONTAL_PADDING_RATIO = 0.2;
 const CROP_VERTICAL_PADDING_RATIO = 0.03;
 const MIN_CROP_HORIZONTAL_PADDING = 3;
 const MIN_CROP_VERTICAL_PADDING = 2;
@@ -197,7 +197,7 @@ export function CropScanImageScreen({ navigation, route }: Props) {
   const [containerSize, setContainerSize] = useState<Size>({ height: 0, width: 0 });
   const [crop, setCrop] = useState<CropBox | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('סמן את כל הסטיק והשאר מעט רקע מכל צד.');
+  const [message, setMessage] = useState('סמן את כל הסטיק. נשמור אוטומטית 20% מרווח מכל צד.');
   const gestureStart = useRef<CropBox | null>(null);
   const activeHandleRef = useRef<ResizeHandle | null>(null);
   const cropRef = useRef<CropBox | null>(null);
@@ -314,7 +314,7 @@ export function CropScanImageScreen({ navigation, route }: Props) {
   function resetCrop() {
     if (!renderedImage) return;
     setCrop(createInitialCrop(renderedImage));
-    setMessage('החיתוך אופס. סמן את כל הסטיק והשאר מעט רקע מכל צד.');
+    setMessage('החיתוך אופס. סמן את כל הסטיק; נשמור 20% מרווח מכל צד.');
   }
 
   function adjustCropDimension(axis: 'height' | 'width', direction: -1 | 1) {
@@ -437,7 +437,7 @@ export function CropScanImageScreen({ navigation, route }: Props) {
         <View style={styles.headerText}>
           <Text style={styles.brand}>AquaSense</Text>
           <Text style={styles.title}>חתוך את התמונה</Text>
-          <Text style={styles.subtitle}>גרור את הפינות סביב הסטיק והשאר מעט רקע מכל צד.</Text>
+          <Text style={styles.subtitle}>גרור את הפינות סביב הסטיק. החיתוך הסופי ישמור 20% מרווח מכל צד.</Text>
         </View>
       </View>
 
