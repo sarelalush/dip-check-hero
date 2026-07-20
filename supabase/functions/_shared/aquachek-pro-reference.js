@@ -500,6 +500,40 @@ export function hasMinimumAquachekStructureConfidence(
 }
 
 /**
+ * Accept model evidence that is strong enough for the deterministic AquaChek
+ * structure and color analyzers to make the final decision. Real phone photos
+ * often make the neutral carrier look ambiguous even when all four intact pads
+ * are plainly visible, so subjective framing/body flags are not hard failures.
+ *
+ * @param {Record<string, unknown> | null | undefined} evidence
+ * @param {number} expectedPadCount
+ */
+export function hasUsableAquachekPadEvidence(evidence, expectedPadCount = 4) {
+  const centers = Array.isArray(evidence?.visiblePadCenterYs)
+    ? evidence.visiblePadCenterYs
+    : [];
+  const integrity = Array.isArray(evidence?.padIntegrity)
+    ? evidence.padIntegrity
+    : [];
+  const physicalPadCount = Number(evidence?.physicalPadCount ?? 0);
+  const exactPadCount =
+    physicalPadCount === expectedPadCount || centers.length === expectedPadCount;
+  const padsAreIntact =
+    integrity.length === expectedPadCount
+      ? integrity.every(Boolean)
+      : evidence?.allPadsIntact === true;
+
+  return (
+    exactPadCount &&
+    evidence?.hasExactlyOneStrip === true &&
+    padsAreIntact &&
+    evidence?.padOrderMatchesSelectedBrand === true &&
+    evidence?.hasExtraPadLikeRegions === false &&
+    evidence?.stripBodyEvidence !== 'none'
+  );
+}
+
+/**
  * Estimate focus quality inside the central AquaChek strip area using the
  * variance of a five-point luminance Laplacian. This only measures spatial
  * detail; it never modifies or normalizes reagent-pad colors.

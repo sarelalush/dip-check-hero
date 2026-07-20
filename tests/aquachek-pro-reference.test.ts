@@ -9,6 +9,7 @@ import {
   getFixedPadSampleRegions,
   getLocalizedPadSampleRegions,
   hasMinimumAquachekStructureConfidence,
+  hasUsableAquachekPadEvidence,
   measureAquachekProSharpness,
   refineAquachekProPadCenterYs,
 } from '../supabase/functions/_shared/aquachek-pro-reference.js';
@@ -265,5 +266,43 @@ describe('AquaChek Pro reference chart', () => {
   it('rejects missing and non-numeric structure confidence', () => {
     expect(hasMinimumAquachekStructureConfidence([], 0.5)).toBe(false);
     expect(hasMinimumAquachekStructureConfidence([Number.NaN, undefined, null], 0.5)).toBe(false);
+  });
+
+  it('lets an intact real four-pad strip reach deterministic validation', () => {
+    expect(hasUsableAquachekPadEvidence({
+      physicalPadCount: 4,
+      visiblePadCenterYs: [0.15, 0.36, 0.57, 0.78],
+      padIntegrity: [true, true, true, true],
+      allPadsIntact: true,
+      hasExactlyOneStrip: true,
+      padOrderMatchesSelectedBrand: true,
+      hasExtraPadLikeRegions: false,
+      stripBodyEvidence: 'ambiguous',
+      allPadsFullyVisible: false,
+      hasSingleContinuousStripBody: false,
+    }, 4)).toBe(true);
+  });
+
+  it('keeps missing, extra, damaged, and bodyless pad layouts out', () => {
+    const validEvidence = {
+      physicalPadCount: 4,
+      visiblePadCenterYs: [0.15, 0.36, 0.57, 0.78],
+      padIntegrity: [true, true, true, true],
+      allPadsIntact: true,
+      hasExactlyOneStrip: true,
+      padOrderMatchesSelectedBrand: true,
+      hasExtraPadLikeRegions: false,
+      stripBodyEvidence: 'clear_shared_body',
+    };
+
+    expect(hasUsableAquachekPadEvidence({
+      ...validEvidence,
+      physicalPadCount: 3,
+      visiblePadCenterYs: [0.2, 0.5, 0.8],
+      padIntegrity: [true, true, true],
+    }, 4)).toBe(false);
+    expect(hasUsableAquachekPadEvidence({ ...validEvidence, hasExtraPadLikeRegions: true }, 4)).toBe(false);
+    expect(hasUsableAquachekPadEvidence({ ...validEvidence, padIntegrity: [true, false, true, true] }, 4)).toBe(false);
+    expect(hasUsableAquachekPadEvidence({ ...validEvidence, stripBodyEvidence: 'none' }, 4)).toBe(false);
   });
 });

@@ -42,6 +42,7 @@ import {
   getFixedWhiteReferenceRegion,
   getLocalizedPadSampleRegions,
   hasMinimumAquachekStructureConfidence,
+  hasUsableAquachekPadEvidence,
   measureAquachekProSharpness,
   refineAquachekProPadCenterYs,
 } from '../_shared/aquachek-pro-reference.js';
@@ -235,10 +236,10 @@ const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
 const REQUIRED_CONSENSUS_RUNS = 2;
-const ANALYSIS_VERSION = 'aquachek-pro-v12-consensus-pad-localization';
+const ANALYSIS_VERSION = 'aquachek-pro-v13-real-photo-tolerance';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
-const MIN_ACCEPTED_CV_CONFIDENCE = 0.6;
+const MIN_ACCEPTED_CV_CONFIDENCE = 0.5;
 const MIN_AQUACHEK_STRUCTURE_CONFIDENCE = 0.5;
 // Real phone captures remain readable well below the synthetic-image score.
 // A threshold of 8 accepts mild camera softness while still rejecting
@@ -828,7 +829,11 @@ function isQualityPassedRun(
 function consensusPadCenterYs(runs: AiRunResponse[], padCount: number): number[] | undefined {
   const candidates = runs
     .filter((run): run is Extract<AiRunResponse, { ok: true }> => run.ok)
-    .filter((run) => isQualityPassedRun(run, padCount, true))
+    .filter(
+      (run) =>
+        isQualityPassedRun(run, padCount, true) ||
+        hasUsableAquachekPadEvidence(run.data, padCount),
+    )
     .map((run) => run.data.visiblePadCenterYs)
     .filter((centers) => centers.length === padCount);
   if (candidates.length < REQUIRED_CONSENSUS_RUNS) return undefined;
@@ -891,11 +896,11 @@ Then complete this STRUCTURAL CHECKLIST independently of the pad count:
 - Return padIntegrity with one boolean for every item in visiblePadCenterYs, in the same order. A pad split by a neutral/opaque stripe, visibly occluded, or cropped is false. padIntegrity.length MUST equal visiblePadCenterYs.length and allPadsIntact MUST equal padIntegrity.every(Boolean).
 - padOrderMatchesSelectedBrand=false only when there is clear visual evidence that complete pads were geometrically permuted, or the visible strip architecture belongs to another brand. Unusual water chemistry, pale/strong valid colors, lighting, texture, or uncertainty about a color value are NOT evidence of swapped order. When structure matches but a color is ambiguous, keep this true and use low_confidence instead.
 - hasExtraPadLikeRegions=true only when an additional reagent pad is visibly attached to and aligned on the SAME primary strip body. An isolated colored object, background decoration, reflection, shadow, stain, or chart swatch outside that body is never an extra pad.
-- Set stripBodyEvidence="clear_shared_body" only when a neutral plastic carrier is visibly shared by all candidates: look for continuous side margins, neutral gaps between candidates, and/or a neutral handle extending beyond them. Set it to "none" when colored rectangles merely float in a vertical column on the background without shared plastic. Use "ambiguous" when this cannot be verified. A valid result requires clear_shared_body.
+- Set stripBodyEvidence="clear_shared_body" when a neutral plastic carrier is visibly shared by all candidates: look for continuous side margins, neutral gaps between candidates, and/or a neutral handle extending beyond them. Set it to "none" when colored rectangles merely float in a vertical column on the background without shared plastic. Use "ambiguous" when a real narrow carrier is visible but glare, a tight crop, pale pads, or background similarity prevents certainty. Ambiguous body evidence is acceptable when exactly four complete pads remain visible on one candidate strip; the server performs an independent structure check.
 - If hasExactlyOneStrip=false or hasSingleContinuousStripBody=false, set isStrip=false and failureReason="not_strip" (or "framing" for two strips).
 - If allPadsIntact=false or hasExtraPadLikeRegions=true, set isStrip=false and failureReason="framing".
 - If padOrderMatchesSelectedBrand=false, set isStrip=false and failureReason="unsupported_strip".
-- Never accept an image merely because four colored rectangles can be sampled. All checklist fields must pass.
+- Never accept unrelated floating colored rectangles merely because four colors can be sampled. For a real single strip with exactly four complete pads, minor uncertainty in framing, body continuity, focus, or color should be reported accurately rather than forcing isStrip=false; the server performs independent structure, sharpness, and color checks.
 
 Classify failureReason as one of:
 - "none": clear, usable strip
@@ -1224,7 +1229,17 @@ function combineAiRuns(
   const qualityPassedRuns = okRuns.filter((run) =>
     isQualityPassedRun(run, expectedPhysicalPadCount, isAquachekPro(brand)),
   );
-  const confidencePassedRuns = qualityPassedRuns.filter(
+  const relaxedAquachekRuns = isAquachekPro(brand)
+    ? okRuns.filter((run) => hasUsableAquachekPadEvidence(run.data, expectedPhysicalPadCount))
+    : [];
+  const usedRelaxedAquachekGate =
+    isAquachekPro(brand) &&
+    qualityPassedRuns.length < REQUIRED_CONSENSUS_RUNS &&
+    relaxedAquachekRuns.length >= REQUIRED_CONSENSUS_RUNS;
+  const effectiveQualityPassedRuns = usedRelaxedAquachekGate
+    ? relaxedAquachekRuns
+    : qualityPassedRuns;
+  const confidencePassedRuns = effectiveQualityPassedRuns.filter(
     (run) => Number(run.data.confidence ?? 0) >= MIN_ACCEPTED_RUN_CONFIDENCE,
   );
   const confidencePassedValues = confidencePassedRuns.map((run) => Number(run.data.confidence ?? 0));
@@ -1232,7 +1247,7 @@ function combineAiRuns(
     method: isAquachekPro(brand) ? 'gemini-quality-deterministic-color' : 'repeated-model-discrete-consensus',
     requiredRuns: MULTI_SHOT_RUNS,
     successfulRuns: okRuns.length,
-    qualityPassedRuns: qualityPassedRuns.length,
+    qualityPassedRuns: effectiveQualityPassedRuns.length,
     confidencePassedRuns: confidencePassedRuns.length,
     runConfidences,
     expectedPhysicalPadCount,
@@ -1272,8 +1287,8 @@ function combineAiRuns(
     );
   }
 
-  const qualityFailures = okRuns.filter((run) => !qualityPassedRuns.includes(run));
-  if (qualityPassedRuns.length < REQUIRED_CONSENSUS_RUNS) {
+  const qualityFailures = okRuns.filter((run) => !effectiveQualityPassedRuns.includes(run));
+  if (effectiveQualityPassedRuns.length < REQUIRED_CONSENSUS_RUNS) {
     const reasonCounts = new Map<FailureReason, number>();
     for (const run of qualityFailures) {
       reasonCounts.set(run.data.failureReason, (reasonCounts.get(run.data.failureReason) ?? 0) + 1);
@@ -1284,7 +1299,7 @@ function combineAiRuns(
       dominantReason,
       notes || 'אחת מקריאות האיכות זיהתה בעיה בצילום. יש לצלם שוב סטיק מלא, חד וללא סנוור.',
       [
-        `Only ${qualityPassedRuns.length} of ${okRuns.length} completed runs passed image quality.`,
+        `Only ${effectiveQualityPassedRuns.length} of ${okRuns.length} completed runs passed image quality.`,
         ...qualityFailures.map(
           (run) =>
             `Quality gate failed: ${run.data.failureReason}; pads=${run.data.physicalPadCount}/${expectedPhysicalPadCount}; groundedCenters=${run.data.visiblePadCenterYs.length}; integrity=${run.data.padIntegrity.join(',')}; bodyEvidence=${run.data.stripBodyEvidence}; oneStrip=${run.data.hasExactlyOneStrip}; continuousBody=${run.data.hasSingleContinuousStripBody}; intactPads=${run.data.allPadsIntact}; correctOrder=${run.data.padOrderMatchesSelectedBrand}; extraPad=${run.data.hasExtraPadLikeRegions}.`,
@@ -1308,11 +1323,12 @@ function combineAiRuns(
   }
 
   if (isAquachekPro(brand)) {
-    const structureConfidences = qualityPassedRuns.map((run) => Number(run.data.confidence ?? 0));
+    const structureConfidences = effectiveQualityPassedRuns.map((run) => Number(run.data.confidence ?? 0));
     const strongestStructureConfidence = structureConfidences.length > 0
       ? Math.max(...structureConfidences)
       : 0;
     if (
+      !usedRelaxedAquachekGate &&
       !hasMinimumAquachekStructureConfidence(
         structureConfidences,
         MIN_AQUACHEK_STRUCTURE_CONFIDENCE,
@@ -1410,8 +1426,12 @@ function combineAiRuns(
         analysisVersion: ANALYSIS_VERSION,
         accepted: true,
         acceptanceReasons: [
-          `At least ${REQUIRED_CONSENSUS_RUNS} Gemini runs validated image quality and four complete pads.`,
-          `At least one Gemini structure check reached ${MIN_AQUACHEK_STRUCTURE_CONFIDENCE} confidence.`,
+          usedRelaxedAquachekGate
+            ? `At least ${REQUIRED_CONSENSUS_RUNS} Gemini runs identified one intact four-pad AquaChek candidate; deterministic validation resolved minor real-photo uncertainty.`
+            : `At least ${REQUIRED_CONSENSUS_RUNS} Gemini runs validated image quality and four complete pads.`,
+          usedRelaxedAquachekGate
+            ? 'The deterministic structure analyzer, rather than a subjective model framing flag, made the final structure decision.'
+            : `At least one Gemini structure check reached ${MIN_AQUACHEK_STRUCTURE_CONFIDENCE} confidence.`,
           `Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} passed the ${MIN_AQUACHEK_SHARPNESS_VARIANCE} minimum.`,
           'All readings matched the nearest discrete AquaChek Pro manufacturer-chart color.',
         ],
