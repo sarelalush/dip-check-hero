@@ -13,6 +13,7 @@ import {
   hasUsableAquachekPadEvidence,
   measureAquachekProSharpness,
   refineAquachekProPadCenterYs,
+  selectAquachekProExpectedColorBands,
 } from '../supabase/functions/_shared/aquachek-pro-reference.js';
 import {
   VALID_VARIANTS,
@@ -162,6 +163,43 @@ describe('AquaChek Pro reference chart', () => {
         modelCenters,
       ),
     ).toEqual(modelCenters);
+  });
+
+  it('ignores a distant finger-like band below the grounded four-pad sequence', () => {
+    const bands = [
+      { startY: 143, endY: 206, height: 64 },
+      { startY: 292, endY: 314, height: 23 },
+      { startY: 358, endY: 445, height: 88 },
+      { startY: 474, endY: 537, height: 64 },
+      { startY: 759, endY: 812, height: 54 },
+    ];
+    const selected = selectAquachekProExpectedColorBands(
+      955,
+      bands,
+      [0.158, 0.282, 0.416, 0.57],
+    );
+
+    expect(selected.colorBands).toEqual(bands.slice(0, 4));
+    expect(selected.ignoredColorBands).toEqual([bands[4]]);
+    expect(selected.expectedBandEnvelope).not.toBeNull();
+  });
+
+  it('does not hide an extra band inside the expected reagent area', () => {
+    const bands = [
+      { startY: 120, endY: 170, height: 51 },
+      { startY: 230, endY: 280, height: 51 },
+      { startY: 300, endY: 325, height: 26 },
+      { startY: 340, endY: 390, height: 51 },
+      { startY: 450, endY: 500, height: 51 },
+    ];
+    const selected = selectAquachekProExpectedColorBands(
+      760,
+      bands,
+      [0.19, 0.33, 0.47, 0.61],
+    );
+
+    expect(selected.colorBands).toHaveLength(5);
+    expect(selected.ignoredColorBands).toHaveLength(0);
   });
 
   it('rejects a non-four-pad input', () => {

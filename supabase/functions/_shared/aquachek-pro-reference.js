@@ -525,6 +525,60 @@ export function getFixedWhiteReferenceRegion(imageWidth, imageHeight) {
 }
 
 /**
+ * Keep reagent-like bands inside the four-pad area already grounded by the
+ * vision model. A user's fingers or the exposed handle can be colorful too,
+ * but they sit well outside the regular reagent sequence and must not be
+ * counted as a fifth pad.
+ *
+ * Filtering is only enabled when at least two plausible reagent bands remain.
+ * This prevents incorrect model centers from hiding real structural defects.
+ *
+ * @param {number} imageHeight
+ * @param {Array<{ startY: number, endY: number, height: number }>} colorBands
+ * @param {number[] | undefined} modelCenterYs
+ */
+export function selectAquachekProExpectedColorBands(imageHeight, colorBands, modelCenterYs) {
+  if (
+    imageHeight <= 0 ||
+    !Array.isArray(modelCenterYs) ||
+    modelCenterYs.length !== 4 ||
+    modelCenterYs.some((center) => !Number.isFinite(Number(center)))
+  ) {
+    return { colorBands, ignoredColorBands: [], expectedBandEnvelope: null };
+  }
+
+  const centers = modelCenterYs
+    .map((center) => Math.max(0, Math.min(1, Number(center))))
+    .sort((left, right) => left - right);
+  const gaps = centers.slice(1).map((center, index) => center - centers[index]);
+  const sortedGaps = [...gaps].sort((left, right) => left - right);
+  const medianGap = sortedGaps[Math.floor(sortedGaps.length / 2)];
+  if (!Number.isFinite(medianGap) || medianGap < 0.04 || medianGap > 0.28) {
+    return { colorBands, ignoredColorBands: [], expectedBandEnvelope: null };
+  }
+
+  const envelopePadding = medianGap * 0.8;
+  const expectedBandEnvelope = {
+    startY: Math.max(0, (centers[0] - envelopePadding) * imageHeight),
+    endY: Math.min(imageHeight - 1, (centers[3] + envelopePadding) * imageHeight),
+  };
+  const isInsideEnvelope = (band) => {
+    const centerY = (band.startY + band.endY) / 2;
+    return centerY >= expectedBandEnvelope.startY && centerY <= expectedBandEnvelope.endY;
+  };
+  const expectedBands = colorBands.filter(isInsideEnvelope);
+  if (expectedBands.length < 2) {
+    return { colorBands, ignoredColorBands: [], expectedBandEnvelope: null };
+  }
+
+  return {
+    colorBands: expectedBands,
+    ignoredColorBands: colorBands.filter((band) => !isInsideEnvelope(band)),
+    expectedBandEnvelope,
+  };
+}
+
+/**
  * Validate the centered strip geometry independently of the vision model.
  * Pale reagent pads may blend into the carrier, so fewer than four detected
  * color bands is allowed. Extra-long or split bands are not.
@@ -533,12 +587,14 @@ export function getFixedWhiteReferenceRegion(imageWidth, imageHeight) {
  * @param {number} imageHeight
  * @param {(x: number, y: number) => Rgb} getRgb
  * @param {number} [requestedCenterX]
+ * @param {number[] | undefined} [modelCenterYs]
  */
 export function analyzeAquachekProStructure(
   imageWidth,
   imageHeight,
   getRgb,
   requestedCenterX = imageWidth / 2,
+  modelCenterYs,
 ) {
   const centerX = Math.max(0, Math.min(imageWidth - 1, requestedCenterX));
   const laneHalfWidth = Math.max(2, Math.round(imageWidth * 0.035));
@@ -615,9 +671,15 @@ export function analyzeAquachekProStructure(
     if (previous && band.startY - previous.endY - 1 <= mergeGap) previous.endY = band.endY;
     else mergedBands.push({ ...band });
   }
-  const colorBands = mergedBands
+  const allColorBands = mergedBands
     .map((band) => ({ ...band, height: band.endY - band.startY + 1 }))
     .filter((band) => band.height >= minimumBandHeight);
+  const selectedBands = selectAquachekProExpectedColorBands(
+    imageHeight,
+    allColorBands,
+    modelCenterYs,
+  );
+  const colorBands = selectedBands.colorBands;
   const hasOversizedBand = colorBands.some((band) => band.height > maximumBandHeight);
   const hasSplitOrExtraBands = colorBands.length > 4;
 
@@ -628,6 +690,8 @@ export function analyzeAquachekProStructure(
     carrierLuminance,
     carrierChroma,
     colorBands,
+    ignoredColorBands: selectedBands.ignoredColorBands,
+    expectedBandEnvelope: selectedBands.expectedBandEnvelope,
     hasOversizedBand,
     hasSplitOrExtraBands,
     thresholds: {

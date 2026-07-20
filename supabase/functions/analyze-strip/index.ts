@@ -47,6 +47,7 @@ import {
   measureAquachekProSharpness,
   refineAquachekProPadCenterYs,
 } from '../_shared/aquachek-pro-reference.js';
+import { readZeroBasedImageScriptRgb } from '../_shared/imagescript-pixel.js';
 
 type StatusTone = 'success' | 'warning' | 'danger';
 type AnalysisSource = 'ai';
@@ -129,11 +130,19 @@ interface ColorAnalysisEvidence {
   padRgbs: Rgb[];
   selectedValues: Partial<Record<StripParameter, number>>;
   padCenterYs?: number[];
-  padLocalization?: 'model-consensus' | 'fixed-fallback';
+  modelPadCenterYs?: number[];
+  padLocalization?: 'model-consensus' | 'structure-refined' | 'fixed-fallback';
+  localizationCandidates?: Array<{
+    confidence: number;
+    padCenterYs?: number[];
+    padLocalization: 'model-consensus' | 'structure-refined' | 'fixed-fallback';
+  }>;
   whiteReference?: Rgb;
   sharpnessVariance?: number;
   minimumSharpnessVariance?: number;
   structure?: ReturnType<typeof analyzeAquachekProStructure>;
+  horizontalLocalization?: ReturnType<typeof locateAquachekProStripCenterX>;
+  deskewAngle?: number;
 }
 
 interface AnalysisEvidence {
@@ -231,6 +240,8 @@ interface DecodedImage {
   width: number;
   height: number;
   getPixelAt: (x: number, y: number) => number;
+  clone?: () => DecodedImage;
+  rotate?: (angle: number, resize?: boolean) => DecodedImage;
 }
 
 const SCAN_IMAGES_BUCKET = 'scan-images';
@@ -239,7 +250,7 @@ const MULTI_SHOT_RUNS = 3;
 const REQUIRED_CONSENSUS_RUNS = 2;
 const PROVIDER_RECOVERY_ATTEMPTS = 1;
 const PROVIDER_RECOVERY_DELAY_MS = 1_000;
-const ANALYSIS_VERSION = 'aquachek-pro-v14-crop-stable-localization';
+const ANALYSIS_VERSION = 'aquachek-pro-v16-auto-deskew';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.5;
@@ -651,7 +662,12 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function getPixelRgb(image: DecodedImage, x: number, y: number): Rgb {
-  return ImageScript.colorToRGB(image.getPixelAt(x, y)) as Rgb;
+  return readZeroBasedImageScriptRgb(
+    image,
+    (color: number) => ImageScript.colorToRGB(color),
+    x,
+    y,
+  ) as Rgb;
 }
 
 function bytesToBase64(bytes: Uint8Array) {
@@ -716,94 +732,147 @@ function sampleWhiteReference(image: DecodedImage) {
   return sampleAverageRgb(image, region.x, region.y, region.width, region.height);
 }
 
+function analyzeAquachekCvCandidate(
+  image: DecodedImage,
+  normalizedCenterYs?: number[],
+  deskewAngle = 0,
+): CvResult {
+  const getRgb = (x: number, y: number) => getPixelRgb(image, x, y);
+  const horizontalLocalization = locateAquachekProStripCenterX(
+    image.width,
+    image.height,
+    getRgb,
+    normalizedCenterYs,
+  );
+  const structure = analyzeAquachekProStructure(
+    image.width,
+    image.height,
+    getRgb,
+    horizontalLocalization.centerX,
+    normalizedCenterYs,
+  );
+  const refinedCenterYs = refineAquachekProPadCenterYs(
+    image.height,
+    structure.colorBands,
+    normalizedCenterYs,
+  );
+  const whiteReference = structure.carrierReference ?? sampleWhiteReference(image);
+  const sharpness = measureAquachekProSharpness(
+    image.width,
+    image.height,
+    getRgb,
+    horizontalLocalization.centerX,
+  );
+  type PadLocalization = 'model-consensus' | 'structure-refined' | 'fixed-fallback';
+  type Candidate = {
+    centerYs?: number[];
+    localization: PadLocalization;
+    analysis: ReturnType<typeof analyzeAquachekProDiscretePadRgbs>;
+    pads: Rgb[];
+  };
+  const candidates: Candidate[] = [];
+  const centerCandidates: Array<{ centerYs?: number[]; localization: PadLocalization }> = [
+    { centerYs: normalizedCenterYs, localization: 'model-consensus' },
+    { centerYs: refinedCenterYs, localization: 'structure-refined' },
+  ];
+  for (const candidate of centerCandidates) {
+    if (candidate.centerYs?.length !== 4) continue;
+    const isDuplicate = candidates.some((entry) =>
+      entry.centerYs?.every((center, centerIndex) =>
+        Math.abs(center - (candidate.centerYs?.[centerIndex] ?? center)) < 0.0001
+      )
+    );
+    if (isDuplicate) continue;
+    const pads = samplePads(
+      image,
+      4,
+      candidate.centerYs,
+      horizontalLocalization.normalizedCenterX,
+    );
+    candidates.push({
+      ...candidate,
+      analysis: analyzeAquachekProDiscretePadRgbs(pads, { whiteReference }),
+      pads,
+    });
+  }
+  if (candidates.length === 0) {
+    const pads = samplePads(image, 4);
+    candidates.push({
+      analysis: analyzeAquachekProDiscretePadRgbs(pads, { whiteReference }),
+      centerYs: undefined,
+      localization: 'fixed-fallback',
+      pads,
+    });
+  }
+  const selected = candidates.reduce((best, candidate) =>
+    candidate.analysis.confidence > best.analysis.confidence ? candidate : best
+  );
+  const { analysis, pads } = selected;
+  return {
+    values: analysis.values,
+    confidence: analysis.confidence,
+    notes: 'Gemini validated image quality; readings came from deterministic manufacturer-chart color matching.',
+    evidence: {
+      confidence: analysis.confidence,
+      distances: analysis.distances,
+      margins: analysis.margins,
+      padRgbs: pads,
+      selectedValues: analysis.values,
+      padCenterYs: selected.centerYs,
+      modelPadCenterYs: normalizedCenterYs,
+      padLocalization: selected.localization,
+      localizationCandidates: candidates.map((candidate) => ({
+        confidence: candidate.analysis.confidence,
+        padCenterYs: candidate.centerYs,
+        padLocalization: candidate.localization,
+      })),
+      whiteReference,
+      sharpnessVariance: sharpness.variance,
+      minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
+      structure,
+      horizontalLocalization,
+      deskewAngle,
+    },
+  };
+}
+
+function isAcceptableAquachekCvCandidate(candidate: CvResult) {
+  return Boolean(
+    candidate.evidence?.structure?.passed &&
+      (candidate.evidence?.sharpnessVariance ?? 0) >= MIN_AQUACHEK_SHARPNESS_VARIANCE &&
+      candidate.confidence >= MIN_ACCEPTED_CV_CONFIDENCE
+  );
+}
+
 function analyzeCv(image: DecodedImage, brand: StripBrand, normalizedCenterYs?: number[]): CvResult | null {
   if (isAquachekPro(brand)) {
-    const horizontalLocalization = locateAquachekProStripCenterX(
-      image.width,
-      image.height,
-      (x: number, y: number) => getPixelRgb(image, x, y),
-      normalizedCenterYs,
-    );
-    const structure = analyzeAquachekProStructure(
-      image.width,
-      image.height,
-      (x: number, y: number) => getPixelRgb(image, x, y),
-      horizontalLocalization.centerX,
-    );
-    const refinedCenterYs = refineAquachekProPadCenterYs(
-      image.height,
-      structure.colorBands,
-      normalizedCenterYs,
-    );
-    const whiteReference = structure.carrierReference ?? sampleWhiteReference(image);
-    const sharpness = measureAquachekProSharpness(
-      image.width,
-      image.height,
-      (x: number, y: number) => getPixelRgb(image, x, y),
-      horizontalLocalization.centerX,
-    );
-    const candidates = [
-      { centerYs: normalizedCenterYs, localization: 'model-consensus' },
-      { centerYs: refinedCenterYs, localization: 'structure-refined' },
-    ].filter(
-      (candidate, index, entries) =>
-        candidate.centerYs?.length === 4 &&
-        entries.findIndex((entry) =>
-          entry.centerYs?.every((center, centerIndex) =>
-            Math.abs(center - (candidate.centerYs?.[centerIndex] ?? center)) < 0.0001
-          )
-        ) === index,
-    ).map((candidate) => {
-      const pads = samplePads(
-        image,
-        4,
-        candidate.centerYs,
-        horizontalLocalization.normalizedCenterX,
-      );
-      return {
-        ...candidate,
-        analysis: analyzeAquachekProDiscretePadRgbs(pads, { whiteReference }),
-        pads,
-      };
-    });
-    if (candidates.length === 0) {
-      const pads = samplePads(image, 4);
-      candidates.push({
-        analysis: analyzeAquachekProDiscretePadRgbs(pads, { whiteReference }),
-        centerYs: undefined,
-        localization: 'fixed-fallback',
-        pads,
-      });
+    const original = analyzeAquachekCvCandidate(image, normalizedCenterYs);
+    if (isAcceptableAquachekCvCandidate(original) || !image.clone || !image.rotate) return original;
+
+    // Use the smallest correction that produces a complete four-pad strip.
+    // This avoids unnecessary interpolation while handling realistic handheld
+    // photos where a mild tilt merges separate pads in the vertical CV lane.
+    for (const angle of [-4, 4, -6, 6, -8, 8, -10, 10]) {
+      try {
+        const clone = image.clone();
+        const deskewed = clone.rotate?.(angle, true) ?? clone;
+        const candidate = analyzeAquachekCvCandidate(deskewed, normalizedCenterYs, angle);
+        console.log('Evaluated local AquaChek deskew candidate', {
+          angle,
+          width: deskewed.width,
+          height: deskewed.height,
+          structurePassed: candidate.evidence?.structure?.passed,
+          detectedBands: candidate.evidence?.structure?.colorBands?.length,
+          ignoredBands: candidate.evidence?.structure?.ignoredColorBands?.length,
+          colorConfidence: candidate.confidence,
+          sharpnessVariance: candidate.evidence?.sharpnessVariance,
+        });
+        if (isAcceptableAquachekCvCandidate(candidate)) return candidate;
+      } catch (error) {
+        console.warn('AquaChek deskew candidate failed', { angle, error });
+      }
     }
-    const selected = candidates.reduce((best, candidate) =>
-      candidate.analysis.confidence > best.analysis.confidence ? candidate : best
-    );
-    const { analysis, pads } = selected;
-    return {
-      values: analysis.values,
-      confidence: analysis.confidence,
-      notes: 'Gemini validated image quality; readings came from deterministic manufacturer-chart color matching.',
-      evidence: {
-        confidence: analysis.confidence,
-        distances: analysis.distances,
-        margins: analysis.margins,
-        padRgbs: pads,
-        selectedValues: analysis.values,
-        padCenterYs: selected.centerYs,
-        modelPadCenterYs: normalizedCenterYs,
-        padLocalization: selected.localization,
-        localizationCandidates: candidates.map((candidate) => ({
-          confidence: candidate.analysis.confidence,
-          padCenterYs: candidate.centerYs,
-          padLocalization: candidate.localization,
-        })),
-        whiteReference,
-        sharpnessVariance: sharpness.variance,
-        minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
-        structure,
-        horizontalLocalization,
-      },
-    };
+    return original;
   }
 
   if (isAquachekYellow(brand)) {
