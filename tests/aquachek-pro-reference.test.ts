@@ -118,6 +118,25 @@ describe('AquaChek Pro reference chart', () => {
     expect(regions.every((region) => Math.abs(region.x + region.width / 2 - 136) < 0.01)).toBe(true);
   });
 
+  it('keeps the physical pad sample width stable across different crop margins', () => {
+    const centerYs = [0.09, 0.2, 0.34, 0.48];
+    const tightCrop = getLocalizedPadSampleRegions(120, 700, centerYs, 0.5, 36 / 120);
+    const wideCrop = getLocalizedPadSampleRegions(420, 700, centerYs, 0.5, 36 / 420);
+
+    expect(tightCrop.map((region) => region.width)).toEqual(wideCrop.map((region) => region.width));
+    expect(tightCrop[0].width).toBeCloseTo(22.32, 2);
+  });
+
+  it('measures focus inside the detected strip instead of the surrounding crop', () => {
+    const centerYs = [0.15, 0.29, 0.43, 0.57];
+    const getRgb = (): [number, number, number] => [220, 220, 220];
+    const tightCrop = measureAquachekProSharpness(120, 700, getRgb, 60, 36, centerYs);
+    const wideCrop = measureAquachekProSharpness(420, 700, getRgb, 210, 36, centerYs);
+
+    expect(tightCrop.region.width).toBe(wideCrop.region.width);
+    expect(tightCrop.region.height).toBe(wideCrop.region.height);
+  });
+
   it('locates an off-center carrier from the neutral gaps between pads', () => {
     const width = 200;
     const height = 700;

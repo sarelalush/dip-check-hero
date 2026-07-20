@@ -250,7 +250,7 @@ const MULTI_SHOT_RUNS = 3;
 const REQUIRED_CONSENSUS_RUNS = 2;
 const PROVIDER_RECOVERY_ATTEMPTS = 1;
 const PROVIDER_RECOVERY_DELAY_MS = 1_000;
-const ANALYSIS_VERSION = 'aquachek-pro-v16-auto-deskew';
+const ANALYSIS_VERSION = 'aquachek-pro-v17-crop-invariant';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.5;
@@ -713,6 +713,7 @@ function samplePads(
   padCount: number,
   normalizedCenterYs?: number[],
   normalizedCenterX = 0.5,
+  normalizedStripWidth?: number,
 ) {
   const regions = normalizedCenterYs?.length === padCount
     ? getLocalizedPadSampleRegions(
@@ -720,6 +721,7 @@ function samplePads(
         image.height,
         normalizedCenterYs,
         normalizedCenterX,
+        normalizedStripWidth,
       )
     : getFixedPadSampleRegions(image.width, image.height, padCount);
   return regions.map((region) =>
@@ -744,12 +746,19 @@ function analyzeAquachekCvCandidate(
     getRgb,
     normalizedCenterYs,
   );
+  const localizedStripWidth = horizontalLocalization.segment
+    ? horizontalLocalization.segment.endX - horizontalLocalization.segment.startX + 1
+    : undefined;
+  const normalizedStripWidth = localizedStripWidth
+    ? localizedStripWidth / image.width
+    : undefined;
   const structure = analyzeAquachekProStructure(
     image.width,
     image.height,
     getRgb,
     horizontalLocalization.centerX,
     normalizedCenterYs,
+    localizedStripWidth,
   );
   const refinedCenterYs = refineAquachekProPadCenterYs(
     image.height,
@@ -762,6 +771,8 @@ function analyzeAquachekCvCandidate(
     image.height,
     getRgb,
     horizontalLocalization.centerX,
+    localizedStripWidth,
+    refinedCenterYs ?? normalizedCenterYs,
   );
   type PadLocalization = 'model-consensus' | 'structure-refined' | 'fixed-fallback';
   type Candidate = {
@@ -788,6 +799,7 @@ function analyzeAquachekCvCandidate(
       4,
       candidate.centerYs,
       horizontalLocalization.normalizedCenterX,
+      normalizedStripWidth,
     );
     candidates.push({
       ...candidate,
@@ -922,17 +934,31 @@ function isQualityPassedRun(
   );
 }
 
+function hasUsablePadCenters(
+  run: Extract<AiRunResponse, { ok: true }>,
+  padCount: number,
+) {
+  const centers = run.data.visiblePadCenterYs.map(Number);
+  if (
+    centers.length !== padCount ||
+    centers.some((center) => !Number.isFinite(center) || center <= 0 || center >= 1)
+  ) {
+    return false;
+  }
+
+  const gaps = centers.slice(1).map((center, index) => center - centers[index]);
+  return gaps.every((gap) => gap >= 0.025) && centers.at(-1)! - centers[0] <= 0.9;
+}
+
 function consensusPadCenterYs(runs: AiRunResponse[], padCount: number): number[] | undefined {
   const candidates = runs
     .filter((run): run is Extract<AiRunResponse, { ok: true }> => run.ok)
-    .filter(
-      (run) =>
-        isQualityPassedRun(run, padCount, true) ||
-        hasUsableAquachekPadEvidence(run.data, padCount),
-    )
+    // Gemini supplies approximate pad centers only. Local carrier, structure,
+    // sharpness and manufacturer-color checks make the acceptance decision.
+    .filter((run) => hasUsablePadCenters(run, padCount))
     .map((run) => run.data.visiblePadCenterYs)
     .filter((centers) => centers.length === padCount);
-  if (candidates.length < REQUIRED_CONSENSUS_RUNS) return undefined;
+  if (candidates.length === 0) return undefined;
 
   return Array.from({ length: padCount }, (_, index) => {
     const values = candidates.map((centers) => centers[index]).sort((left, right) => left - right);
@@ -1375,6 +1401,17 @@ function combineAiRuns(
     isAquachekPro(brand) &&
     qualityPassedRuns.length < REQUIRED_CONSENSUS_RUNS &&
     relaxedAquachekRuns.length >= REQUIRED_CONSENSUS_RUNS;
+  const usableAquachekCenterRuns = isAquachekPro(brand)
+    ? okRuns.filter((run) => hasUsablePadCenters(run, expectedPhysicalPadCount))
+    : [];
+  const deterministicAquachekValidated = Boolean(
+    isAquachekPro(brand) &&
+      cvResult?.evidence?.structure?.passed &&
+      (cvResult.evidence.sharpnessVariance ?? 0) >= MIN_AQUACHEK_SHARPNESS_VARIANCE &&
+      cvResult.confidence >= MIN_ACCEPTED_CV_CONFIDENCE &&
+      cvResult.evidence.modelPadCenterYs?.length === expectedPhysicalPadCount &&
+      usableAquachekCenterRuns.length >= 1
+  );
   const effectiveQualityPassedRuns = usedRelaxedAquachekGate
     ? relaxedAquachekRuns
     : qualityPassedRuns;
@@ -1427,7 +1464,10 @@ function combineAiRuns(
   }
 
   const qualityFailures = okRuns.filter((run) => !effectiveQualityPassedRuns.includes(run));
-  if (effectiveQualityPassedRuns.length < REQUIRED_CONSENSUS_RUNS) {
+  if (
+    effectiveQualityPassedRuns.length < REQUIRED_CONSENSUS_RUNS &&
+    !deterministicAquachekValidated
+  ) {
     const reasonCounts = new Map<FailureReason, number>();
     for (const run of qualityFailures) {
       reasonCounts.set(run.data.failureReason, (reasonCounts.get(run.data.failureReason) ?? 0) + 1);
@@ -1468,6 +1508,7 @@ function combineAiRuns(
       : 0;
     if (
       !usedRelaxedAquachekGate &&
+      !deterministicAquachekValidated &&
       !hasMinimumAquachekStructureConfidence(
         structureConfidences,
         MIN_AQUACHEK_STRUCTURE_CONFIDENCE,
@@ -1565,10 +1606,14 @@ function combineAiRuns(
         analysisVersion: ANALYSIS_VERSION,
         accepted: true,
         acceptanceReasons: [
-          usedRelaxedAquachekGate
+          deterministicAquachekValidated
+            ? 'Gemini located four ordered pad centers; deterministic carrier, structure, focus and color checks made the final acceptance decision.'
+            : usedRelaxedAquachekGate
             ? `At least ${REQUIRED_CONSENSUS_RUNS} Gemini runs identified one intact four-pad AquaChek candidate; deterministic validation resolved minor real-photo uncertainty.`
             : `At least ${REQUIRED_CONSENSUS_RUNS} Gemini runs validated image quality and four complete pads.`,
-          usedRelaxedAquachekGate
+          deterministicAquachekValidated
+            ? 'Pad sampling was normalized to the detected physical strip width, independent of crop margins.'
+            : usedRelaxedAquachekGate
             ? 'The deterministic structure analyzer, rather than a subjective model framing flag, made the final structure decision.'
             : `At least one Gemini structure check reached ${MIN_AQUACHEK_STRUCTURE_CONFIDENCE} confidence.`,
           `Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} passed the ${MIN_AQUACHEK_SHARPNESS_VARIANCE} minimum.`,

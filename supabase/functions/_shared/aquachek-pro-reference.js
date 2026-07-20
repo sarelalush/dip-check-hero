@@ -269,15 +269,26 @@ export function getFixedPadSampleRegions(imageWidth, imageHeight, padCount = 4) 
  * @param {number} imageHeight
  * @param {number[]} normalizedCenterYs
  * @param {number} [normalizedCenterX]
+ * @param {number} [normalizedStripWidth]
  */
 export function getLocalizedPadSampleRegions(
   imageWidth,
   imageHeight,
   normalizedCenterYs,
   normalizedCenterX = 0.5,
+  normalizedStripWidth,
 ) {
   const centers = normalizedCenterYs.map((center) => center * imageHeight);
-  const sampleWidth = Math.max(12, Math.min(64, imageWidth * 0.16));
+  const detectedStripWidth = Number(normalizedStripWidth) * imageWidth;
+  const hasDetectedStripWidth =
+    Number.isFinite(detectedStripWidth) &&
+    detectedStripWidth >= 4 &&
+    detectedStripWidth <= imageWidth;
+  // Once the carrier has been localized, sample the same physical portion of
+  // each pad regardless of how much background the user left in the crop.
+  const sampleWidth = hasDetectedStripWidth
+    ? Math.max(4, Math.min(64, detectedStripWidth * 0.62))
+    : Math.max(12, Math.min(64, imageWidth * 0.16));
   const centerX = Math.max(0, Math.min(1, normalizedCenterX)) * imageWidth;
 
   return centers.map((centerY, index) => {
@@ -588,6 +599,7 @@ export function selectAquachekProExpectedColorBands(imageHeight, colorBands, mod
  * @param {(x: number, y: number) => Rgb} getRgb
  * @param {number} [requestedCenterX]
  * @param {number[] | undefined} [modelCenterYs]
+ * @param {number | undefined} [stripWidthPixels]
  */
 export function analyzeAquachekProStructure(
   imageWidth,
@@ -595,9 +607,16 @@ export function analyzeAquachekProStructure(
   getRgb,
   requestedCenterX = imageWidth / 2,
   modelCenterYs,
+  stripWidthPixels,
 ) {
   const centerX = Math.max(0, Math.min(imageWidth - 1, requestedCenterX));
-  const laneHalfWidth = Math.max(2, Math.round(imageWidth * 0.035));
+  const hasDetectedStripWidth =
+    Number.isFinite(stripWidthPixels) &&
+    stripWidthPixels >= 4 &&
+    stripWidthPixels <= imageWidth;
+  const laneHalfWidth = hasDetectedStripWidth
+    ? Math.max(2, Math.round(stripWidthPixels * 0.2))
+    : Math.max(2, Math.round(imageWidth * 0.035));
   const averageRegion = (startY, endY) => {
     const totals = [0, 0, 0];
     let count = 0;
@@ -699,6 +718,7 @@ export function analyzeAquachekProStructure(
       minimumBandHeight,
       maximumBandHeight,
       mergeGap,
+      laneHalfWidth,
     },
     centerX,
   };
@@ -765,19 +785,43 @@ export function hasUsableAquachekPadEvidence(evidence, expectedPadCount = 4) {
  * @param {number} imageHeight
  * @param {(x: number, y: number) => Rgb} getRgb
  * @param {number} [requestedCenterX]
+ * @param {number | undefined} [stripWidthPixels]
+ * @param {number[] | undefined} [normalizedCenterYs]
  */
 export function measureAquachekProSharpness(
   imageWidth,
   imageHeight,
   getRgb,
   requestedCenterX = imageWidth / 2,
+  stripWidthPixels,
+  normalizedCenterYs,
 ) {
   const centerX = Math.max(0, Math.min(imageWidth - 1, requestedCenterX));
-  const halfWidth = Math.max(8, imageWidth * 0.26);
+  const hasDetectedStripWidth =
+    Number.isFinite(stripWidthPixels) &&
+    stripWidthPixels >= 4 &&
+    stripWidthPixels <= imageWidth;
+  const halfWidth = hasDetectedStripWidth
+    ? Math.max(3, stripWidthPixels * 0.46)
+    : Math.max(8, imageWidth * 0.26);
   const startX = Math.max(1, Math.floor(centerX - halfWidth));
   const endX = Math.min(imageWidth - 1, Math.ceil(centerX + halfWidth));
-  const startY = Math.max(1, Math.floor(imageHeight * 0.04));
-  const endY = Math.min(imageHeight - 1, Math.ceil(imageHeight * 0.96));
+  const centers = Array.isArray(normalizedCenterYs) && normalizedCenterYs.length === 4
+    ? normalizedCenterYs
+        .map((center) => Number(center))
+        .filter((center) => Number.isFinite(center))
+        .sort((left, right) => left - right)
+    : [];
+  const gaps = centers.slice(1).map((center, index) => center - centers[index]);
+  const medianGap = gaps.length
+    ? [...gaps].sort((left, right) => left - right)[Math.floor(gaps.length / 2)]
+    : 0;
+  const startY = centers.length === 4 && medianGap > 0
+    ? Math.max(1, Math.floor((centers[0] - medianGap * 0.55) * imageHeight))
+    : Math.max(1, Math.floor(imageHeight * 0.04));
+  const endY = centers.length === 4 && medianGap > 0
+    ? Math.min(imageHeight - 1, Math.ceil((centers[3] + medianGap * 0.55) * imageHeight))
+    : Math.min(imageHeight - 1, Math.ceil(imageHeight * 0.96));
   const luminance = (x, y) => {
     const [r, g, b] = getRgb(x, y);
     return r * 0.2126 + g * 0.7152 + b * 0.0722;
