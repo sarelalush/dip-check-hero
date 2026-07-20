@@ -44,7 +44,10 @@ const POOL_BACKGROUND = require('../../assets/images/home-pool.png');
 const MIN_CROP_WIDTH = 4;
 const MIN_CROP_HEIGHT = 20;
 const CROP_NUDGE = 2;
-const CROP_PADDING_RATIO = 0;
+const CROP_HORIZONTAL_PADDING_RATIO = 0.15;
+const CROP_VERTICAL_PADDING_RATIO = 0.03;
+const MIN_CROP_HORIZONTAL_PADDING = 3;
+const MIN_CROP_VERTICAL_PADDING = 2;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -66,6 +69,22 @@ function clampCrop(crop: CropBox, image: RenderedImage): CropBox {
   const y = clamp(crop.y, 0, Math.max(0, image.height - height));
 
   return { height, width, x, y };
+}
+
+function addCropSafetyMargin(crop: CropBox, image: RenderedImage): CropBox {
+  const padX = Math.max(crop.width * CROP_HORIZONTAL_PADDING_RATIO, MIN_CROP_HORIZONTAL_PADDING);
+  const padY = Math.max(crop.height * CROP_VERTICAL_PADDING_RATIO, MIN_CROP_VERTICAL_PADDING);
+  const left = clamp(crop.x - padX, 0, image.width);
+  const top = clamp(crop.y - padY, 0, image.height);
+  const right = clamp(crop.x + crop.width + padX, 0, image.width);
+  const bottom = clamp(crop.y + crop.height + padY, 0, image.height);
+
+  return {
+    height: Math.max(1, bottom - top),
+    width: Math.max(1, right - left),
+    x: left,
+    y: top,
+  };
 }
 
 function computeRenderedImage(container: Size, image: Size): RenderedImage | null {
@@ -178,7 +197,7 @@ export function CropScanImageScreen({ navigation, route }: Props) {
   const [containerSize, setContainerSize] = useState<Size>({ height: 0, width: 0 });
   const [crop, setCrop] = useState<CropBox | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('חתוך ידנית את התמונה כך שיישאר רק הסטיק.');
+  const [message, setMessage] = useState('סמן את כל הסטיק והשאר מעט רקע מכל צד.');
   const gestureStart = useRef<CropBox | null>(null);
   const activeHandleRef = useRef<ResizeHandle | null>(null);
   const cropRef = useRef<CropBox | null>(null);
@@ -295,7 +314,7 @@ export function CropScanImageScreen({ navigation, route }: Props) {
   function resetCrop() {
     if (!renderedImage) return;
     setCrop(createInitialCrop(renderedImage));
-    setMessage('החיתוך אופס. גרור את הפינות עד שנשאר רק הסטיק.');
+    setMessage('החיתוך אופס. סמן את כל הסטיק והשאר מעט רקע מכל צד.');
   }
 
   function adjustCropDimension(axis: 'height' | 'width', direction: -1 | 1) {
@@ -339,14 +358,13 @@ export function CropScanImageScreen({ navigation, route }: Props) {
 
     try {
       setBusy(true);
-      const padX = crop.width * CROP_PADDING_RATIO;
-      const padY = crop.height * CROP_PADDING_RATIO;
+      const safeCrop = addCropSafetyMargin(crop, renderedImage);
       const imageCrop = roundCrop(
         {
-          height: (crop.height + padY * 2) / renderedImage.scale,
-          originX: (crop.x - padX) / renderedImage.scale,
-          originY: (crop.y - padY) / renderedImage.scale,
-          width: (crop.width + padX * 2) / renderedImage.scale,
+          height: safeCrop.height / renderedImage.scale,
+          originX: safeCrop.x / renderedImage.scale,
+          originY: safeCrop.y / renderedImage.scale,
+          width: safeCrop.width / renderedImage.scale,
         },
         imageSize,
       );
@@ -362,6 +380,7 @@ export function CropScanImageScreen({ navigation, route }: Props) {
         `preview=${Math.round(containerSize.width)}x${Math.round(containerSize.height)}`,
         `rendered=${Math.round(renderedImage.x)},${Math.round(renderedImage.y)},${Math.round(renderedImage.width)}x${Math.round(renderedImage.height)}`,
         `manualCrop=${Math.round(crop.x)},${Math.round(crop.y)},${Math.round(crop.width)}x${Math.round(crop.height)}`,
+        `safeCrop=${Math.round(safeCrop.x)},${Math.round(safeCrop.y)},${Math.round(safeCrop.width)}x${Math.round(safeCrop.height)}`,
         `imageCrop=${imageCrop.originX},${imageCrop.originY},${imageCrop.width}x${imageCrop.height}`,
         `final=${cropped.width}x${cropped.height}`,
       ];
@@ -418,7 +437,7 @@ export function CropScanImageScreen({ navigation, route }: Props) {
         <View style={styles.headerText}>
           <Text style={styles.brand}>AquaSense</Text>
           <Text style={styles.title}>חתוך את התמונה</Text>
-          <Text style={styles.subtitle}>גרור את הפינות עד שרואים רק את סטיק הבדיקה.</Text>
+          <Text style={styles.subtitle}>גרור את הפינות סביב הסטיק והשאר מעט רקע מכל צד.</Text>
         </View>
       </View>
 
