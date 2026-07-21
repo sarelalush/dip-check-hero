@@ -59,6 +59,7 @@ interface StartScanSessionInput {
 
 interface SetImageUriOptions {
   originalImageUri?: string;
+  preserveTestId?: boolean;
   processingLog?: string[];
 }
 
@@ -162,11 +163,15 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
 
   const setImageUri = useCallback((imageUri?: string, options: SetImageUriOptions = {}) => {
     setSession((current) => {
-      const isNewImage = Boolean(imageUri && imageUri !== current.imageUri);
+      const nextTestId = imageUri
+        ? options.preserveTestId && current.testId
+          ? current.testId
+          : createScanTestId()
+        : current.testId;
 
       return withTimestamp({
         ...current,
-        testId: isNewImage ? createScanTestId() : current.testId,
+        testId: nextTestId,
         analysisResult: undefined,
         confirmedImageUri: undefined,
         dosageResult: undefined,

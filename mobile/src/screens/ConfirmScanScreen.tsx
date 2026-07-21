@@ -21,7 +21,7 @@ export function ConfirmScanScreen({ navigation, route }: Props) {
 
   useEffect(() => {
     if (!session.imageUri && route.params.imageUri) {
-      setImageUri(route.params.imageUri);
+      setImageUri(route.params.imageUri, { preserveTestId: true });
     }
   }, [route.params.imageUri, session.imageUri, setImageUri]);
 
@@ -46,6 +46,7 @@ export function ConfirmScanScreen({ navigation, route }: Props) {
       brandId,
       imageUri,
       poolId,
+      scanTestId: session.testId,
     });
   }
 

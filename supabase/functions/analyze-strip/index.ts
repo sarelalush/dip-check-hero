@@ -192,6 +192,23 @@ interface StripAnalysisResult {
   tokenUsage?: GeminiTokenUsageSummary;
 }
 
+type StripAnalysisRequestStatus = 'processing' | 'completed' | 'failed' | 'conflict';
+
+interface StripAnalysisClaim {
+  claimed: boolean;
+  status: StripAnalysisRequestStatus;
+  result?: StripAnalysisResult;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+interface StripAnalysisRequestRow {
+  status: Exclude<StripAnalysisRequestStatus, 'conflict'>;
+  result?: StripAnalysisResult | null;
+  error_code?: string | null;
+  error_message?: string | null;
+}
+
 interface AiRunData {
   isStrip: boolean;
   failureReason: FailureReason;
@@ -1612,6 +1629,164 @@ function getServiceHeaders(request?: Request) {
   };
 }
 
+async function createStripAnalysisImageKey(body: AnalyzeStripRequest) {
+  const identity = JSON.stringify({
+    accountId: body.accountId ?? null,
+    brandId: body.brandId ?? null,
+    imagePath: body.imagePath ?? null,
+    imageUri: body.imageUri ?? null,
+    imageUrl: body.imageUrl ?? null,
+  });
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(identity));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function storedAnalysisError(errorCode?: string | null, errorMessage?: string | null) {
+  return new EdgeAnalysisError(
+    errorCode === 'invalid_strip' ? 'invalid_strip' : 'unavailable',
+    errorMessage || 'ניתוח התמונה הקודם לא הושלם. נסו שוב בעוד כמה רגעים.',
+  );
+}
+
+async function claimStripAnalysisRequest(
+  userId: string,
+  body: AnalyzeStripRequest,
+  imageKey: string,
+  request: Request,
+): Promise<StripAnalysisClaim> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  if (!supabaseUrl) {
+    throw new EdgeAnalysisError('unavailable', 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה רגעים.');
+  }
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/claim_strip_analysis_request`, {
+    method: 'POST',
+    headers: getServiceHeaders(request),
+    body: JSON.stringify({
+      p_account_id: body.accountId ?? null,
+      p_image_key: imageKey,
+      p_test_id: body.testId,
+      p_user_id: userId,
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('Failed to claim strip analysis request', {
+      status: response.status,
+      testId: body.testId,
+    });
+    throw new EdgeAnalysisError('unavailable', 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה רגעים.');
+  }
+
+  const claim = (await response.json()) as StripAnalysisClaim;
+  if (!claim || typeof claim.claimed !== 'boolean' || typeof claim.status !== 'string') {
+    throw new EdgeAnalysisError('unavailable', 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה רגעים.');
+  }
+
+  return claim;
+}
+
+async function waitForStripAnalysisResult(userId: string, testId: string, request: Request) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  if (!supabaseUrl) {
+    throw new EdgeAnalysisError('unavailable', 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה רגעים.');
+  }
+
+  const deadline = Date.now() + 55_000;
+  const query = new URLSearchParams({
+    select: 'status,result,error_code,error_message',
+    user_id: `eq.${userId}`,
+    test_id: `eq.${testId}`,
+    limit: '1',
+  });
+
+  while (Date.now() < deadline) {
+    const response = await fetch(`${supabaseUrl}/rest/v1/strip_analysis_requests?${query.toString()}`, {
+      headers: getServiceHeaders(request),
+    });
+
+    if (!response.ok) {
+      throw new EdgeAnalysisError('unavailable', 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה רגעים.');
+    }
+
+    const rows = (await response.json()) as StripAnalysisRequestRow[];
+    const row = rows[0];
+    if (row?.status === 'completed' && row.result) return row.result;
+    if (row?.status === 'failed') throw storedAnalysisError(row.error_code, row.error_message);
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  throw new EdgeAnalysisError('unavailable', 'הסריקה עדיין בעיבוד. המתינו רגע ונסו שוב.');
+}
+
+async function completeStripAnalysisRequest(
+  userId: string,
+  testId: string,
+  result: StripAnalysisResult,
+  request: Request,
+) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  if (!supabaseUrl) throw new Error('Missing SUPABASE_URL.');
+
+  const query = new URLSearchParams({
+    user_id: `eq.${userId}`,
+    test_id: `eq.${testId}`,
+    status: 'eq.processing',
+  });
+  const response = await fetch(`${supabaseUrl}/rest/v1/strip_analysis_requests?${query.toString()}`, {
+    method: 'PATCH',
+    headers: getServiceHeaders(request),
+    body: JSON.stringify({
+      error_code: null,
+      error_message: null,
+      lease_expires_at: new Date().toISOString(),
+      result,
+      status: 'completed',
+      updated_at: new Date().toISOString(),
+    }),
+  });
+
+  if (!response.ok) throw new Error(`Failed to complete strip analysis request (${response.status}).`);
+}
+
+async function failStripAnalysisRequest(
+  userId: string,
+  testId: string,
+  error: unknown,
+  request: Request,
+) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  if (!supabaseUrl) return;
+
+  const query = new URLSearchParams({
+    user_id: `eq.${userId}`,
+    test_id: `eq.${testId}`,
+    status: 'eq.processing',
+  });
+  const errorCode = error instanceof EdgeAnalysisError ? error.code : 'unavailable';
+  const errorMessage = error instanceof Error ? error.message : 'שירות הניתוח אינו זמין כרגע.';
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/strip_analysis_requests?${query.toString()}`, {
+    method: 'PATCH',
+    headers: getServiceHeaders(request),
+    body: JSON.stringify({
+      error_code: errorCode,
+      error_message: errorMessage,
+      lease_expires_at: new Date(Date.now() + 15_000).toISOString(),
+      status: 'failed',
+      updated_at: new Date().toISOString(),
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('Failed to record strip analysis failure', {
+      status: response.status,
+      testId,
+    });
+  }
+}
+
 async function getAuthenticatedUserId(request: Request) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
@@ -1770,76 +1945,108 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
   let imageBytes: Uint8Array;
   let mimeType = 'image/jpeg';
   let dataUrl: string;
-  let authenticatedUserId = body.userId;
+  const authenticatedUserId = await getAuthenticatedUserId(request);
+
+  if (!authenticatedUserId) {
+    throw new EdgeAnalysisError('unavailable', 'נדרשת התחברות כדי לבצע ניתוח AI.');
+  }
 
   if (body.accountId) {
-    authenticatedUserId = await getAuthenticatedUserId(request);
-    if (!authenticatedUserId) {
-      throw new EdgeAnalysisError('unavailable', 'נדרשת התחברות כדי לבצע ניתוח AI.');
-    }
-
     const isMember = await verifyAccountMembership(body.accountId, authenticatedUserId, request);
     if (!isMember) {
       throw new EdgeAnalysisError('unavailable', 'המשתמש אינו משויך לחשבון שנשלח לניתוח.');
     }
+  }
 
-    const quotaAvailable = await canCreateScan(body.accountId, authenticatedUserId, request);
-    if (!quotaAvailable) {
-      throw new EdgeAnalysisError('unavailable', 'מכסת הסריקות החודשית נוצלה. כרגע לא ניתן לבצע ניתוח נוסף.');
+  const imageKey = await createStripAnalysisImageKey(body);
+  const claim = await claimStripAnalysisRequest(authenticatedUserId, body, imageKey, request);
+
+  if (!claim.claimed) {
+    if (claim.status === 'completed' && claim.result) {
+      console.log('Returning cached Gemini strip analysis', { testId: body.testId });
+      return claim.result;
     }
+
+    if (claim.status === 'processing') {
+      console.log('Waiting for in-flight Gemini strip analysis', { testId: body.testId });
+      return waitForStripAnalysisResult(authenticatedUserId, body.testId, request);
+    }
+
+    if (claim.status === 'failed') {
+      throw storedAnalysisError(claim.errorCode, claim.errorMessage);
+    }
+
+    throw new EdgeAnalysisError(
+      'unavailable',
+      'פרטי הסריקה השתנו בזמן העיבוד. חזרו למסך הצילום ונסו שוב.',
+    );
   }
 
   try {
-    const loaded = await loadImageBytes(body, request);
-    imageBytes = loaded.bytes;
-    mimeType = loaded.mimeType;
-  } catch (error) {
-    console.warn('remote image download failed', error);
-    throw new EdgeAnalysisError('unavailable', 'לא הצלחנו לטעון את תמונת הסטיק לניתוח. נסו שוב בעוד כמה דקות.');
-  }
+    if (body.accountId) {
+      const quotaAvailable = await canCreateScan(body.accountId, authenticatedUserId, request);
+      if (!quotaAvailable) {
+        throw new EdgeAnalysisError('unavailable', 'מכסת הסריקות החודשית נוצלה. כרגע לא ניתן לבצע ניתוח נוסף.');
+      }
+    }
 
-  dataUrl = imageBytesToDataUrl(imageBytes, mimeType);
+    try {
+      const loaded = await loadImageBytes(body, request);
+      imageBytes = loaded.bytes;
+      mimeType = loaded.mimeType;
+    } catch (error) {
+      console.warn('remote image download failed', error);
+      throw new EdgeAnalysisError('unavailable', 'לא הצלחנו לטעון את תמונת הסטיק לניתוח. נסו שוב בעוד כמה דקות.');
+    }
 
-  console.log('Starting Gemini strip analysis', {
-    brandId: brand.id,
-    model: Deno.env.get('GEMINI_MODEL_PRIMARY') || Deno.env.get('GEMINI_MODEL') || GEMINI_DEFAULT_MODEL,
-    testId: body.testId,
-  });
+    dataUrl = imageBytesToDataUrl(imageBytes, mimeType);
 
-  const aiRun = await analyzeWithAiProvider(dataUrl, brand);
-  const tokenUsage = summarizeGeminiTokenUsage([aiRun]);
-  console.log('Gemini token usage for scan', {
-    aiCallCount: 1,
-    model: Deno.env.get('GEMINI_MODEL_PRIMARY') || Deno.env.get('GEMINI_MODEL') || GEMINI_DEFAULT_MODEL,
-    testId: body.testId,
-    ...tokenUsage,
-  });
-  if (aiRun.ok) {
-    const aiResult = buildSingleAiResult(aiRun, body, brand);
-    console.log('Gemini strip analysis selected', {
-      accepted: aiResult.accepted,
-      acceptanceReasons: aiResult.acceptanceReasons,
-      analysisVersion: aiResult.analysisVersion,
-      confidence: aiResult.confidence,
-      evidence: aiResult.evidence,
-      failureReason: aiResult.failureReason,
-      model: aiResult.model,
-      source: aiResult.source,
+    console.log('Starting Gemini strip analysis', {
+      brandId: brand.id,
+      model: Deno.env.get('GEMINI_MODEL_PRIMARY') || Deno.env.get('GEMINI_MODEL') || GEMINI_DEFAULT_MODEL,
       testId: body.testId,
     });
-    // Keep persistence in the mobile save flow only. The app enriches the AI
-    // result with dosage recommendations before upserting tests/readings and
-    // registering usage. Writing here as well can create duplicate history
-    // rows when a mobile save follows the remote analysis response.
-    return { ...aiResult, tokenUsage };
-  }
 
-  throw new EdgeAnalysisError(
-    'unavailable',
-    aiRun.message
-      ? `שירות הניתוח אינו זמין כרגע. ${aiRun.message}`
-      : 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה דקות.',
-  );
+    const aiRun = await analyzeWithAiProvider(dataUrl, brand);
+    const tokenUsage = summarizeGeminiTokenUsage([aiRun]);
+    console.log('Gemini token usage for scan', {
+      aiCallCount: 1,
+      model: Deno.env.get('GEMINI_MODEL_PRIMARY') || Deno.env.get('GEMINI_MODEL') || GEMINI_DEFAULT_MODEL,
+      testId: body.testId,
+      ...tokenUsage,
+    });
+    if (aiRun.ok) {
+      const aiResult = buildSingleAiResult(aiRun, body, brand);
+      const result = { ...aiResult, tokenUsage };
+      console.log('Gemini strip analysis selected', {
+        accepted: aiResult.accepted,
+        acceptanceReasons: aiResult.acceptanceReasons,
+        analysisVersion: aiResult.analysisVersion,
+        confidence: aiResult.confidence,
+        evidence: aiResult.evidence,
+        failureReason: aiResult.failureReason,
+        model: aiResult.model,
+        source: aiResult.source,
+        testId: body.testId,
+      });
+      // Keep persistence in the mobile save flow only. The app enriches the AI
+      // result with dosage recommendations before upserting tests/readings and
+      // registering usage. The idempotency record stores only the raw response
+      // so duplicate screen effects can reuse it without another Gemini call.
+      await completeStripAnalysisRequest(authenticatedUserId, body.testId, result, request);
+      return result;
+    }
+
+    throw new EdgeAnalysisError(
+      'unavailable',
+      aiRun.message
+        ? `שירות הניתוח אינו זמין כרגע. ${aiRun.message}`
+        : 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה דקות.',
+    );
+  } catch (error) {
+    await failStripAnalysisRequest(authenticatedUserId, body.testId, error, request);
+    throw error;
+  }
 }
 
 Deno.serve(async (request) => {

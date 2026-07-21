@@ -232,6 +232,12 @@ export function ResultsScreen({ navigation, route }: Props) {
   const poolName = savedRecord?.poolName ?? pool?.name ?? FALLBACK_POOL_NAME;
   const savedRecordAccountId = savedRecord?.accountId;
   const isSavedResult = Boolean(savedTestId);
+  const activeScanTestId = savedTestId ? undefined : route.params?.scanTestId ?? session.testId;
+  const visibleAnalysisResult = savedTestId
+    ? analysisResult
+    : analysisResult && activeScanTestId && analysisResult.id === activeScanTestId
+      ? analysisResult
+      : null;
 
   useEffect(() => {
     screenMountedRef.current = true;
@@ -279,7 +285,13 @@ export function ResultsScreen({ navigation, route }: Props) {
           return;
         }
 
-        if (session.analysisResult && session.testId && session.analysisResult.id === session.testId) {
+        if (authLoading || !accountId || !user?.id) {
+          setAnalysisResult(null);
+          setIsAnalyzing(true);
+          return;
+        }
+
+        if (session.analysisResult && activeScanTestId && session.analysisResult.id === activeScanTestId) {
           setAnalysisResult(enrichResultWithDosage(session.analysisResult, pool, session.dosageResult));
           setIsAnalyzing(false);
           return;
@@ -295,7 +307,7 @@ export function ResultsScreen({ navigation, route }: Props) {
           return;
         }
 
-        const testId = session.testId ?? ensureTestId();
+        const testId = activeScanTestId ?? ensureTestId();
         const imageFingerprint = imageRequestFingerprint(inputImageUri, inputImagePath, inputImageUrl);
         analysisRequestKey = `${testId}|${imageFingerprint}|${retryKey}`;
 
@@ -391,6 +403,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     analyzeImage();
   }, [
     accountId,
+    activeScanTestId,
     authLoading,
     ensureTestId,
     inputBrandId,
@@ -423,29 +436,32 @@ export function ResultsScreen({ navigation, route }: Props) {
     user?.id,
   ]);
 
-  const resultCards = useMemo(() => (analysisResult ? getResultCards(analysisResult) : []), [analysisResult]);
+  const resultCards = useMemo(
+    () => (visibleAnalysisResult ? getResultCards(visibleAnalysisResult) : []),
+    [visibleAnalysisResult],
+  );
   const volumeLabel = formatVolume(pool?.volumeLiters);
 
   useEffect(() => {
-    if (savedTestId || !analysisResult || isInvalidStripResult(analysisResult)) return;
-    if (autoSavedTestIdRef.current === analysisResult.id) return;
-    if (autoSavedResultIds.has(analysisResult.id)) {
+    if (savedTestId || !visibleAnalysisResult || isInvalidStripResult(visibleAnalysisResult)) return;
+    if (autoSavedTestIdRef.current === visibleAnalysisResult.id) return;
+    if (autoSavedResultIds.has(visibleAnalysisResult.id)) {
       setAutoSaved(true);
       return;
     }
 
-    autoSavedTestIdRef.current = analysisResult.id;
-    autoSavedResultIds.add(analysisResult.id);
-    saveAnalysisResult(analysisResult);
+    autoSavedTestIdRef.current = visibleAnalysisResult.id;
+    autoSavedResultIds.add(visibleAnalysisResult.id);
+    saveAnalysisResult(visibleAnalysisResult);
     setAutoSaved(true);
-  }, [analysisResult, saveAnalysisResult, savedTestId]);
+  }, [saveAnalysisResult, savedTestId, visibleAnalysisResult]);
 
   function handleNewScan() {
     resetScanSession();
     startScanFlow(poolId);
   }
 
-  if (!savedTestId && !inputImageUri && !analysisResult) {
+  if (!savedTestId && !inputImageUri && !visibleAnalysisResult) {
     return (
       <AppShell activeTab="scan" navigation={navigation}>
         <View style={styles.emptyHeader}>
@@ -463,7 +479,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     );
   }
 
-  if (analysisError && !analysisResult) {
+  if (analysisError && !visibleAnalysisResult) {
     return (
       <AppShell activeTab="scan" navigation={navigation}>
         <View style={styles.emptyHeader}>
@@ -507,7 +523,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     );
   }
 
-  if (analysisResult && isInvalidStripResult(analysisResult)) {
+  if (visibleAnalysisResult && isInvalidStripResult(visibleAnalysisResult)) {
     return (
       <AppShell activeTab="scan" navigation={navigation}>
         <View style={styles.emptyHeader}>
@@ -516,7 +532,7 @@ export function ResultsScreen({ navigation, route }: Props) {
         </View>
         <Card compact style={styles.messageCard}>
           <Text style={styles.messageTitle}>לא זוהה סטיק מתאים</Text>
-          <Text style={styles.messageText}>{invalidStripMessage(analysisResult)}</Text>
+          <Text style={styles.messageText}>{invalidStripMessage(visibleAnalysisResult)}</Text>
         </Card>
         <View style={styles.actions}>
           <PrimaryButton
@@ -533,7 +549,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     );
   }
 
-  if (savedTestId && !analysisResult) {
+  if (savedTestId && !visibleAnalysisResult) {
     return (
       <AppShell activeTab="history" navigation={navigation}>
         <View style={styles.emptyHeader}>
@@ -548,7 +564,7 @@ export function ResultsScreen({ navigation, route }: Props) {
     );
   }
 
-  if (!analysisResult) {
+  if (!visibleAnalysisResult) {
     return (
       <AppShell activeTab={isSavedResult ? 'history' : 'scan'} navigation={navigation}>
         <View style={styles.emptyHeader}>
@@ -576,11 +592,11 @@ export function ResultsScreen({ navigation, route }: Props) {
         <Text style={styles.heroKicker}>תוצאות הבדיקה</Text>
         <Text style={styles.heroTitle}>{poolName}</Text>
         <Text style={styles.heroMeta}>
-          {[volumeLabel, formatAnalysisDate(analysisResult.analyzedAt)].filter(Boolean).join(' · ')}
+          {[volumeLabel, formatAnalysisDate(visibleAnalysisResult.analyzedAt)].filter(Boolean).join(' · ')}
         </Text>
       </View>
 
-      {analysisResult.lowConfidence ? <LowConfidenceWarning /> : null}
+      {visibleAnalysisResult.lowConfidence ? <LowConfidenceWarning /> : null}
 
       {session.imageUploadError && !isSavedResult ? (
         <Card compact style={styles.warningCard}>
@@ -599,7 +615,7 @@ export function ResultsScreen({ navigation, route }: Props) {
         ))}
       </View>
 
-      <SafetyCard text={analysisResult.dosage?.safetyNote} />
+      <SafetyCard text={visibleAnalysisResult.dosage?.safetyNote} />
 
       <View style={styles.actions}>
         {isSavedResult ? (

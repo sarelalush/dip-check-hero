@@ -56,7 +56,15 @@ export type RootStackParamList = {
   Scan: { brandId?: string; poolId?: string } | undefined;
   CropScanImage: { brandId?: string; imageHeight?: number; imageUri: string; imageWidth?: number; poolId?: string };
   ConfirmScan: { brandId?: string; poolId?: string; imageUri: string };
-  Results: { brandId?: string; poolId?: string; imageUri?: string; imagePath?: string; imageUrl?: string; testId?: string } | undefined;
+  Results: {
+    brandId?: string;
+    poolId?: string;
+    imageUri?: string;
+    imagePath?: string;
+    imageUrl?: string;
+    scanTestId?: string;
+    testId?: string;
+  } | undefined;
   History: undefined;
   PlanUsage: { reason?: 'poolQuota' | 'scanQuota' | 'subscriptionRequired' } | undefined;
   Purchase: { reason?: 'poolQuota' | 'scanQuota' | 'subscriptionRequired' } | undefined;
