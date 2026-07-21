@@ -1441,12 +1441,22 @@ async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: A
       },
     );
 
+    const errorText = response.ok ? '' : await response.text();
     if (response.status === 429) {
-      return { ok: false, error: 'rate_limit', message: 'יותר מדי בקשות, נסה שוב בעוד רגע', provider: 'gemini' };
+      console.error('Gemini API rate limit:', {
+        model: modelPath,
+        providerError: errorText.slice(0, 1500),
+        retryAfter: response.headers.get('retry-after'),
+      });
+      return {
+        ok: false,
+        error: 'rate_limit',
+        message: 'שירות הניתוח הגיע כרגע למגבלת Gemini. אין צורך לנסות שוב ברצף.',
+        provider: 'gemini',
+      };
     }
     if (!response.ok) {
-      const text = await response.text();
-      console.error('Gemini API error:', response.status, text);
+      console.error('Gemini API error:', response.status, errorText);
       return { ok: false, error: 'gemini_error', message: `שגיאה (${response.status})`, provider: 'gemini' };
     }
 
@@ -1479,6 +1489,12 @@ function sleep(milliseconds: number) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+function hasNonRecoverableProviderFailure(runs: AiRunResponse[]) {
+  return runs.some(
+    (run) => !run.ok && (run.error === 'rate_limit' || run.error === 'missing_ai_key'),
+  );
+}
+
 async function analyzeWithProviderRecovery(dataUrl: string, brand: StripBrand): Promise<AiRunResponse[]> {
   const isPro = isAquachekPro(brand);
   const requestedRuns = isPro ? AQUACHEK_MODEL_RUNS : MULTI_SHOT_RUNS;
@@ -1488,7 +1504,12 @@ async function analyzeWithProviderRecovery(dataUrl: string, brand: StripBrand): 
   );
 
   let successfulRuns = runs.filter((run) => run.ok).length;
-  if (runs.some((run) => !run.ok && run.error === 'missing_ai_key')) {
+  if (hasNonRecoverableProviderFailure(runs)) {
+    console.warn('Skipping Gemini provider recovery after a non-recoverable failure', {
+      errors: runs
+        .filter((run): run is Extract<AiRunResponse, { ok: false }> => !run.ok)
+        .map((run) => run.error),
+    });
     return runs;
   }
 

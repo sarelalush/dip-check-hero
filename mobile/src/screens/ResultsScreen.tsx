@@ -212,6 +212,8 @@ export function ResultsScreen({ navigation, route }: Props) {
   const [retryKey, setRetryKey] = useState(0);
   const [autoSaved, setAutoSaved] = useState(false);
   const autoSavedTestIdRef = useRef<string | undefined>(undefined);
+  const activeAnalysisKeyRef = useRef<string | null>(null);
+  const screenMountedRef = useRef(true);
   const savedTestId = route.params?.testId;
   const savedRecord = savedTestId ? getHistoryRecord(savedTestId) : undefined;
   const inputBrandId = savedTestId ? route.params?.brandId : session.selectedBrandId ?? route.params?.brandId;
@@ -225,9 +227,16 @@ export function ResultsScreen({ navigation, route }: Props) {
   const isSavedResult = Boolean(savedTestId);
 
   useEffect(() => {
-    let isMounted = true;
+    screenMountedRef.current = true;
+    return () => {
+      screenMountedRef.current = false;
+    };
+  }, []);
 
+  useEffect(() => {
     async function analyzeImage() {
+      let analysisRequestKey: string | undefined;
+
       try {
         setAnalysisError('');
         if (savedTestId) {
@@ -279,9 +288,16 @@ export function ResultsScreen({ navigation, route }: Props) {
           return;
         }
 
+        const testId = session.testId ?? ensureTestId();
+        analysisRequestKey = `${testId}|${retryKey}`;
+
+        if (activeAnalysisKeyRef.current === analysisRequestKey) {
+          return;
+        }
+
+        activeAnalysisKeyRef.current = analysisRequestKey;
         setCurrentStep('analyzing');
         setIsAnalyzing(true);
-        const testId = session.testId ?? ensureTestId();
         let imagePath = inputImagePath;
         let imageUrl = inputImageUrl;
         let imageUploadError: string | undefined;
@@ -330,7 +346,10 @@ export function ResultsScreen({ navigation, route }: Props) {
           recommendation: isInvalidStripResult(result) ? result.recommendation : dosage?.summary ?? result.recommendation,
         };
 
-        if (isMounted) {
+        if (
+          screenMountedRef.current &&
+          (!analysisRequestKey || activeAnalysisKeyRef.current === analysisRequestKey)
+        ) {
           setAnalysisResult(enrichedResult);
           setSessionAnalysisResult(enrichedResult);
           setScanImageUpload({
@@ -343,7 +362,10 @@ export function ResultsScreen({ navigation, route }: Props) {
         }
       } catch (error) {
         console.warn('Failed to prepare results', error);
-        if (isMounted) {
+        if (
+          screenMountedRef.current &&
+          (!analysisRequestKey || activeAnalysisKeyRef.current === analysisRequestKey)
+        ) {
           const message =
             error instanceof StripAnalysisServiceError
               ? error.message
@@ -357,10 +379,6 @@ export function ResultsScreen({ navigation, route }: Props) {
     }
 
     analyzeImage();
-
-    return () => {
-      isMounted = false;
-    };
   }, [
     accountId,
     authLoading,
