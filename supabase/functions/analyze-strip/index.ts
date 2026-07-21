@@ -11,13 +11,10 @@
 // Pipeline:
 // 1. Download the uploaded image from Storage or imageUrl.
 // 2. Decode it only for diagnostics. Never alter pad colors before analysis.
-// 3. Run repeated AI localization (two runs for AquaChek, three for generic strips).
-// 4. For AquaChek Pro, sample the four localized pads and match their colors
-//    deterministically to the manufacturer's discrete chart.
-// 5. AI localizes the four AquaChek pads; deterministic evidence decides
-//    whether the image is readable and computes the numerical readings.
-// 6. If four pads cannot be localized or color matching is uncertain, return a
-//    clear invalid response.
+// 3. Run two independent AI chart readings for AquaChek Pro.
+// 4. Run one tie-breaker only when the first readings disagree or one is unusable.
+// 5. Snap AI readings to the printed manufacturer levels and require a majority.
+// 6. Reject only when a real four-pad strip cannot be read safely.
 // 7. If the AI provider is unavailable, return a service-unavailable response.
 //
 // Required secrets for AI mode:
@@ -46,6 +43,7 @@ import {
   measureAquachekProSharpness,
   robustRgbFromSamples,
 } from '../_shared/aquachek-pro-reference.js';
+import { selectAquachekProAiConsensus } from '../_shared/aquachek-pro-ai-consensus.js';
 import { readZeroBasedImageScriptRgb } from '../_shared/imagescript-pixel.js';
 
 type StatusTone = 'success' | 'warning' | 'danger';
@@ -148,6 +146,7 @@ interface ColorAnalysisEvidence {
 interface AnalysisEvidence {
   method:
     | 'repeated-model-discrete-consensus'
+    | 'repeated-model-chart-consensus'
     | 'gemini-quality-deterministic-color'
     | 'gemini-pad-boxes-deterministic-color';
   requiredRuns: number;
@@ -260,10 +259,10 @@ const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
 const REQUIRED_CONSENSUS_RUNS = 2;
 const AQUACHEK_MODEL_RUNS = 2;
-const AQUACHEK_REQUIRED_MODEL_RUNS = 1;
+const AQUACHEK_REQUIRED_MODEL_RUNS = 2;
 const PROVIDER_RECOVERY_ATTEMPTS = 1;
 const PROVIDER_RECOVERY_DELAY_MS = 1_000;
-const ANALYSIS_VERSION = 'aquachek-pro-v20-robust-pad-colors';
+const ANALYSIS_VERSION = 'aquachek-pro-v21-ai-chart-consensus';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.32;
@@ -442,12 +441,11 @@ Pad 4 - Total Alkalinity (yellow-green -> green -> dark teal).
   TA 240  -> deep teal-blue  (R40  G90  B120)
   IMPORTANT: a blue / cyan / turquoise alkalinity pad is HIGH alkalinity.
   Do NOT report 120 for a teal-blue pad; 120 is dark green only.
-  If pad 4 looks blue/turquoise, report 220-240 (usually 240).
+  If pad 4 looks blue/turquoise, report the exact printed level 240.
 
-ORIENTATION RULE: if the strip in the image is rotated, identify orientation
-by color signatures: the pH pad is the only orange/red pad; the alkalinity
-pad is the only one that can look teal/blue. Use those as anchors to
-determine which physical end is the wet tip (pad 1) vs the handle (pad 4).
+ORIENTATION RULE: determine the wet tip and handle from physical geometry.
+The handle is the longer blank plastic section after pad 4. Never infer or
+reverse pad order from expected chemistry colors.
 `;
 
 const AQUACHEK_YELLOW_CHART = `
@@ -923,6 +921,24 @@ function isQualityPassedRun(
   );
 }
 
+function isUsableAquachekAiRun(run: Extract<AiRunResponse, { ok: true }>) {
+  const requiredValues: StripParameter[] = [
+    'totalChlorine',
+    'freeChlorine',
+    'ph',
+    'alkalinity',
+  ];
+
+  return (
+    run.data.isStrip === true &&
+    ['none', 'low_confidence'].includes(run.data.failureReason) &&
+    run.data.physicalPadCount === 4 &&
+    run.data.allPadsFullyVisible === true &&
+    run.data.allPadsIntact === true &&
+    requiredValues.every((parameter) => Number.isFinite(run.data.values[parameter]))
+  );
+}
+
 function hasUsablePadBoxes(
   run: Extract<AiRunResponse, { ok: true }>,
   padCount: number,
@@ -978,6 +994,57 @@ function consensusPadBoxes(runs: AiRunResponse[], padCount: number): NormalizedP
 
 function buildSystemPrompt(brand: StripBrand) {
   const isPro = isAquachekPro(brand);
+  if (isPro) {
+    return `You are the sole color reader for an AquaChek Pro 5-in-1 pool test strip.
+Read the supplied photograph directly against the official chart below. No
+downstream pixel sampler will replace your readings, so inspect every pad
+carefully and perform a second visual comparison before returning JSON.
+
+VALIDITY GATE - keep it deliberately practical for real phone photos:
+- A valid image shows one real test-strip candidate with exactly four visible,
+  physically intact reagent pads.
+- Accept normal phone-photo conditions: background around the strip, a hand,
+  crop padding, tilt, perspective, uneven sunlight, shadows, mild glare, mild
+  blur, wet texture, printed marks, and a handle that is only partly visible.
+- Do not require pad bounding boxes, a perfectly exposed white carrier, a
+  vertical strip, a tight crop, or laboratory lighting.
+- Use low_confidence with isStrip=true when the strip and all four pads are
+  readable but a color is near two chart levels. Do not reject merely because
+  the crop or lighting is imperfect.
+- Reject only when there is no real strip, the strip has other than four pads,
+  a pad is physically cropped/covered/torn, or severe blur/glare makes a pad's
+  representative color genuinely unreadable.
+
+PAD ORDER AND ORIENTATION:
+- Determine orientation from physical geometry, never from expected chemistry.
+- The handle is the longer blank plastic section after pad 4; the opposite end
+  is the wet tip. Rotation in the image does not change this order.
+- From wet tip toward handle the four physical pads are:
+  1. combined Total Chlorine and Total Bromine
+  2. Free Chlorine
+  3. pH
+  4. Total Alkalinity
+- Read the representative center color of each complete pad. Ignore shadows,
+  highlights, edge darkening, wet mottling, the carrier, hand and background.
+
+READING RULES:
+- Compare each pad only with its own row in the official chart.
+- Return exactly one printed level. Never interpolate or invent a value.
+- Pad 1 has one color and two linked scales. Its TC/TB pair must come from the
+  same chart column.
+- RGB values are semantic anchors for the printed swatches, not a request to
+  sample raw pixels or apply white balance.
+- Recheck all four choices once before returning the final JSON.
+
+${AQUACHEK_PRO_CHART}
+
+Set physicalPadCount to the directly visible physical-pad count.
+Set allPadsFullyVisible and allPadsIntact true when all four complete pads can
+be read. Bounding boxes and the remaining structural fields are diagnostic
+only: provide best-effort values, but do not fail an otherwise readable strip
+because those diagnostics are uncertain. Always provide a short Hebrew note.
+Return only JSON matching the provided response schema.`;
+  }
   const isYellow =
     brand.parameters.length === 4 &&
     brand.parameters.includes('freeChlorine') &&
@@ -1138,7 +1205,7 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
     padIntegrity.length === physicalPadCount &&
     padIntegrity.every(Boolean) &&
     stripBodyEvidence === 'clear_shared_body';
-  const padGatePassed =
+  const strictPadGatePassed =
     physicalPadCount === expectedPhysicalPadCount &&
     allPadsFullyVisible &&
     hasExactlyOneStrip &&
@@ -1147,14 +1214,23 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
     padOrderMatchesSelectedBrand &&
     !hasExtraPadLikeRegions &&
     groundedStructurePassed;
+  const practicalAquachekGatePassed =
+    physicalPadCount === expectedPhysicalPadCount &&
+    allPadsFullyVisible &&
+    allPadsIntact;
+  const padGatePassed = isAquachekPro(brand)
+    ? practicalAquachekGatePassed
+    : strictPadGatePassed;
   const reportedFailureReason = (args.failureReason ?? 'none') as FailureReason;
   let failureReason = reportedFailureReason;
   if (!padGatePassed && ['none', 'low_confidence'].includes(failureReason)) {
-    failureReason = !hasExactlyOneStrip || !hasSingleContinuousStripBody
-      ? 'not_strip'
-      : !padOrderMatchesSelectedBrand
-        ? 'unsupported_strip'
-        : 'framing';
+    failureReason = isAquachekPro(brand)
+      ? 'framing'
+      : !hasExactlyOneStrip || !hasSingleContinuousStripBody
+        ? 'not_strip'
+        : !padOrderMatchesSelectedBrand
+          ? 'unsupported_strip'
+          : 'framing';
   }
 
   return {
@@ -1353,20 +1429,43 @@ function sleep(milliseconds: number) {
 }
 
 async function analyzeWithProviderRecovery(dataUrl: string, brand: StripBrand): Promise<AiRunResponse[]> {
-  const requestedRuns = isAquachekPro(brand) ? AQUACHEK_MODEL_RUNS : MULTI_SHOT_RUNS;
-  const requiredRuns = isAquachekPro(brand)
-    ? AQUACHEK_REQUIRED_MODEL_RUNS
-    : REQUIRED_CONSENSUS_RUNS;
+  const isPro = isAquachekPro(brand);
+  const requestedRuns = isPro ? AQUACHEK_MODEL_RUNS : MULTI_SHOT_RUNS;
+  const requiredRuns = isPro ? AQUACHEK_REQUIRED_MODEL_RUNS : REQUIRED_CONSENSUS_RUNS;
   const runs = await Promise.all(
     Array.from({ length: requestedRuns }, () => analyzeWithAiProvider(dataUrl, brand)),
   );
 
   let successfulRuns = runs.filter((run) => run.ok).length;
-  if (successfulRuns >= requiredRuns) return runs;
-
   if (runs.some((run) => !run.ok && run.error === 'missing_ai_key')) {
     return runs;
   }
+
+  if (isPro) {
+    const usableRuns = runs
+      .filter((run): run is Extract<AiRunResponse, { ok: true }> => run.ok)
+      .filter(isUsableAquachekAiRun);
+    const consensus = selectAquachekProAiConsensus(
+      usableRuns.map((run) => run.data.values),
+      AQUACHEK_REQUIRED_MODEL_RUNS,
+    );
+
+    if (usableRuns.length >= AQUACHEK_REQUIRED_MODEL_RUNS && consensus.accepted) {
+      return runs;
+    }
+
+    console.warn('AquaChek AI readings need one tie-breaker', {
+      missingConsensus: consensus.missingConsensus,
+      successfulRuns,
+      usableRuns: usableRuns.length,
+    });
+    await sleep(PROVIDER_RECOVERY_DELAY_MS);
+    const tieBreakerRun = await analyzeWithAiProvider(dataUrl, brand);
+    runs.push(tieBreakerRun);
+    return runs;
+  }
+
+  if (successfulRuns >= requiredRuns) return runs;
 
   console.warn('Gemini analysis batch did not reach consensus; starting provider recovery', {
     errors: runs
@@ -1430,7 +1529,6 @@ function combineAiRuns(
   runs: AiRunResponse[],
   request: AnalyzeStripRequest,
   brand: StripBrand,
-  cvResult?: CvResult | null,
 ): StripAnalysisResult | null {
   const okRuns = runs.filter((run): run is Extract<AiRunResponse, { ok: true }> => run.ok);
   if (!okRuns.length) return null;
@@ -1443,10 +1541,10 @@ function combineAiRuns(
   const qualityPassedRuns = okRuns.filter((run) =>
     isQualityPassedRun(run, expectedPhysicalPadCount, isPro),
   );
-  const usableAquachekBoxRuns = isPro
-    ? okRuns.filter((run) => hasUsablePadBoxes(run, expectedPhysicalPadCount))
+  const usableAquachekAiRuns = isPro
+    ? okRuns.filter(isUsableAquachekAiRun)
     : [];
-  const effectiveQualityPassedRuns = isPro ? usableAquachekBoxRuns : qualityPassedRuns;
+  const effectiveQualityPassedRuns = isPro ? usableAquachekAiRuns : qualityPassedRuns;
   const confidencePassedRuns = isPro
     ? effectiveQualityPassedRuns
     : effectiveQualityPassedRuns.filter(
@@ -1454,7 +1552,7 @@ function combineAiRuns(
       );
   const confidencePassedValues = confidencePassedRuns.map((run) => Number(run.data.confidence ?? 0));
   const evidence: AnalysisEvidence = {
-    method: isPro ? 'gemini-pad-boxes-deterministic-color' : 'repeated-model-discrete-consensus',
+    method: isPro ? 'repeated-model-chart-consensus' : 'repeated-model-discrete-consensus',
     requiredRuns,
     successfulRuns: okRuns.length,
     qualityPassedRuns: effectiveQualityPassedRuns.length,
@@ -1470,7 +1568,6 @@ function combineAiRuns(
     noExtraPadRuns: okRuns.filter((run) => !run.data.hasExtraPadLikeRegions).length,
     requiredParameters: [...brand.parameters],
     parameters: {},
-    ...(cvResult?.evidence ? { colorAnalysis: cvResult.evidence } : {}),
   };
   const provider = okRuns[0]?.data.provider;
   const model = okRuns[0]?.data.model;
@@ -1533,100 +1630,66 @@ function combineAiRuns(
   }
 
   if (isPro) {
-    if (usableAquachekBoxRuns.length < AQUACHEK_REQUIRED_MODEL_RUNS) {
-      return reject(
-        'framing',
-        'לא זוהו כל ארבעת ריבועי הצבע. יש לצלם שוב כך שכל ארבעת הפדים יופיעו בתמונה.',
-        ['Gemini could not localize four usable ordered reagent-pad boxes.'],
-      );
-    }
+    const consensus = selectAquachekProAiConsensus(
+      usableAquachekAiRuns.map((run) => run.data.values),
+      AQUACHEK_REQUIRED_MODEL_RUNS,
+    );
+    evidence.parameters = consensus.parameters as Partial<
+      Record<StripParameter, ParameterAnalysisEvidence>
+    >;
 
-    if (!cvResult) {
-      return reject(
+    const proConfidence = usableAquachekAiRuns.length
+      ? usableAquachekAiRuns.reduce(
+          (sum, run) => sum + Number(run.data.confidence ?? 0),
+          0,
+        ) / usableAquachekAiRuns.length
+      : 0;
+
+    if (
+      usableAquachekAiRuns.length < AQUACHEK_REQUIRED_MODEL_RUNS ||
+      !consensus.accepted
+    ) {
+      const missingParameters = consensus.missingConsensus
+        .map((parameter) => PARAM_META[parameter as StripParameter]?.name ?? parameter)
+        .join(', ');
+      const notes = uniqueNonEmpty(okRuns.map((run) => run.data.notes)).join(' ');
+      return buildInvalidStripResult(
+        request,
+        brand,
+        'ai',
         'low_confidence',
-        'לא הצלחנו לקרוא את צבעי הפדים בצורה אמינה. יש לצלם שוב כשהסטיק ישר וממלא את המסגרת.',
-        ['The deterministic color analyzer could not decode the AquaChek Pro image.'],
+        notes ||
+          'הקריאות לא היו עקביות מספיק. יש לצלם שוב באור אחיד כאשר כל ארבעת ריבועי הצבע גלויים.',
+        {
+          provider,
+          model,
+          shotsUsed: okRuns.length,
+          confidence: proConfidence,
+          analysisVersion: ANALYSIS_VERSION,
+          acceptanceReasons: [
+            `Usable AI readings: ${usableAquachekAiRuns.length}; ${AQUACHEK_REQUIRED_MODEL_RUNS} matching readings are required.`,
+            ...(missingParameters
+              ? [`No two-read majority was produced for: ${missingParameters}.`]
+              : []),
+            'No local RGB or pixel sampler was used to accept, reject or replace the AI readings.',
+          ],
+          evidence,
+        },
       );
-    }
-
-    const structure = cvResult.evidence?.structure;
-    const sharpnessVariance = cvResult.evidence?.sharpnessVariance ?? 0;
-    const readability = evaluateAquachekReadability({
-      hasUsablePadCenters: usableAquachekBoxRuns.length >= AQUACHEK_REQUIRED_MODEL_RUNS,
-      structure,
-      sharpnessVariance,
-      colorConfidence: cvResult.confidence,
-    }, {
-      minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
-      hardMinimumSharpnessVariance: HARD_MIN_AQUACHEK_SHARPNESS_VARIANCE,
-      minimumColorConfidence: MIN_ACCEPTED_CV_CONFIDENCE,
-    });
-    if (readability.failures.includes('missing_neutral_carrier')) {
-      const missingCarrier = structure?.hasNeutralCarrier === false;
-      return reject(
-        missingCarrier ? 'not_strip' : 'framing',
-        missingCarrier
-          ? 'לא זוהה גוף סטיק לבן ורציף במרכז התמונה. יש לחתוך את התמונה כך שרק סטיק הבדיקה המלא יופיע.'
-          : 'מבנה הפדים אינו תקין. יש לוודא שכל ארבעת הפדים שלמים, נפרדים ונמצאים על סטיק אחד.',
-        [
-          `Deterministic structure gate failed: carrier=${structure?.hasNeutralCarrier ?? false}; bands=${structure?.colorBands?.length ?? 0}; oversized=${structure?.hasOversizedBand ?? false}; splitOrExtra=${structure?.hasSplitOrExtraBands ?? false}.`,
-        ],
-      );
-    }
-
-    if (readability.failures.includes('blurry')) {
-      return reject(
-        'blurry',
-        'התמונה מטושטשת מדי לקריאה אמינה. יש לצלם שוב כשהסטיק חד ויציב.',
-        [
-          `Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} is below the hard minimum ${HARD_MIN_AQUACHEK_SHARPNESS_VARIANCE}.`,
-        ],
-      );
-    }
-
-    if (readability.failures.includes('low_color_confidence')) {
-      return reject(
-        'low_confidence',
-        'ההתאמה בין צבעי הפדים לטבלת היצרן אינה ודאית. יש לצלם שוב באור אחיד וללא השתקפות.',
-        [
-          `Deterministic color confidence ${cvResult.confidence.toFixed(3)} is below ${MIN_ACCEPTED_CV_CONFIDENCE}.`,
-        ],
-      );
-    }
-
-    const values: Partial<Record<StripParameter, number>> = {};
-    for (const parameter of brand.parameters) {
-      const chartValues = manufacturerLevelsFor(brand, parameter);
-      const selectedValue = cvResult.values[parameter];
-      evidence.parameters[parameter] = {
-        chartValues,
-        rawValues: typeof selectedValue === 'number' ? [selectedValue] : [],
-        snappedValues: typeof selectedValue === 'number' ? [selectedValue] : [],
-        selectedValue,
-        agreementCount: typeof selectedValue === 'number' ? 1 : 0,
-        requiredAgreement: 1,
-      };
-
-      if (!chartValues.includes(selectedValue as number)) {
-        return reject(
-          'low_confidence',
-          `לא התקבלה התאמת צבע תקינה עבור ${PARAM_META[parameter].name}. יש לצלם שוב את כל ארבעת הפדים.`,
-          [`No deterministic manufacturer-chart value was produced for ${parameter}.`],
-        );
-      }
-      values[parameter] = selectedValue;
     }
 
     return buildResult(
       request,
       brand,
-      values,
+      consensus.values as Partial<Record<StripParameter, number>>,
       'ai',
-      cvResult.confidence,
+      proConfidence,
       {
         provider,
         model,
-        notes: cvResult.notes,
+        notes:
+          uniqueNonEmpty(usableAquachekAiRuns.map((run) => run.data.notes)).join(' ') ||
+          'צבעי הסטיק נקראו ישירות מול טבלת היצרן ואומתו בקריאת AI נוספת.',
         shotsUsed: okRuns.length,
         lowConfidence: false,
         isValidStrip: true,
@@ -1634,16 +1697,11 @@ function combineAiRuns(
         analysisVersion: ANALYSIS_VERSION,
         accepted: true,
         acceptanceReasons: [
-          `At least ${AQUACHEK_REQUIRED_MODEL_RUNS} Gemini run localized four ordered AquaChek reagent-pad boxes.`,
-          'Deterministic carrier, focus and manufacturer-chart color checks made the final acceptance decision.',
-          'Each pad was sampled inside its own model-localized box, independent of crop margins and strip tilt.',
-          ...(readability.warnings.includes('structure_ambiguity')
-            ? ['Ambiguous local band segmentation was retained as a warning instead of rejecting a readable strip.']
-            : []),
-          ...(readability.warnings.includes('soft_focus')
-            ? [`Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} is below the preferred ${MIN_AQUACHEK_SHARPNESS_VARIANCE} level but remains readable.`]
-            : [`Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} passed the preferred ${MIN_AQUACHEK_SHARPNESS_VARIANCE} level.`]),
-          'All readings matched the nearest discrete AquaChek Pro manufacturer-chart color.',
+          'Two independent Gemini readings compared every pad directly with its AquaChek Pro manufacturer chart row.',
+          'Every returned reading was snapped only to an official printed chart level; no interpolation was accepted.',
+          'A per-parameter AI majority selected the final values, with a third AI reading used only when needed.',
+          'Total bromine was derived from the same combined-pad chart column as total chlorine.',
+          'No local RGB or pixel sampler altered the AI readings.',
         ],
         evidence,
       },
@@ -2027,21 +2085,7 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
   });
 
   const aiRuns = await analyzeWithProviderRecovery(dataUrl, brand);
-  const localizedPadBoxes = isAquachekPro(brand) ? consensusPadBoxes(aiRuns, 4) : undefined;
-  let cvResult: CvResult | null = null;
-  if (image && isAquachekPro(brand)) {
-    try {
-      cvResult = analyzeCv(image, brand, localizedPadBoxes);
-    } catch (error) {
-      // Deterministic CV is supporting evidence. A sampling failure must not
-      // hide a valid Gemini result or its actionable provider error.
-      console.warn('Deterministic color analysis failed; continuing without CV evidence', {
-        message: error instanceof Error ? error.message : String(error),
-        testId: body.testId,
-      });
-    }
-  }
-  const aiResult = combineAiRuns(aiRuns, body, brand, cvResult);
+  const aiResult = combineAiRuns(aiRuns, body, brand);
   if (aiResult) {
     console.log('Gemini strip analysis selected', {
       accepted: aiResult.accepted,
