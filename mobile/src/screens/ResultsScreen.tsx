@@ -157,6 +157,13 @@ function uniqueIds(ids: Array<string | undefined | null>) {
   return Array.from(new Set(ids.filter((id): id is string => Boolean(id))));
 }
 
+function imageRequestFingerprint(...values: Array<string | undefined>) {
+  return values
+    .filter((value): value is string => Boolean(value))
+    .map((value) => `${value.length}:${value.slice(0, 48)}:${value.slice(-48)}`)
+    .join('|');
+}
+
 function fallbackAnalysisResultFromRecord(record: SavedHistoryRecord): StripAnalysisResult {
   return {
     id: record.cloudId ?? record.testId,
@@ -272,7 +279,7 @@ export function ResultsScreen({ navigation, route }: Props) {
           return;
         }
 
-        if (session.analysisResult) {
+        if (session.analysisResult && session.testId && session.analysisResult.id === session.testId) {
           setAnalysisResult(enrichResultWithDosage(session.analysisResult, pool, session.dosageResult));
           setIsAnalyzing(false);
           return;
@@ -289,13 +296,16 @@ export function ResultsScreen({ navigation, route }: Props) {
         }
 
         const testId = session.testId ?? ensureTestId();
-        analysisRequestKey = `${testId}|${retryKey}`;
+        const imageFingerprint = imageRequestFingerprint(inputImageUri, inputImagePath, inputImageUrl);
+        analysisRequestKey = `${testId}|${imageFingerprint}|${retryKey}`;
 
         if (activeAnalysisKeyRef.current === analysisRequestKey) {
           return;
         }
 
         activeAnalysisKeyRef.current = analysisRequestKey;
+        setAnalysisResult(null);
+        setAutoSaved(false);
         setCurrentStep('analyzing');
         setIsAnalyzing(true);
         let imagePath = inputImagePath;

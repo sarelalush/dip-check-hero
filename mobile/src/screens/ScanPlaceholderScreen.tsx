@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useFocusEffect } from '@react-navigation/native';
 import { LineIcon } from '../components/LineIcon';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
@@ -18,12 +19,14 @@ export function ScanPlaceholderScreen({ navigation, route }: Props) {
   const { setScanError, startScanSession } = useScanSession();
   const [galleryBusy, setGalleryBusy] = useState(false);
 
-  useEffect(() => {
-    startScanSession({
-      brandId: route.params.brandId,
-      poolId: route.params.poolId,
-    });
-  }, [route.params.brandId, route.params.poolId, startScanSession]);
+  useFocusEffect(
+    useCallback(() => {
+      startScanSession({
+        brandId: route.params.brandId,
+        poolId: route.params.poolId,
+      });
+    }, [route.params.brandId, route.params.poolId, startScanSession]),
+  );
 
   function handleClose() {
     if (route.params.poolId) {

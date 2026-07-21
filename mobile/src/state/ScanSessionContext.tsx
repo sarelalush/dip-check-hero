@@ -161,9 +161,12 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setImageUri = useCallback((imageUri?: string, options: SetImageUriOptions = {}) => {
-    setSession((current) =>
-      withTimestamp({
+    setSession((current) => {
+      const isNewImage = Boolean(imageUri && imageUri !== current.imageUri);
+
+      return withTimestamp({
         ...current,
+        testId: isNewImage ? createScanTestId() : current.testId,
         analysisResult: undefined,
         confirmedImageUri: undefined,
         dosageResult: undefined,
@@ -177,8 +180,8 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         currentStep: 'scan',
         qualityNotes: [],
         qualityStatus: 'unchecked',
-      }),
-    );
+      });
+    });
   }, []);
 
   const confirmImage = useCallback(() => {
@@ -253,22 +256,30 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
 
   const setScanImageUpload = useCallback(
     ({ imagePath, imageUrl, imageUploadError, testId }: { imagePath?: string; imageUrl?: string; imageUploadError?: string; testId?: string }) => {
-      setSession((current) =>
-        withTimestamp({
+      setSession((current) => {
+        if (testId && current.testId && testId !== current.testId) {
+          return current;
+        }
+
+        return withTimestamp({
           ...current,
           testId: testId ?? current.testId,
           imagePath: imagePath ?? current.imagePath,
           imageUrl: imageUrl ?? current.imageUrl,
           imageUploadError,
-        }),
-      );
+        });
+      });
     },
     [],
   );
 
   const setAnalysisResult = useCallback((result: StripAnalysisResult) => {
-    setSession((current) =>
-      withTimestamp({
+    setSession((current) => {
+      if (current.testId && result.id !== current.testId) {
+        return current;
+      }
+
+      return withTimestamp({
         ...current,
         testId: current.testId ?? result.id,
         analysisResult: result,
@@ -277,8 +288,8 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         imagePath: result.imagePath ?? current.imagePath,
         imageUrl: result.imageUrl ?? current.imageUrl,
         currentStep: 'results',
-      }),
-    );
+      });
+    });
   }, []);
 
   const resetScanSession = useCallback(() => {
