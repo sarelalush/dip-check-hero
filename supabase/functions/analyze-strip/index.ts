@@ -44,6 +44,7 @@ import {
   locateAquachekProStripCenterX,
   evaluateAquachekReadability,
   measureAquachekProSharpness,
+  robustRgbFromSamples,
 } from '../_shared/aquachek-pro-reference.js';
 import { readZeroBasedImageScriptRgb } from '../_shared/imagescript-pixel.js';
 
@@ -262,7 +263,7 @@ const AQUACHEK_MODEL_RUNS = 2;
 const AQUACHEK_REQUIRED_MODEL_RUNS = 1;
 const PROVIDER_RECOVERY_ATTEMPTS = 1;
 const PROVIDER_RECOVERY_DELAY_MS = 1_000;
-const ANALYSIS_VERSION = 'aquachek-pro-v19-model-pad-boxes';
+const ANALYSIS_VERSION = 'aquachek-pro-v20-robust-pad-colors';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.32;
@@ -271,6 +272,7 @@ const MIN_ACCEPTED_CV_CONFIDENCE = 0.32;
 // clearly out-of-focus captures (validated against progressively blurred
 // real strip crops).
 const MIN_AQUACHEK_SHARPNESS_VARIANCE = 4;
+const HARD_MIN_AQUACHEK_SHARPNESS_VARIANCE = 0.5;
 
 class EdgeAnalysisError extends Error {
   code: 'unavailable' | 'invalid_strip';
@@ -740,10 +742,40 @@ function samplePads(
   );
 }
 
+function sampleRobustRgb(
+  image: DecodedImage,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  preferChroma = false,
+): Rgb {
+  const startX = clamp(Math.floor(x), 0, image.width - 1);
+  const endX = clamp(Math.ceil(x + width), startX + 1, image.width);
+  const startY = clamp(Math.floor(y), 0, image.height - 1);
+  const endY = clamp(Math.ceil(y + height), startY + 1, image.height);
+  const samples: Rgb[] = [];
+
+  for (let py = startY; py < endY; py += 1) {
+    for (let px = startX; px < endX; px += 1) {
+      samples.push(getPixelRgb(image, px, py));
+    }
+  }
+
+  return robustRgbFromSamples(samples, { preferChroma });
+}
+
 function samplePadBoxes(image: DecodedImage, normalizedPadBoxes: NormalizedPadBox[]) {
   const regions = getPadBoxSampleRegions(image.width, image.height, normalizedPadBoxes);
-  return regions.map((region) =>
-    sampleAverageRgb(image, region.x, region.y, region.width, region.height),
+  return regions.map((region, index) =>
+    sampleRobustRgb(
+      image,
+      region.x,
+      region.y,
+      region.width,
+      region.height,
+      index >= 2,
+    ),
   );
 }
 
@@ -817,6 +849,7 @@ function analyzeAquachekCvCandidate(
       whiteReference,
       sharpnessVariance: sharpness.variance,
       minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
+      hardMinimumSharpnessVariance: HARD_MIN_AQUACHEK_SHARPNESS_VARIANCE,
       structure,
       horizontalLocalization,
       deskewAngle: 0,
@@ -832,6 +865,7 @@ function isAcceptableAquachekCvCandidate(candidate: CvResult) {
     colorConfidence: candidate.confidence,
   }, {
     minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
+    hardMinimumSharpnessVariance: HARD_MIN_AQUACHEK_SHARPNESS_VARIANCE,
     minimumColorConfidence: MIN_ACCEPTED_CV_CONFIDENCE,
   }).passed;
 }
@@ -1524,6 +1558,7 @@ function combineAiRuns(
       colorConfidence: cvResult.confidence,
     }, {
       minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
+      hardMinimumSharpnessVariance: HARD_MIN_AQUACHEK_SHARPNESS_VARIANCE,
       minimumColorConfidence: MIN_ACCEPTED_CV_CONFIDENCE,
     });
     if (readability.failures.includes('missing_neutral_carrier')) {
@@ -1544,7 +1579,7 @@ function combineAiRuns(
         'blurry',
         'התמונה מטושטשת מדי לקריאה אמינה. יש לצלם שוב כשהסטיק חד ויציב.',
         [
-          `Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} is below ${MIN_AQUACHEK_SHARPNESS_VARIANCE}.`,
+          `Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} is below the hard minimum ${HARD_MIN_AQUACHEK_SHARPNESS_VARIANCE}.`,
         ],
       );
     }
@@ -1605,7 +1640,9 @@ function combineAiRuns(
           ...(readability.warnings.includes('structure_ambiguity')
             ? ['Ambiguous local band segmentation was retained as a warning instead of rejecting a readable strip.']
             : []),
-          `Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} passed the ${MIN_AQUACHEK_SHARPNESS_VARIANCE} minimum.`,
+          ...(readability.warnings.includes('soft_focus')
+            ? [`Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} is below the preferred ${MIN_AQUACHEK_SHARPNESS_VARIANCE} level but remains readable.`]
+            : [`Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} passed the preferred ${MIN_AQUACHEK_SHARPNESS_VARIANCE} level.`]),
           'All readings matched the nearest discrete AquaChek Pro manufacturer-chart color.',
         ],
         evidence,

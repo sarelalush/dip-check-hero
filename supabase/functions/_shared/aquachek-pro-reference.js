@@ -60,6 +60,63 @@ export function clampColorValue(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+/**
+ * Build one representative pad color while ignoring the small bright/dark
+ * pixel clusters produced by glare, shadows and reagent texture. pH and
+ * alkalinity pads always contain a deliberate hue, so their sampler may
+ * prefer the more chromatic pixels after luminance outliers are removed.
+ *
+ * @param {Rgb[]} samples
+ * @param {{ preferChroma?: boolean }} [options]
+ * @returns {Rgb}
+ */
+export function robustRgbFromSamples(samples, options = {}) {
+  const pixels = samples
+    .filter((sample) => Array.isArray(sample) && sample.length === 3 && sample.every(Number.isFinite))
+    .map((sample) => /** @type {Rgb} */ (sample.map((channel) => clampColorValue(channel, 0, 255))));
+  if (pixels.length === 0) throw new Error('At least one valid RGB sample is required.');
+
+  const average = (values) => values.reduce((sum, value) => sum + value, 0) / values.length;
+  const median = (values) => {
+    const sorted = [...values].sort((left, right) => left - right);
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0
+      ? (sorted[middle - 1] + sorted[middle]) / 2
+      : sorted[middle];
+  };
+  if (pixels.length < 8) {
+    return [0, 1, 2].map((channel) => average(pixels.map((pixel) => pixel[channel])));
+  }
+
+  const luminance = (pixel) => pixel[0] * 0.2126 + pixel[1] * 0.7152 + pixel[2] * 0.0722;
+  const byLuminance = [...pixels].sort((left, right) => luminance(left) - luminance(right));
+  const lower = Math.floor(byLuminance.length * 0.06);
+  const upper = Math.max(lower + 1, Math.ceil(byLuminance.length * 0.88));
+  let candidates = byLuminance.slice(lower, upper);
+
+  if (options.preferChroma && candidates.length >= 8) {
+    const chroma = (pixel) => Math.max(...pixel) - Math.min(...pixel);
+    const minimumChroma = [...candidates]
+      .map(chroma)
+      .sort((left, right) => left - right)[Math.floor(candidates.length * 0.35)];
+    const chromaticCandidates = candidates.filter((pixel) => chroma(pixel) >= minimumChroma);
+    if (chromaticCandidates.length >= Math.max(4, candidates.length * 0.45)) {
+      candidates = chromaticCandidates;
+    }
+  }
+
+  const center = [0, 1, 2].map((channel) => median(candidates.map((pixel) => pixel[channel])));
+  const ranked = [...candidates].sort((left, right) => {
+    const distance = (pixel) =>
+      (pixel[0] - center[0]) ** 2 +
+      (pixel[1] - center[1]) ** 2 +
+      (pixel[2] - center[2]) ** 2;
+    return distance(left) - distance(right);
+  });
+  const retained = ranked.slice(0, Math.max(1, Math.ceil(ranked.length * 0.72)));
+  return [0, 1, 2].map((channel) => average(retained.map((pixel) => pixel[channel])));
+}
+
 /** @param {Rgb} rgb @returns {[number, number, number]} */
 export function rgbToLab([r, g, b]) {
   const linearize = (value) => {
@@ -181,7 +238,14 @@ export function analyzeAquachekProPadRgbs(pads, options = {}) {
   const calibratedMatch = (padIndex, refs) => {
     const rawMatch = bestMatch(pads[padIndex], refs);
     const normalizedMatch = bestMatch(normalizedPads[padIndex], refs);
-    return normalizedMatch.margin > rawMatch.margin ? normalizedMatch : rawMatch;
+    if (normalizedMatch.nearestValue === rawMatch.nearestValue) {
+      return normalizedMatch.distance < rawMatch.distance ? normalizedMatch : rawMatch;
+    }
+
+    const materiallyCloser = normalizedMatch.distance <= rawMatch.distance * 0.8;
+    const resolvesAmbiguity =
+      rawMatch.margin < 1 && normalizedMatch.margin >= rawMatch.margin + 2;
+    return materiallyCloser || resolvesAmbiguity ? normalizedMatch : rawMatch;
   };
   const totalChlorine = calibratedMatch(0, AQUACHEK_PRO_REFS.totalChlorine);
   const bromine = calibratedMatch(0, AQUACHEK_PRO_REFS.bromine);
@@ -805,8 +869,8 @@ export function hasUsableAquachekPadEvidence(evidence, expectedPadCount = 4) {
 /**
  * Decide whether a localized AquaChek image contains enough deterministic
  * evidence for a trustworthy color reading. Model uncertainty and imperfect
- * band segmentation are warnings; missing pads, carrier, focus, or usable
- * color separation remain hard failures.
+ * band segmentation and mild softness are warnings; missing pads, carrier,
+ * extremely low focus, or unusable color separation remain hard failures.
  *
  * @param {{
  *   hasUsablePadCenters?: boolean,
@@ -814,10 +878,11 @@ export function hasUsableAquachekPadEvidence(evidence, expectedPadCount = 4) {
  *   sharpnessVariance?: number,
  *   colorConfidence?: number,
  * } | null | undefined} evidence
- * @param {{ minimumSharpnessVariance?: number, minimumColorConfidence?: number }} [options]
+ * @param {{ minimumSharpnessVariance?: number, hardMinimumSharpnessVariance?: number, minimumColorConfidence?: number }} [options]
  */
 export function evaluateAquachekReadability(evidence, options = {}) {
   const minimumSharpnessVariance = Number(options.minimumSharpnessVariance ?? 4);
+  const hardMinimumSharpnessVariance = Number(options.hardMinimumSharpnessVariance ?? 0.5);
   const minimumColorConfidence = Number(options.minimumColorConfidence ?? 0.32);
   const sharpnessVariance = Number(evidence?.sharpnessVariance ?? 0);
   const colorConfidence = Number(evidence?.colorConfidence ?? 0);
@@ -826,8 +891,10 @@ export function evaluateAquachekReadability(evidence, options = {}) {
 
   if (evidence?.hasUsablePadCenters !== true) failures.push('missing_pad_centers');
   if (evidence?.structure?.hasNeutralCarrier !== true) failures.push('missing_neutral_carrier');
-  if (!Number.isFinite(sharpnessVariance) || sharpnessVariance < minimumSharpnessVariance) {
+  if (!Number.isFinite(sharpnessVariance) || sharpnessVariance < hardMinimumSharpnessVariance) {
     failures.push('blurry');
+  } else if (sharpnessVariance < minimumSharpnessVariance) {
+    warnings.push('soft_focus');
   }
   if (!Number.isFinite(colorConfidence) || colorConfidence < minimumColorConfidence) {
     failures.push('low_color_confidence');

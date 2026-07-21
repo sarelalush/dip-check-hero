@@ -15,6 +15,7 @@ import {
   hasUsableAquachekPadEvidence,
   measureAquachekProSharpness,
   refineAquachekProPadCenterYs,
+  robustRgbFromSamples,
   selectAquachekProExpectedColorBands,
 } from '../supabase/functions/_shared/aquachek-pro-reference.js';
 import {
@@ -66,6 +67,36 @@ describe('AquaChek Pro reference chart', () => {
     expect(AQUACHEK_PRO_REFS.freeChlorine.map((entry) => entry.value)).toContain(result.values.freeChlorine);
     expect(AQUACHEK_PRO_REFS.ph.map((entry) => entry.value)).toContain(result.values.ph);
     expect(AQUACHEK_PRO_REFS.alkalinity.map((entry) => entry.value)).toContain(result.values.alkalinity);
+  });
+
+  it('keeps pad colors stable when glare and shadow contaminate the sample', () => {
+    const makeSamples = (
+      color: [number, number, number],
+      count: number,
+    ) => Array.from({ length: count }, (_, index) =>
+      color.map((channel, channelIndex) => channel + ((index + channelIndex) % 5) - 2) as [number, number, number]);
+    const glare = Array.from({ length: 18 }, () => [252, 252, 250] as [number, number, number]);
+    const shadow = Array.from({ length: 10 }, () => [45, 48, 47] as [number, number, number]);
+
+    const ph = robustRgbFromSamples([
+      ...makeSamples(AQUACHEK_PRO_REFS.ph[3].rgb, 60),
+      ...glare,
+      ...shadow,
+    ], { preferChroma: true });
+    const alkalinity = robustRgbFromSamples([
+      ...makeSamples(AQUACHEK_PRO_REFS.alkalinity[5].rgb, 60),
+      ...glare,
+      ...shadow,
+    ], { preferChroma: true });
+    const result = analyzeAquachekProDiscretePadRgbs([
+      AQUACHEK_PRO_REFS.totalChlorine[1].rgb,
+      AQUACHEK_PRO_REFS.freeChlorine[0].rgb,
+      ph,
+      alkalinity,
+    ]);
+
+    expect(result.values.ph).toBe(7.8);
+    expect(result.values.alkalinity).toBe(240);
   });
 
   it('classifies every controlled synthetic rendering correctly', () => {
@@ -436,11 +467,24 @@ describe('AquaChek Pro reference chart', () => {
     });
   });
 
+  it('keeps mildly soft localized pads readable and reports a warning', () => {
+    expect(evaluateAquachekReadability({
+      hasUsablePadCenters: true,
+      structure: { passed: true, hasNeutralCarrier: true },
+      sharpnessVariance: 2,
+      colorConfidence: 0.5,
+    })).toEqual({
+      passed: true,
+      failures: [],
+      warnings: ['soft_focus'],
+    });
+  });
+
   it('still rejects evidence that cannot support a trustworthy color reading', () => {
     expect(evaluateAquachekReadability({
       hasUsablePadCenters: false,
       structure: { passed: false, hasNeutralCarrier: false },
-      sharpnessVariance: 2,
+      sharpnessVariance: 0.1,
       colorConfidence: 0.2,
     })).toEqual({
       passed: false,
