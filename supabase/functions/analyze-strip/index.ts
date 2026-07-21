@@ -17,8 +17,7 @@
 // Required secrets for AI mode:
 // - GEMINI_API_KEY for direct server-side Gemini API access.
 // - STRIP_AI_PROVIDER=gemini is optional; Gemini is the only production provider.
-// - GEMINI_MODEL_PRIMARY is optional; defaults to gemini-2.5-flash-lite.
-// - GEMINI_MODEL_ESCALATION is reserved for later high-confidence escalation.
+// - GEMINI_MODEL_PRIMARY is optional; defaults to gemini-3.5-flash.
 // Mobile never receives the Gemini key. It only invokes this Edge Function.
 //
 // This is V1, not lab-grade analysis. Future versions should improve strip
@@ -265,8 +264,8 @@ interface NormalizedPadBox {
 }
 
 const SCAN_IMAGES_BUCKET = 'scan-images';
-const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
-const ANALYSIS_VERSION = 'aquachek-pro-v22-single-gemini';
+const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash';
+const ANALYSIS_VERSION = 'aquachek-pro-v23-gemini-3-5';
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.32;
 // Real phone captures remain readable well below the synthetic-image score.
 // A threshold of 4 accepts ordinary camera softness while still rejecting

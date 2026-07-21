@@ -52,12 +52,11 @@ Function secret:
 ```powershell
 npx supabase secrets set STRIP_AI_PROVIDER="gemini" --project-ref NEW_PROJECT_REF
 npx supabase secrets set GEMINI_API_KEY="YOUR_GEMINI_API_KEY" --project-ref NEW_PROJECT_REF
-npx supabase secrets set GEMINI_MODEL_PRIMARY="gemini-2.5-flash-lite" --project-ref NEW_PROJECT_REF
-npx supabase secrets set GEMINI_MODEL_ESCALATION="gemini-2.5-flash" --project-ref NEW_PROJECT_REF
+npx supabase secrets set GEMINI_MODEL_PRIMARY="gemini-3.5-flash" --project-ref NEW_PROJECT_REF
 ```
 
 `GEMINI_MODEL_PRIMARY` is optional. If omitted, `analyze-strip` uses
-`gemini-2.5-flash-lite`.
+`gemini-3.5-flash`.
 
 ## Deploy the Analysis Function
 
@@ -100,9 +99,9 @@ npx supabase functions invoke analyze-strip --project-ref NEW_PROJECT_REF --body
 Expected successful AI metadata in the mobile Results screen:
 
 ```text
-מקור ניתוח: AI · gemini · gemini-2.5-flash-lite · ביטחון XX%
+מקור ניתוח: AI · gemini · gemini-3.5-flash · ביטחון XX%
 ```
 
-If Gemini is missing, fails, or returns low confidence, the Edge Function falls
-back to deterministic CV. If CV also fails, it returns `remote-mock` so the app
-flow does not crash.
+Each scan is analyzed by one Gemini request. If Gemini is unavailable or rejects
+the image, the Edge Function returns a controlled error instead of inventing a
+result or making additional AI requests.

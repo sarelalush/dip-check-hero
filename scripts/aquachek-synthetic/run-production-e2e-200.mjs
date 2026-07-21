@@ -71,7 +71,7 @@ const PARAMS = ['totalChlorine', 'bromine', 'freeChlorine', 'ph', 'alkalinity'];
 const VALID_VARIANTS = ['canonical', 'dim', 'bright', 'warm', 'cool', 'tilt-left', 'tilt-right'];
 const VALID_PER_VARIANT = 20;
 const INVALID_PER_VARIANT = 10;
-const EXPECTED_MODEL = 'gemini-2.5-flash';
+const EXPECTED_MODEL = 'gemini-3.5-flash';
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   throw new Error('Production Supabase URL and anon key are required.');

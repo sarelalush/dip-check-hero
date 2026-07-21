@@ -240,7 +240,7 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
+          model: "google/gemini-3.5-flash",
           temperature: 0.1,
           top_p: 0.1,
           messages: [
