@@ -9,6 +9,7 @@ import {
   getFixedPadSampleRegions,
   getLocalizedPadSampleRegions,
   locateAquachekProStripCenterX,
+  evaluateAquachekReadability,
   hasMinimumAquachekStructureConfidence,
   hasUsableAquachekPadEvidence,
   measureAquachekProSharpness,
@@ -390,5 +391,36 @@ describe('AquaChek Pro reference chart', () => {
     expect(hasUsableAquachekPadEvidence({ ...validEvidence, hasExtraPadLikeRegions: true }, 4)).toBe(false);
     expect(hasUsableAquachekPadEvidence({ ...validEvidence, padIntegrity: [true, false, true, true] }, 4)).toBe(false);
     expect(hasUsableAquachekPadEvidence({ ...validEvidence, stripBodyEvidence: 'none' }, 4)).toBe(false);
+  });
+
+  it('accepts a readable real-photo crop despite ambiguous band segmentation', () => {
+    expect(evaluateAquachekReadability({
+      hasUsablePadCenters: true,
+      structure: { passed: false, hasNeutralCarrier: true },
+      sharpnessVariance: 36.6,
+      colorConfidence: 0.364,
+    })).toEqual({
+      passed: true,
+      failures: [],
+      warnings: ['structure_ambiguity'],
+    });
+  });
+
+  it('still rejects evidence that cannot support a trustworthy color reading', () => {
+    expect(evaluateAquachekReadability({
+      hasUsablePadCenters: false,
+      structure: { passed: false, hasNeutralCarrier: false },
+      sharpnessVariance: 2,
+      colorConfidence: 0.2,
+    })).toEqual({
+      passed: false,
+      failures: [
+        'missing_pad_centers',
+        'missing_neutral_carrier',
+        'blurry',
+        'low_color_confidence',
+      ],
+      warnings: [],
+    });
   });
 });

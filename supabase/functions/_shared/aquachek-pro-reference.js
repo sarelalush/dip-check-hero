@@ -777,6 +777,47 @@ export function hasUsableAquachekPadEvidence(evidence, expectedPadCount = 4) {
 }
 
 /**
+ * Decide whether a localized AquaChek image contains enough deterministic
+ * evidence for a trustworthy color reading. Model uncertainty and imperfect
+ * band segmentation are warnings; missing pads, carrier, focus, or usable
+ * color separation remain hard failures.
+ *
+ * @param {{
+ *   hasUsablePadCenters?: boolean,
+ *   structure?: { passed?: boolean, hasNeutralCarrier?: boolean } | null,
+ *   sharpnessVariance?: number,
+ *   colorConfidence?: number,
+ * } | null | undefined} evidence
+ * @param {{ minimumSharpnessVariance?: number, minimumColorConfidence?: number }} [options]
+ */
+export function evaluateAquachekReadability(evidence, options = {}) {
+  const minimumSharpnessVariance = Number(options.minimumSharpnessVariance ?? 4);
+  const minimumColorConfidence = Number(options.minimumColorConfidence ?? 0.32);
+  const sharpnessVariance = Number(evidence?.sharpnessVariance ?? 0);
+  const colorConfidence = Number(evidence?.colorConfidence ?? 0);
+  const failures = [];
+  const warnings = [];
+
+  if (evidence?.hasUsablePadCenters !== true) failures.push('missing_pad_centers');
+  if (evidence?.structure?.hasNeutralCarrier !== true) failures.push('missing_neutral_carrier');
+  if (!Number.isFinite(sharpnessVariance) || sharpnessVariance < minimumSharpnessVariance) {
+    failures.push('blurry');
+  }
+  if (!Number.isFinite(colorConfidence) || colorConfidence < minimumColorConfidence) {
+    failures.push('low_color_confidence');
+  }
+  if (evidence?.structure?.hasNeutralCarrier === true && evidence?.structure?.passed === false) {
+    warnings.push('structure_ambiguity');
+  }
+
+  return {
+    passed: failures.length === 0,
+    failures,
+    warnings,
+  };
+}
+
+/**
  * Estimate focus quality inside the central AquaChek strip area using the
  * variance of a five-point luminance Laplacian. This only measures spatial
  * detail; it never modifies or normalizes reagent-pad colors.

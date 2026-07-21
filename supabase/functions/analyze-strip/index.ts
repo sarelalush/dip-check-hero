@@ -11,12 +11,12 @@
 // Pipeline:
 // 1. Download the uploaded image from Storage or imageUrl.
 // 2. Decode it only for diagnostics. Never alter pad colors before analysis.
-// 3. Run the AI analyzer three times in parallel as an image-quality gate.
+// 3. Run repeated AI localization (two runs for AquaChek, three for generic strips).
 // 4. For AquaChek Pro, sample the four localized pads and match their colors
 //    deterministically to the manufacturer's discrete chart.
-// 5. AI decides whether the uploaded image is a valid supported strip, but it
-//    does not decide the AquaChek Pro numerical readings.
-// 6. If AI cannot validate the strip or color matching is uncertain, return a
+// 5. AI localizes the four AquaChek pads; deterministic evidence decides
+//    whether the image is readable and computes the numerical readings.
+// 6. If four pads cannot be localized or color matching is uncertain, return a
 //    clear invalid response.
 // 7. If the AI provider is unavailable, return a service-unavailable response.
 //
@@ -42,8 +42,7 @@ import {
   getFixedWhiteReferenceRegion,
   getLocalizedPadSampleRegions,
   locateAquachekProStripCenterX,
-  hasMinimumAquachekStructureConfidence,
-  hasUsableAquachekPadEvidence,
+  evaluateAquachekReadability,
   measureAquachekProSharpness,
   refineAquachekProPadCenterYs,
 } from '../_shared/aquachek-pro-reference.js';
@@ -248,18 +247,19 @@ const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
 const REQUIRED_CONSENSUS_RUNS = 2;
+const AQUACHEK_MODEL_RUNS = 2;
+const AQUACHEK_REQUIRED_MODEL_RUNS = 1;
 const PROVIDER_RECOVERY_ATTEMPTS = 1;
 const PROVIDER_RECOVERY_DELAY_MS = 1_000;
-const ANALYSIS_VERSION = 'aquachek-pro-v17-crop-invariant';
+const ANALYSIS_VERSION = 'aquachek-pro-v18-tolerant-deterministic';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
-const MIN_ACCEPTED_CV_CONFIDENCE = 0.5;
-const MIN_AQUACHEK_STRUCTURE_CONFIDENCE = 0.5;
+const MIN_ACCEPTED_CV_CONFIDENCE = 0.32;
 // Real phone captures remain readable well below the synthetic-image score.
-// A threshold of 8 accepts mild camera softness while still rejecting
+// A threshold of 4 accepts ordinary camera softness while still rejecting
 // clearly out-of-focus captures (validated against progressively blurred
 // real strip crops).
-const MIN_AQUACHEK_SHARPNESS_VARIANCE = 8;
+const MIN_AQUACHEK_SHARPNESS_VARIANCE = 4;
 
 class EdgeAnalysisError extends Error {
   code: 'unavailable' | 'invalid_strip';
@@ -849,11 +849,15 @@ function analyzeAquachekCvCandidate(
 }
 
 function isAcceptableAquachekCvCandidate(candidate: CvResult) {
-  return Boolean(
-    candidate.evidence?.structure?.passed &&
-      (candidate.evidence?.sharpnessVariance ?? 0) >= MIN_AQUACHEK_SHARPNESS_VARIANCE &&
-      candidate.confidence >= MIN_ACCEPTED_CV_CONFIDENCE
-  );
+  return evaluateAquachekReadability({
+    hasUsablePadCenters: candidate.evidence?.modelPadCenterYs?.length === 4,
+    structure: candidate.evidence?.structure,
+    sharpnessVariance: candidate.evidence?.sharpnessVariance,
+    colorConfidence: candidate.confidence,
+  }, {
+    minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
+    minimumColorConfidence: MIN_ACCEPTED_CV_CONFIDENCE,
+  }).passed;
 }
 
 function analyzeCv(image: DecodedImage, brand: StripBrand, normalizedCenterYs?: number[]): CvResult | null {
@@ -1311,12 +1315,16 @@ function sleep(milliseconds: number) {
 }
 
 async function analyzeWithProviderRecovery(dataUrl: string, brand: StripBrand): Promise<AiRunResponse[]> {
+  const requestedRuns = isAquachekPro(brand) ? AQUACHEK_MODEL_RUNS : MULTI_SHOT_RUNS;
+  const requiredRuns = isAquachekPro(brand)
+    ? AQUACHEK_REQUIRED_MODEL_RUNS
+    : REQUIRED_CONSENSUS_RUNS;
   const runs = await Promise.all(
-    Array.from({ length: MULTI_SHOT_RUNS }, () => analyzeWithAiProvider(dataUrl, brand)),
+    Array.from({ length: requestedRuns }, () => analyzeWithAiProvider(dataUrl, brand)),
   );
 
   let successfulRuns = runs.filter((run) => run.ok).length;
-  if (successfulRuns >= REQUIRED_CONSENSUS_RUNS) return runs;
+  if (successfulRuns >= requiredRuns) return runs;
 
   if (runs.some((run) => !run.ok && run.error === 'missing_ai_key')) {
     return runs;
@@ -1331,7 +1339,7 @@ async function analyzeWithProviderRecovery(dataUrl: string, brand: StripBrand): 
 
   for (
     let attempt = 1;
-    attempt <= PROVIDER_RECOVERY_ATTEMPTS && successfulRuns < REQUIRED_CONSENSUS_RUNS;
+    attempt <= PROVIDER_RECOVERY_ATTEMPTS && successfulRuns < requiredRuns;
     attempt += 1
   ) {
     await sleep(PROVIDER_RECOVERY_DELAY_MS * attempt);
@@ -1389,39 +1397,27 @@ function combineAiRuns(
   const okRuns = runs.filter((run): run is Extract<AiRunResponse, { ok: true }> => run.ok);
   if (!okRuns.length) return null;
 
-  const expectedPhysicalPadCount = isAquachekPro(brand) ? 4 : brand.parameters.length;
+  const isPro = isAquachekPro(brand);
+  const requestedRuns = isPro ? AQUACHEK_MODEL_RUNS : MULTI_SHOT_RUNS;
+  const requiredRuns = isPro ? AQUACHEK_REQUIRED_MODEL_RUNS : REQUIRED_CONSENSUS_RUNS;
+  const expectedPhysicalPadCount = isPro ? 4 : brand.parameters.length;
   const runConfidences = okRuns.map((run) => Number(run.data.confidence ?? 0));
   const qualityPassedRuns = okRuns.filter((run) =>
-    isQualityPassedRun(run, expectedPhysicalPadCount, isAquachekPro(brand)),
+    isQualityPassedRun(run, expectedPhysicalPadCount, isPro),
   );
-  const relaxedAquachekRuns = isAquachekPro(brand)
-    ? okRuns.filter((run) => hasUsableAquachekPadEvidence(run.data, expectedPhysicalPadCount))
-    : [];
-  const usedRelaxedAquachekGate =
-    isAquachekPro(brand) &&
-    qualityPassedRuns.length < REQUIRED_CONSENSUS_RUNS &&
-    relaxedAquachekRuns.length >= REQUIRED_CONSENSUS_RUNS;
-  const usableAquachekCenterRuns = isAquachekPro(brand)
+  const usableAquachekCenterRuns = isPro
     ? okRuns.filter((run) => hasUsablePadCenters(run, expectedPhysicalPadCount))
     : [];
-  const deterministicAquachekValidated = Boolean(
-    isAquachekPro(brand) &&
-      cvResult?.evidence?.structure?.passed &&
-      (cvResult.evidence.sharpnessVariance ?? 0) >= MIN_AQUACHEK_SHARPNESS_VARIANCE &&
-      cvResult.confidence >= MIN_ACCEPTED_CV_CONFIDENCE &&
-      cvResult.evidence.modelPadCenterYs?.length === expectedPhysicalPadCount &&
-      usableAquachekCenterRuns.length >= 1
-  );
-  const effectiveQualityPassedRuns = usedRelaxedAquachekGate
-    ? relaxedAquachekRuns
-    : qualityPassedRuns;
-  const confidencePassedRuns = effectiveQualityPassedRuns.filter(
-    (run) => Number(run.data.confidence ?? 0) >= MIN_ACCEPTED_RUN_CONFIDENCE,
-  );
+  const effectiveQualityPassedRuns = isPro ? usableAquachekCenterRuns : qualityPassedRuns;
+  const confidencePassedRuns = isPro
+    ? effectiveQualityPassedRuns
+    : effectiveQualityPassedRuns.filter(
+        (run) => Number(run.data.confidence ?? 0) >= MIN_ACCEPTED_RUN_CONFIDENCE,
+      );
   const confidencePassedValues = confidencePassedRuns.map((run) => Number(run.data.confidence ?? 0));
   const evidence: AnalysisEvidence = {
-    method: isAquachekPro(brand) ? 'gemini-quality-deterministic-color' : 'repeated-model-discrete-consensus',
-    requiredRuns: MULTI_SHOT_RUNS,
+    method: isPro ? 'gemini-localization-deterministic-color' : 'repeated-model-discrete-consensus',
+    requiredRuns,
     successfulRuns: okRuns.length,
     qualityPassedRuns: effectiveQualityPassedRuns.length,
     confidencePassedRuns: confidencePassedRuns.length,
@@ -1455,19 +1451,16 @@ function combineAiRuns(
       evidence,
     });
 
-  if (okRuns.length < REQUIRED_CONSENSUS_RUNS) {
+  if (okRuns.length < requiredRuns) {
     return reject(
       'low_confidence',
       'לא התקבלו מספיק קריאות מלאות. יש לצלם שוב כדי למנוע תוצאה חלקית.',
-      [`Only ${okRuns.length} analysis run completed; ${REQUIRED_CONSENSUS_RUNS} are required.`],
+      [`Only ${okRuns.length} analysis run completed; ${requiredRuns} are required.`],
     );
   }
 
   const qualityFailures = okRuns.filter((run) => !effectiveQualityPassedRuns.includes(run));
-  if (
-    effectiveQualityPassedRuns.length < REQUIRED_CONSENSUS_RUNS &&
-    !deterministicAquachekValidated
-  ) {
+  if (!isPro && effectiveQualityPassedRuns.length < requiredRuns) {
     const reasonCounts = new Map<FailureReason, number>();
     for (const run of qualityFailures) {
       reasonCounts.set(run.data.failureReason, (reasonCounts.get(run.data.failureReason) ?? 0) + 1);
@@ -1488,38 +1481,25 @@ function combineAiRuns(
   }
 
   if (
-    !isAquachekPro(brand) &&
-    (confidencePassedRuns.length < REQUIRED_CONSENSUS_RUNS || meanConfidence < MIN_ACCEPTED_MEAN_CONFIDENCE)
+    !isPro &&
+    (confidencePassedRuns.length < requiredRuns || meanConfidence < MIN_ACCEPTED_MEAN_CONFIDENCE)
   ) {
     return reject(
       'low_confidence',
       'רמת הביטחון בצבעי הסטיק נמוכה מדי. יש לצלם שוב באור טבעי ואחיד וללא השתקפות.',
       [
-        `${REQUIRED_CONSENSUS_RUNS} runs must each be at least ${MIN_ACCEPTED_RUN_CONFIDENCE}.`,
+        `${requiredRuns} runs must each be at least ${MIN_ACCEPTED_RUN_CONFIDENCE}.`,
         `Mean confidence of supporting runs must be at least ${MIN_ACCEPTED_MEAN_CONFIDENCE}.`,
       ],
     );
   }
 
-  if (isAquachekPro(brand)) {
-    const structureConfidences = effectiveQualityPassedRuns.map((run) => Number(run.data.confidence ?? 0));
-    const strongestStructureConfidence = structureConfidences.length > 0
-      ? Math.max(...structureConfidences)
-      : 0;
-    if (
-      !usedRelaxedAquachekGate &&
-      !deterministicAquachekValidated &&
-      !hasMinimumAquachekStructureConfidence(
-        structureConfidences,
-        MIN_AQUACHEK_STRUCTURE_CONFIDENCE,
-      )
-    ) {
+  if (isPro) {
+    if (usableAquachekCenterRuns.length < AQUACHEK_REQUIRED_MODEL_RUNS) {
       return reject(
-        'low_confidence',
-        'המבנה או סדר הפדים אינם ודאיים. יש לצלם שוב את כל הסטיק כשאר ארבעת הפדים שלמים ומסודרים מלמעלה למטה.',
-        [
-          `All model structure checks were below ${MIN_AQUACHEK_STRUCTURE_CONFIDENCE}; strongest confidence was ${strongestStructureConfidence.toFixed(3)}.`,
-        ],
+        'framing',
+        'לא זוהו כל ארבעת ריבועי הצבע. יש לצלם שוב כך שכל ארבעת הפדים יופיעו בתמונה.',
+        ['Gemini could not localize four usable ordered pad centers.'],
       );
     }
 
@@ -1532,7 +1512,17 @@ function combineAiRuns(
     }
 
     const structure = cvResult.evidence?.structure;
-    if (!structure?.passed) {
+    const sharpnessVariance = cvResult.evidence?.sharpnessVariance ?? 0;
+    const readability = evaluateAquachekReadability({
+      hasUsablePadCenters: usableAquachekCenterRuns.length >= AQUACHEK_REQUIRED_MODEL_RUNS,
+      structure,
+      sharpnessVariance,
+      colorConfidence: cvResult.confidence,
+    }, {
+      minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
+      minimumColorConfidence: MIN_ACCEPTED_CV_CONFIDENCE,
+    });
+    if (readability.failures.includes('missing_neutral_carrier')) {
       const missingCarrier = structure?.hasNeutralCarrier === false;
       return reject(
         missingCarrier ? 'not_strip' : 'framing',
@@ -1545,8 +1535,7 @@ function combineAiRuns(
       );
     }
 
-    const sharpnessVariance = cvResult.evidence?.sharpnessVariance ?? 0;
-    if (sharpnessVariance < MIN_AQUACHEK_SHARPNESS_VARIANCE) {
+    if (readability.failures.includes('blurry')) {
       return reject(
         'blurry',
         'התמונה מטושטשת מדי לקריאה אמינה. יש לצלם שוב כשהסטיק חד ויציב.',
@@ -1556,7 +1545,7 @@ function combineAiRuns(
       );
     }
 
-    if (cvResult.confidence < MIN_ACCEPTED_CV_CONFIDENCE) {
+    if (readability.failures.includes('low_color_confidence')) {
       return reject(
         'low_confidence',
         'ההתאמה בין צבעי הפדים לטבלת היצרן אינה ודאית. יש לצלם שוב באור אחיד וללא השתקפות.',
@@ -1606,16 +1595,12 @@ function combineAiRuns(
         analysisVersion: ANALYSIS_VERSION,
         accepted: true,
         acceptanceReasons: [
-          deterministicAquachekValidated
-            ? 'Gemini located four ordered pad centers; deterministic carrier, structure, focus and color checks made the final acceptance decision.'
-            : usedRelaxedAquachekGate
-            ? `At least ${REQUIRED_CONSENSUS_RUNS} Gemini runs identified one intact four-pad AquaChek candidate; deterministic validation resolved minor real-photo uncertainty.`
-            : `At least ${REQUIRED_CONSENSUS_RUNS} Gemini runs validated image quality and four complete pads.`,
-          deterministicAquachekValidated
-            ? 'Pad sampling was normalized to the detected physical strip width, independent of crop margins.'
-            : usedRelaxedAquachekGate
-            ? 'The deterministic structure analyzer, rather than a subjective model framing flag, made the final structure decision.'
-            : `At least one Gemini structure check reached ${MIN_AQUACHEK_STRUCTURE_CONFIDENCE} confidence.`,
+          `At least ${AQUACHEK_REQUIRED_MODEL_RUNS} Gemini run localized four ordered AquaChek pad centers.`,
+          'Deterministic carrier, focus and manufacturer-chart color checks made the final acceptance decision.',
+          'Pad sampling was normalized to the detected physical strip width, independent of crop margins.',
+          ...(readability.warnings.includes('structure_ambiguity')
+            ? ['Ambiguous local band segmentation was retained as a warning instead of rejecting a readable strip.']
+            : []),
           `Deterministic sharpness variance ${sharpnessVariance.toFixed(3)} passed the ${MIN_AQUACHEK_SHARPNESS_VARIANCE} minimum.`,
           'All readings matched the nearest discrete AquaChek Pro manufacturer-chart color.',
         ],
@@ -1680,7 +1665,7 @@ function combineAiRuns(
   }
 
   const notes = uniqueNonEmpty(confidencePassedRuns.map((run) => run.data.notes));
-  const ignoredRuns = Math.max(0, MULTI_SHOT_RUNS - confidencePassedRuns.length);
+  const ignoredRuns = Math.max(0, requestedRuns - confidencePassedRuns.length);
   return buildResult(request, brand, values, 'ai', Math.min(...confidencePassedValues), {
     provider,
     model,
