@@ -38,13 +38,12 @@ import {
   analyzeAquachekProStructure,
   bestMatch,
   confidenceFromDistances,
+  getPadBoxSampleRegions,
   getFixedPadSampleRegions,
-  getFixedWhiteReferenceRegion,
   getLocalizedPadSampleRegions,
   locateAquachekProStripCenterX,
   evaluateAquachekReadability,
   measureAquachekProSharpness,
-  refineAquachekProPadCenterYs,
 } from '../_shared/aquachek-pro-reference.js';
 import { readZeroBasedImageScriptRgb } from '../_shared/imagescript-pixel.js';
 
@@ -130,11 +129,12 @@ interface ColorAnalysisEvidence {
   selectedValues: Partial<Record<StripParameter, number>>;
   padCenterYs?: number[];
   modelPadCenterYs?: number[];
-  padLocalization?: 'model-consensus' | 'structure-refined' | 'fixed-fallback';
+  modelPadBoxes?: NormalizedPadBox[];
+  padLocalization?: 'model-boxes' | 'structure-refined';
   localizationCandidates?: Array<{
     confidence: number;
     padCenterYs?: number[];
-    padLocalization: 'model-consensus' | 'structure-refined' | 'fixed-fallback';
+    padLocalization: 'model-boxes' | 'structure-refined';
   }>;
   whiteReference?: Rgb;
   sharpnessVariance?: number;
@@ -145,7 +145,10 @@ interface ColorAnalysisEvidence {
 }
 
 interface AnalysisEvidence {
-  method: 'repeated-model-discrete-consensus' | 'gemini-quality-deterministic-color';
+  method:
+    | 'repeated-model-discrete-consensus'
+    | 'gemini-quality-deterministic-color'
+    | 'gemini-pad-boxes-deterministic-color';
   requiredRuns: number;
   successfulRuns: number;
   qualityPassedRuns: number;
@@ -203,6 +206,7 @@ interface AiRunData {
   allPadsIntact: boolean;
   padOrderMatchesSelectedBrand: boolean;
   hasExtraPadLikeRegions: boolean;
+  visiblePadBoxes: NormalizedPadBox[];
   visiblePadCenterYs: number[];
   padIntegrity: boolean[];
   stripBodyEvidence: 'clear_shared_body' | 'ambiguous' | 'none';
@@ -243,6 +247,13 @@ interface DecodedImage {
   rotate?: (angle: number, resize?: boolean) => DecodedImage;
 }
 
+interface NormalizedPadBox {
+  centerX: number;
+  centerY: number;
+  width: number;
+  height: number;
+}
+
 const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MULTI_SHOT_RUNS = 3;
@@ -251,7 +262,7 @@ const AQUACHEK_MODEL_RUNS = 2;
 const AQUACHEK_REQUIRED_MODEL_RUNS = 1;
 const PROVIDER_RECOVERY_ATTEMPTS = 1;
 const PROVIDER_RECOVERY_DELAY_MS = 1_000;
-const ANALYSIS_VERSION = 'aquachek-pro-v18-tolerant-deterministic';
+const ANALYSIS_VERSION = 'aquachek-pro-v19-model-pad-boxes';
 const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
 const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.32;
@@ -729,128 +740,93 @@ function samplePads(
   );
 }
 
-function sampleWhiteReference(image: DecodedImage) {
-  const region = getFixedWhiteReferenceRegion(image.width, image.height);
-  return sampleAverageRgb(image, region.x, region.y, region.width, region.height);
+function samplePadBoxes(image: DecodedImage, normalizedPadBoxes: NormalizedPadBox[]) {
+  const regions = getPadBoxSampleRegions(image.width, image.height, normalizedPadBoxes);
+  return regions.map((region) =>
+    sampleAverageRgb(image, region.x, region.y, region.width, region.height),
+  );
 }
 
 function analyzeAquachekCvCandidate(
   image: DecodedImage,
-  normalizedCenterYs?: number[],
-  deskewAngle = 0,
+  normalizedPadBoxes?: NormalizedPadBox[],
 ): CvResult {
+  if (normalizedPadBoxes?.length !== 4) {
+    throw new Error('AquaChek Pro requires four model-localized reagent pad boxes.');
+  }
+
   const getRgb = (x: number, y: number) => getPixelRgb(image, x, y);
+  const normalizedCenterYs = normalizedPadBoxes.map((box) => box.centerY);
+  const modelCenterXs = normalizedPadBoxes.map((box) => box.centerX).sort((left, right) => left - right);
+  const modelCenterX = modelCenterXs.length % 2 === 1
+    ? modelCenterXs[Math.floor(modelCenterXs.length / 2)]
+    : (modelCenterXs[modelCenterXs.length / 2 - 1] + modelCenterXs[modelCenterXs.length / 2]) / 2;
+  const modelPadWidths = normalizedPadBoxes
+    .map((box) => box.width * image.width)
+    .sort((left, right) => left - right);
+  const modelStripWidth = modelPadWidths.length % 2 === 1
+    ? modelPadWidths[Math.floor(modelPadWidths.length / 2)]
+    : (modelPadWidths[modelPadWidths.length / 2 - 1] + modelPadWidths[modelPadWidths.length / 2]) / 2;
+
+  // This local detector is diagnostic only. It no longer decides where pad
+  // colors are sampled; every reagent pad uses its own Gemini bounding box.
   const horizontalLocalization = locateAquachekProStripCenterX(
     image.width,
     image.height,
     getRgb,
     normalizedCenterYs,
   );
-  const localizedStripWidth = horizontalLocalization.segment
-    ? horizontalLocalization.segment.endX - horizontalLocalization.segment.startX + 1
-    : undefined;
-  const normalizedStripWidth = localizedStripWidth
-    ? localizedStripWidth / image.width
-    : undefined;
   const structure = analyzeAquachekProStructure(
     image.width,
     image.height,
     getRgb,
-    horizontalLocalization.centerX,
+    modelCenterX * image.width,
     normalizedCenterYs,
-    localizedStripWidth,
+    modelStripWidth,
   );
-  const refinedCenterYs = refineAquachekProPadCenterYs(
-    image.height,
-    structure.colorBands,
-    normalizedCenterYs,
-  );
-  const whiteReference = structure.carrierReference ?? sampleWhiteReference(image);
+  const whiteReference = structure.carrierReference;
   const sharpness = measureAquachekProSharpness(
     image.width,
     image.height,
     getRgb,
-    horizontalLocalization.centerX,
-    localizedStripWidth,
-    refinedCenterYs ?? normalizedCenterYs,
+    modelCenterX * image.width,
+    modelStripWidth,
+    normalizedCenterYs,
   );
-  type PadLocalization = 'model-consensus' | 'structure-refined' | 'fixed-fallback';
-  type Candidate = {
-    centerYs?: number[];
-    localization: PadLocalization;
-    analysis: ReturnType<typeof analyzeAquachekProDiscretePadRgbs>;
-    pads: Rgb[];
-  };
-  const candidates: Candidate[] = [];
-  const centerCandidates: Array<{ centerYs?: number[]; localization: PadLocalization }> = [
-    { centerYs: normalizedCenterYs, localization: 'model-consensus' },
-    { centerYs: refinedCenterYs, localization: 'structure-refined' },
-  ];
-  for (const candidate of centerCandidates) {
-    if (candidate.centerYs?.length !== 4) continue;
-    const isDuplicate = candidates.some((entry) =>
-      entry.centerYs?.every((center, centerIndex) =>
-        Math.abs(center - (candidate.centerYs?.[centerIndex] ?? center)) < 0.0001
-      )
-    );
-    if (isDuplicate) continue;
-    const pads = samplePads(
-      image,
-      4,
-      candidate.centerYs,
-      horizontalLocalization.normalizedCenterX,
-      normalizedStripWidth,
-    );
-    candidates.push({
-      ...candidate,
-      analysis: analyzeAquachekProDiscretePadRgbs(pads, { whiteReference }),
-      pads,
-    });
-  }
-  if (candidates.length === 0) {
-    const pads = samplePads(image, 4);
-    candidates.push({
-      analysis: analyzeAquachekProDiscretePadRgbs(pads, { whiteReference }),
-      centerYs: undefined,
-      localization: 'fixed-fallback',
-      pads,
-    });
-  }
-  const selected = candidates.reduce((best, candidate) =>
-    candidate.analysis.confidence > best.analysis.confidence ? candidate : best
-  );
-  const { analysis, pads } = selected;
+  const pads = samplePadBoxes(image, normalizedPadBoxes);
+  const analysis = analyzeAquachekProDiscretePadRgbs(pads, { whiteReference });
   return {
     values: analysis.values,
     confidence: analysis.confidence,
-    notes: 'Gemini validated image quality; readings came from deterministic manufacturer-chart color matching.',
+    notes: 'Gemini localized each reagent pad; readings came from deterministic manufacturer-chart color matching inside those boxes.',
     evidence: {
       confidence: analysis.confidence,
       distances: analysis.distances,
       margins: analysis.margins,
       padRgbs: pads,
       selectedValues: analysis.values,
-      padCenterYs: selected.centerYs,
+      padCenterYs: normalizedCenterYs,
       modelPadCenterYs: normalizedCenterYs,
-      padLocalization: selected.localization,
-      localizationCandidates: candidates.map((candidate) => ({
-        confidence: candidate.analysis.confidence,
-        padCenterYs: candidate.centerYs,
-        padLocalization: candidate.localization,
-      })),
+      modelPadBoxes: normalizedPadBoxes,
+      padLocalization: 'model-boxes',
+      localizationCandidates: [{
+        confidence: analysis.confidence,
+        padCenterYs: normalizedCenterYs,
+        padLocalization: 'model-boxes',
+      }],
       whiteReference,
       sharpnessVariance: sharpness.variance,
       minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
       structure,
       horizontalLocalization,
-      deskewAngle,
+      deskewAngle: 0,
     },
   };
 }
 
 function isAcceptableAquachekCvCandidate(candidate: CvResult) {
   return evaluateAquachekReadability({
-    hasUsablePadCenters: candidate.evidence?.modelPadCenterYs?.length === 4,
+    hasUsablePadCenters: candidate.evidence?.modelPadBoxes?.length === 4,
     structure: candidate.evidence?.structure,
     sharpnessVariance: candidate.evidence?.sharpnessVariance,
     colorConfidence: candidate.confidence,
@@ -860,35 +836,9 @@ function isAcceptableAquachekCvCandidate(candidate: CvResult) {
   }).passed;
 }
 
-function analyzeCv(image: DecodedImage, brand: StripBrand, normalizedCenterYs?: number[]): CvResult | null {
+function analyzeCv(image: DecodedImage, brand: StripBrand, normalizedPadBoxes?: NormalizedPadBox[]): CvResult | null {
   if (isAquachekPro(brand)) {
-    const original = analyzeAquachekCvCandidate(image, normalizedCenterYs);
-    if (isAcceptableAquachekCvCandidate(original) || !image.clone || !image.rotate) return original;
-
-    // Use the smallest correction that produces a complete four-pad strip.
-    // This avoids unnecessary interpolation while handling realistic handheld
-    // photos where a mild tilt merges separate pads in the vertical CV lane.
-    for (const angle of [-4, 4, -6, 6, -8, 8, -10, 10]) {
-      try {
-        const clone = image.clone();
-        const deskewed = clone.rotate?.(angle, true) ?? clone;
-        const candidate = analyzeAquachekCvCandidate(deskewed, normalizedCenterYs, angle);
-        console.log('Evaluated local AquaChek deskew candidate', {
-          angle,
-          width: deskewed.width,
-          height: deskewed.height,
-          structurePassed: candidate.evidence?.structure?.passed,
-          detectedBands: candidate.evidence?.structure?.colorBands?.length,
-          ignoredBands: candidate.evidence?.structure?.ignoredColorBands?.length,
-          colorConfidence: candidate.confidence,
-          sharpnessVariance: candidate.evidence?.sharpnessVariance,
-        });
-        if (isAcceptableAquachekCvCandidate(candidate)) return candidate;
-      } catch (error) {
-        console.warn('AquaChek deskew candidate failed', { angle, error });
-      }
-    }
-    return original;
+    return analyzeAquachekCvCandidate(image, normalizedPadBoxes);
   }
 
   if (isAquachekYellow(brand)) {
@@ -931,6 +881,7 @@ function isQualityPassedRun(
     run.data.allPadsIntact === true &&
     run.data.padOrderMatchesSelectedBrand === true &&
     run.data.hasExtraPadLikeRegions === false &&
+    run.data.visiblePadBoxes.length === expectedPhysicalPadCount &&
     run.data.visiblePadCenterYs.length === expectedPhysicalPadCount &&
     run.data.padIntegrity.length === expectedPhysicalPadCount &&
     run.data.padIntegrity.every(Boolean) &&
@@ -938,14 +889,25 @@ function isQualityPassedRun(
   );
 }
 
-function hasUsablePadCenters(
+function hasUsablePadBoxes(
   run: Extract<AiRunResponse, { ok: true }>,
   padCount: number,
 ) {
-  const centers = run.data.visiblePadCenterYs.map(Number);
+  const boxes = run.data.visiblePadBoxes;
+  const centers = boxes.map((box) => Number(box.centerY));
   if (
+    boxes.length !== padCount ||
     centers.length !== padCount ||
-    centers.some((center) => !Number.isFinite(center) || center <= 0 || center >= 1)
+    boxes.some((box) =>
+      !Number.isFinite(box.centerX) ||
+      !Number.isFinite(box.centerY) ||
+      !Number.isFinite(box.width) ||
+      !Number.isFinite(box.height) ||
+      box.centerX <= 0 || box.centerX >= 1 ||
+      box.centerY <= 0 || box.centerY >= 1 ||
+      box.width <= 0.005 || box.width > 1 ||
+      box.height <= 0.005 || box.height > 1
+    )
   ) {
     return false;
   }
@@ -954,23 +916,30 @@ function hasUsablePadCenters(
   return gaps.every((gap) => gap >= 0.025) && centers.at(-1)! - centers[0] <= 0.9;
 }
 
-function consensusPadCenterYs(runs: AiRunResponse[], padCount: number): number[] | undefined {
+function median(values: number[]) {
+  const ordered = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(ordered.length / 2);
+  return ordered.length % 2 === 1
+    ? ordered[middle]
+    : (ordered[middle - 1] + ordered[middle]) / 2;
+}
+
+function consensusPadBoxes(runs: AiRunResponse[], padCount: number): NormalizedPadBox[] | undefined {
   const candidates = runs
     .filter((run): run is Extract<AiRunResponse, { ok: true }> => run.ok)
-    // Gemini supplies approximate pad centers only. Local carrier, structure,
-    // sharpness and manufacturer-color checks make the acceptance decision.
-    .filter((run) => hasUsablePadCenters(run, padCount))
-    .map((run) => run.data.visiblePadCenterYs)
-    .filter((centers) => centers.length === padCount);
+    // Gemini supplies independent pad boxes. Local carrier, sharpness and
+    // manufacturer-color checks still make the final acceptance decision.
+    .filter((run) => hasUsablePadBoxes(run, padCount))
+    .map((run) => run.data.visiblePadBoxes)
+    .filter((boxes) => boxes.length === padCount);
   if (candidates.length === 0) return undefined;
 
-  return Array.from({ length: padCount }, (_, index) => {
-    const values = candidates.map((centers) => centers[index]).sort((left, right) => left - right);
-    const middle = Math.floor(values.length / 2);
-    return values.length % 2 === 1
-      ? values[middle]
-      : (values[middle - 1] + values[middle]) / 2;
-  });
+  return Array.from({ length: padCount }, (_, index) => ({
+    centerX: median(candidates.map((boxes) => boxes[index].centerX)),
+    centerY: median(candidates.map((boxes) => boxes[index].centerY)),
+    width: median(candidates.map((boxes) => boxes[index].width)),
+    height: median(candidates.map((boxes) => boxes[index].height)),
+  }));
 }
 
 function buildSystemPrompt(brand: StripBrand) {
@@ -1011,15 +980,18 @@ Before reading any values, count the separate PHYSICAL REAGENT PADS that are act
 - This selected strip must show exactly ${expectedPhysicalPadCount} complete physical pads. If the count is different, or any pad is only partly visible, set failureReason="framing", isStrip=false, confidence=0, and all values=0.
 - A strip with only 3 visible pads is INVALID even when the remaining colors are sharp and readable. Never estimate the missing measurement.
 - Scan the entire primary strip from wet tip to handle before deciding the count. Do not stop after finding the expected four pads.
-- For EVERY distinct colored pad-like rectangle on the primary body, append its vertical center to visiblePadCenterYs as a normalized number from 0.0 at the image top to 1.0 at the image bottom. Return these centers in ascending order. Two colored regions separated by a visible neutral stripe are two candidates, even when they are unusually close together.
-- physicalPadCount MUST equal visiblePadCenterYs.length. An extra fifth candidate cannot be ignored merely because four expected sample positions are also visible.
+- For EVERY distinct colored reagent pad on the primary body, return one tight bounding box in visiblePadBoxes. Each box contains centerX, centerY, width and height normalized from 0.0 to 1.0 relative to the full image.
+- Bound the colored reagent material itself, not the white carrier, shadows, gaps, background, or the entire strip. Include the complete reagent pad with only a tiny margin.
+- Locate every pad independently. A tilted or perspective-distorted strip may give each pad a different centerX, width, and height. Never force the pads onto one shared vertical line.
+- Sort visiblePadBoxes by centerY from the wet tip toward the handle. Two colored regions separated by a visible neutral stripe are two candidates, even when they are unusually close together.
+- physicalPadCount MUST equal visiblePadBoxes.length. An extra fifth candidate cannot be ignored merely because four expected sample positions are also visible.
 
 Then complete this STRUCTURAL CHECKLIST independently of the pad count:
 - Judge structure from the PRIMARY STRIP CANDIDATE only: the long narrow neutral-colored body carrying the reagent pads. The body can be hidden underneath each pad; visible side margins, gaps, and/or handle sections are sufficient evidence that the pads share one body. Ignore unrelated background objects, isolated colored rectangles, shadows, glare, surface texture, printed marks, and image borders.
 - hasExactlyOneStrip=false only when a second object is itself recognizably a test strip: it must have its own long narrow body with one or more attached reagent pads. A colored object, chart swatch, reflection, shadow, or strip-shaped background edge is NOT a second strip.
 - hasSingleContinuousStripBody=false only when the pads truly float independently with no shared neutral body/margins at all, or the primary body is physically separated or cut through. The body being hidden beneath reagent pads is normal. Uneven illumination, shadows, highlights, perspective, printed marks, pad gaps, clean synthetic-looking edges, and a handle extending outside the tight crop do NOT break body continuity.
 - allPadsIntact=false only for a clear physical defect: a reagent pad is cropped by the image boundary, covered by a finger/object, torn, divided into separate pieces, or has a foreign opaque stripe cutting through it. Natural pad texture, mottling, noise, wet gradients, glare, shadows, and minor edge softness do NOT make a pad non-intact.
-- Return padIntegrity with one boolean for every item in visiblePadCenterYs, in the same order. A pad split by a neutral/opaque stripe, visibly occluded, or cropped is false. padIntegrity.length MUST equal visiblePadCenterYs.length and allPadsIntact MUST equal padIntegrity.every(Boolean).
+- Return padIntegrity with one boolean for every item in visiblePadBoxes, in the same order. A pad split by a neutral/opaque stripe, visibly occluded, or cropped is false. padIntegrity.length MUST equal visiblePadBoxes.length and allPadsIntact MUST equal padIntegrity.every(Boolean).
 - padOrderMatchesSelectedBrand=false only when there is clear visual evidence that complete pads were geometrically permuted, or the visible strip architecture belongs to another brand. Unusual water chemistry, pale/strong valid colors, lighting, texture, or uncertainty about a color value are NOT evidence of swapped order. When structure matches but a color is ambiguous, keep this true and use low_confidence instead.
 - hasExtraPadLikeRegions=true only when an additional reagent pad is visibly attached to and aligned on the SAME primary strip body. An isolated colored object, background decoration, reflection, shadow, stain, or chart swatch outside that body is never an extra pad.
 - Set stripBodyEvidence="clear_shared_body" when a neutral plastic carrier is visibly shared by all candidates: look for continuous side margins, neutral gaps between candidates, and/or a neutral handle extending beyond them. Set it to "none" when colored rectangles merely float in a vertical column on the background without shared plastic. Use "ambiguous" when a real narrow carrier is visible but glare, a tight crop, pale pads, or background similarity prevents certainty. Ambiguous body evidence is acceptable when exactly four complete pads remain visible on one candidate strip; the server performs an independent structure check.
@@ -1092,21 +1064,43 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
   const allPadsIntact = args.allPadsIntact === true;
   const padOrderMatchesSelectedBrand = args.padOrderMatchesSelectedBrand === true;
   const hasExtraPadLikeRegions = args.hasExtraPadLikeRegions === true;
-  const visiblePadCenterYs = Array.isArray(args.visiblePadCenterYs)
-    ? args.visiblePadCenterYs
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value) && value >= 0 && value <= 1)
-        .sort((a, b) => a - b)
-    : [];
-  const padIntegrity = Array.isArray(args.padIntegrity)
-    ? args.padIntegrity.map((value) => value === true)
-    : [];
+  const rawPadIntegrity = Array.isArray(args.padIntegrity) ? args.padIntegrity : [];
+  const visiblePadEntries: Array<{ box: NormalizedPadBox; intact: boolean }> = [];
+  if (Array.isArray(args.visiblePadBoxes)) {
+    args.visiblePadBoxes.forEach((rawBox, index) => {
+      if (!rawBox || typeof rawBox !== 'object' || Array.isArray(rawBox)) return;
+      const boxRecord = rawBox as Record<string, unknown>;
+      const box: NormalizedPadBox = {
+        centerX: Number(boxRecord.centerX),
+        centerY: Number(boxRecord.centerY),
+        width: Number(boxRecord.width),
+        height: Number(boxRecord.height),
+      };
+      if (
+        !Number.isFinite(box.centerX) ||
+        !Number.isFinite(box.centerY) ||
+        !Number.isFinite(box.width) ||
+        !Number.isFinite(box.height) ||
+        box.centerX < 0 || box.centerX > 1 ||
+        box.centerY < 0 || box.centerY > 1 ||
+        box.width <= 0 || box.width > 1 ||
+        box.height <= 0 || box.height > 1
+      ) {
+        return;
+      }
+      visiblePadEntries.push({ box, intact: rawPadIntegrity[index] === true });
+    });
+  }
+  visiblePadEntries.sort((left, right) => left.box.centerY - right.box.centerY);
+  const visiblePadBoxes = visiblePadEntries.map((entry) => entry.box);
+  const visiblePadCenterYs = visiblePadBoxes.map((box) => box.centerY);
+  const padIntegrity = visiblePadEntries.map((entry) => entry.intact);
   const stripBodyEvidence = ['clear_shared_body', 'ambiguous', 'none'].includes(String(args.stripBodyEvidence))
     ? (args.stripBodyEvidence as AiRunData['stripBodyEvidence'])
     : 'none';
   const groundedStructurePassed =
-    visiblePadCenterYs.length === physicalPadCount &&
-    visiblePadCenterYs.length === expectedPhysicalPadCount &&
+    visiblePadBoxes.length === physicalPadCount &&
+    visiblePadBoxes.length === expectedPhysicalPadCount &&
     padIntegrity.length === physicalPadCount &&
     padIntegrity.every(Boolean) &&
     stripBodyEvidence === 'clear_shared_body';
@@ -1141,6 +1135,7 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
       allPadsIntact,
       padOrderMatchesSelectedBrand,
       hasExtraPadLikeRegions,
+      visiblePadBoxes,
       visiblePadCenterYs,
       padIntegrity,
       stripBodyEvidence,
@@ -1186,9 +1181,18 @@ function buildGeminiResponseSchema() {
       allPadsIntact: { type: 'BOOLEAN' },
       padOrderMatchesSelectedBrand: { type: 'BOOLEAN' },
       hasExtraPadLikeRegions: { type: 'BOOLEAN' },
-      visiblePadCenterYs: {
+      visiblePadBoxes: {
         type: 'ARRAY',
-        items: { type: 'NUMBER' },
+        items: {
+          type: 'OBJECT',
+          properties: {
+            centerX: { type: 'NUMBER' },
+            centerY: { type: 'NUMBER' },
+            width: { type: 'NUMBER' },
+            height: { type: 'NUMBER' },
+          },
+          required: ['centerX', 'centerY', 'width', 'height'],
+        },
       },
       padIntegrity: {
         type: 'ARRAY',
@@ -1216,7 +1220,7 @@ function buildGeminiResponseSchema() {
       'allPadsIntact',
       'padOrderMatchesSelectedBrand',
       'hasExtraPadLikeRegions',
-      'visiblePadCenterYs',
+      'visiblePadBoxes',
       'padIntegrity',
       'stripBodyEvidence',
       'values',
@@ -1405,10 +1409,10 @@ function combineAiRuns(
   const qualityPassedRuns = okRuns.filter((run) =>
     isQualityPassedRun(run, expectedPhysicalPadCount, isPro),
   );
-  const usableAquachekCenterRuns = isPro
-    ? okRuns.filter((run) => hasUsablePadCenters(run, expectedPhysicalPadCount))
+  const usableAquachekBoxRuns = isPro
+    ? okRuns.filter((run) => hasUsablePadBoxes(run, expectedPhysicalPadCount))
     : [];
-  const effectiveQualityPassedRuns = isPro ? usableAquachekCenterRuns : qualityPassedRuns;
+  const effectiveQualityPassedRuns = isPro ? usableAquachekBoxRuns : qualityPassedRuns;
   const confidencePassedRuns = isPro
     ? effectiveQualityPassedRuns
     : effectiveQualityPassedRuns.filter(
@@ -1416,7 +1420,7 @@ function combineAiRuns(
       );
   const confidencePassedValues = confidencePassedRuns.map((run) => Number(run.data.confidence ?? 0));
   const evidence: AnalysisEvidence = {
-    method: isPro ? 'gemini-localization-deterministic-color' : 'repeated-model-discrete-consensus',
+    method: isPro ? 'gemini-pad-boxes-deterministic-color' : 'repeated-model-discrete-consensus',
     requiredRuns,
     successfulRuns: okRuns.length,
     qualityPassedRuns: effectiveQualityPassedRuns.length,
@@ -1474,7 +1478,7 @@ function combineAiRuns(
         `Only ${effectiveQualityPassedRuns.length} of ${okRuns.length} completed runs passed image quality.`,
         ...qualityFailures.map(
           (run) =>
-            `Quality gate failed: ${run.data.failureReason}; pads=${run.data.physicalPadCount}/${expectedPhysicalPadCount}; groundedCenters=${run.data.visiblePadCenterYs.length}; integrity=${run.data.padIntegrity.join(',')}; bodyEvidence=${run.data.stripBodyEvidence}; oneStrip=${run.data.hasExactlyOneStrip}; continuousBody=${run.data.hasSingleContinuousStripBody}; intactPads=${run.data.allPadsIntact}; correctOrder=${run.data.padOrderMatchesSelectedBrand}; extraPad=${run.data.hasExtraPadLikeRegions}.`,
+            `Quality gate failed: ${run.data.failureReason}; pads=${run.data.physicalPadCount}/${expectedPhysicalPadCount}; groundedBoxes=${run.data.visiblePadBoxes.length}; integrity=${run.data.padIntegrity.join(',')}; bodyEvidence=${run.data.stripBodyEvidence}; oneStrip=${run.data.hasExactlyOneStrip}; continuousBody=${run.data.hasSingleContinuousStripBody}; intactPads=${run.data.allPadsIntact}; correctOrder=${run.data.padOrderMatchesSelectedBrand}; extraPad=${run.data.hasExtraPadLikeRegions}.`,
         ),
       ],
     );
@@ -1495,11 +1499,11 @@ function combineAiRuns(
   }
 
   if (isPro) {
-    if (usableAquachekCenterRuns.length < AQUACHEK_REQUIRED_MODEL_RUNS) {
+    if (usableAquachekBoxRuns.length < AQUACHEK_REQUIRED_MODEL_RUNS) {
       return reject(
         'framing',
         'לא זוהו כל ארבעת ריבועי הצבע. יש לצלם שוב כך שכל ארבעת הפדים יופיעו בתמונה.',
-        ['Gemini could not localize four usable ordered pad centers.'],
+        ['Gemini could not localize four usable ordered reagent-pad boxes.'],
       );
     }
 
@@ -1514,7 +1518,7 @@ function combineAiRuns(
     const structure = cvResult.evidence?.structure;
     const sharpnessVariance = cvResult.evidence?.sharpnessVariance ?? 0;
     const readability = evaluateAquachekReadability({
-      hasUsablePadCenters: usableAquachekCenterRuns.length >= AQUACHEK_REQUIRED_MODEL_RUNS,
+      hasUsablePadCenters: usableAquachekBoxRuns.length >= AQUACHEK_REQUIRED_MODEL_RUNS,
       structure,
       sharpnessVariance,
       colorConfidence: cvResult.confidence,
@@ -1595,9 +1599,9 @@ function combineAiRuns(
         analysisVersion: ANALYSIS_VERSION,
         accepted: true,
         acceptanceReasons: [
-          `At least ${AQUACHEK_REQUIRED_MODEL_RUNS} Gemini run localized four ordered AquaChek pad centers.`,
+          `At least ${AQUACHEK_REQUIRED_MODEL_RUNS} Gemini run localized four ordered AquaChek reagent-pad boxes.`,
           'Deterministic carrier, focus and manufacturer-chart color checks made the final acceptance decision.',
-          'Pad sampling was normalized to the detected physical strip width, independent of crop margins.',
+          'Each pad was sampled inside its own model-localized box, independent of crop margins and strip tilt.',
           ...(readability.warnings.includes('structure_ambiguity')
             ? ['Ambiguous local band segmentation was retained as a warning instead of rejecting a readable strip.']
             : []),
@@ -1986,11 +1990,11 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
   });
 
   const aiRuns = await analyzeWithProviderRecovery(dataUrl, brand);
-  const localizedPadCenterYs = isAquachekPro(brand) ? consensusPadCenterYs(aiRuns, 4) : undefined;
+  const localizedPadBoxes = isAquachekPro(brand) ? consensusPadBoxes(aiRuns, 4) : undefined;
   let cvResult: CvResult | null = null;
   if (image && isAquachekPro(brand)) {
     try {
-      cvResult = analyzeCv(image, brand, localizedPadCenterYs);
+      cvResult = analyzeCv(image, brand, localizedPadBoxes);
     } catch (error) {
       // Deterministic CV is supporting evidence. A sampling failure must not
       // hide a valid Gemini result or its actionable provider error.

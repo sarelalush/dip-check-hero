@@ -6,6 +6,7 @@ import {
   analyzeAquachekProDiscretePadRgbs,
   analyzeAquachekProPadRgbs,
   analyzeAquachekProStructure,
+  getPadBoxSampleRegions,
   getFixedPadSampleRegions,
   getLocalizedPadSampleRegions,
   locateAquachekProStripCenterX,
@@ -117,6 +118,35 @@ describe('AquaChek Pro reference chart', () => {
       0.68,
     );
     expect(regions.every((region) => Math.abs(region.x + region.width / 2 - 136) < 0.01)).toBe(true);
+  });
+
+  it('samples every model-localized pad inside its own bounding box', () => {
+    const boxes = [
+      { centerX: 0.42, centerY: 0.12, width: 0.12, height: 0.07 },
+      { centerX: 0.44, centerY: 0.26, width: 0.11, height: 0.075 },
+      { centerX: 0.47, centerY: 0.4, width: 0.1, height: 0.08 },
+      { centerX: 0.5, centerY: 0.54, width: 0.09, height: 0.085 },
+    ];
+    const regions = getPadBoxSampleRegions(300, 800, boxes);
+
+    expect(regions).toHaveLength(4);
+    regions.forEach((region, index) => {
+      expect((region.x + region.width / 2) / 300).toBeCloseTo(boxes[index].centerX, 5);
+      expect((region.y + region.height / 2) / 800).toBeCloseTo(boxes[index].centerY, 5);
+      expect(region.width).toBeCloseTo(boxes[index].width * 300 * 0.58, 5);
+      expect(region.height).toBeCloseTo(boxes[index].height * 800 * 0.58, 5);
+    });
+  });
+
+  it('keeps tilted pads on independent horizontal lanes', () => {
+    const regions = getPadBoxSampleRegions(400, 600, [
+      { centerX: 0.38, centerY: 0.18, width: 0.08, height: 0.07 },
+      { centerX: 0.42, centerY: 0.32, width: 0.08, height: 0.07 },
+      { centerX: 0.46, centerY: 0.46, width: 0.08, height: 0.07 },
+      { centerX: 0.5, centerY: 0.6, width: 0.08, height: 0.07 },
+    ]);
+
+    expect(regions.map((region) => region.x + region.width / 2)).toEqual([152, 168, 184, 200]);
   });
 
   it('keeps the physical pad sample width stable across different crop margins', () => {

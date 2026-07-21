@@ -308,6 +308,32 @@ export function getLocalizedPadSampleRegions(
 }
 
 /**
+ * Build an independent sampling region inside every model-localized reagent
+ * pad. Each pad keeps its own horizontal position and dimensions, so a tilted
+ * strip or an uneven crop cannot move all four samples onto one guessed lane.
+ * Only the inner 58% of a box is sampled to avoid carrier, shadows and glare
+ * around reagent-pad edges.
+ *
+ * @param {number} imageWidth
+ * @param {number} imageHeight
+ * @param {Array<{ centerX: number, centerY: number, width: number, height: number }>} normalizedPadBoxes
+ */
+export function getPadBoxSampleRegions(imageWidth, imageHeight, normalizedPadBoxes) {
+  return normalizedPadBoxes.map((box) => {
+    const centerX = clampColorValue(Number(box.centerX), 0, 1) * imageWidth;
+    const centerY = clampColorValue(Number(box.centerY), 0, 1) * imageHeight;
+    const boxWidth = clampColorValue(Math.abs(Number(box.width)) * imageWidth, 2, imageWidth);
+    const boxHeight = clampColorValue(Math.abs(Number(box.height)) * imageHeight, 2, imageHeight);
+    const sampleWidth = Math.max(2, boxWidth * 0.58);
+    const sampleHeight = Math.max(2, boxHeight * 0.58);
+    const x = clampColorValue(centerX - sampleWidth / 2, 0, Math.max(0, imageWidth - sampleWidth));
+    const y = clampColorValue(centerY - sampleHeight / 2, 0, Math.max(0, imageHeight - sampleHeight));
+
+    return { x, y, width: sampleWidth, height: sampleHeight };
+  });
+}
+
+/**
  * Locate the strip horizontally from the exposed white carrier between pads.
  * This makes color sampling independent of small differences in a user's crop.
  * The internal gaps are much more reliable than the outer background because
