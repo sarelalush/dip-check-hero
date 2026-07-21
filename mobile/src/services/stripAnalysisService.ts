@@ -77,6 +77,8 @@ const analysisConfig: StripAnalysisServiceConfig = {
   remoteFunctionName: configuredFunctionName || 'analyze-strip',
 };
 
+const inFlightAnalyses = new Map<string, Promise<StripAnalysisResult>>();
+
 export function getStripAnalysisConfig() {
   return analysisConfig;
 }
@@ -100,7 +102,38 @@ function isDirectRemoteImageCandidate(uri?: string) {
   return Boolean(uri && (uri.startsWith('data:image/') || /^https?:\/\//i.test(uri)));
 }
 
-export async function analyzeStripImage(input: StripAnalysisInput): Promise<StripAnalysisResult> {
+function getAnalysisRequestKey(input: StripAnalysisInput) {
+  return [
+    input.accountId ?? '',
+    input.testId ?? '',
+    input.userId ?? '',
+    input.brandId ?? input.selectedBrand?.id ?? '',
+    input.imagePath ?? '',
+    input.imageUrl ?? '',
+    input.imageUri,
+  ].join('|');
+}
+
+export function analyzeStripImage(input: StripAnalysisInput): Promise<StripAnalysisResult> {
+  const requestKey = getAnalysisRequestKey(input);
+  const existingRequest = inFlightAnalyses.get(requestKey);
+  if (existingRequest) {
+    logAnalysisDebug('reusing in-flight analysis request', {
+      testId: input.testId,
+    });
+    return existingRequest;
+  }
+
+  const analysisPromise = analyzeStripImageOnce(input).finally(() => {
+    if (inFlightAnalyses.get(requestKey) === analysisPromise) {
+      inFlightAnalyses.delete(requestKey);
+    }
+  });
+  inFlightAnalyses.set(requestKey, analysisPromise);
+  return analysisPromise;
+}
+
+async function analyzeStripImageOnce(input: StripAnalysisInput): Promise<StripAnalysisResult> {
   logAnalysisDebug('selected analysis mode', {
     mode: analysisConfig.mode,
     hasFunctionName: Boolean(analysisConfig.remoteFunctionName),

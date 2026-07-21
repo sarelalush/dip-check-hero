@@ -169,8 +169,13 @@ ${isAquachekPro
   ? `This strip has EXACTLY 4 PHYSICAL PADS but yields 5 measurements (TC and TB share pad 1). Pad order from the wet tip toward the handle:\n${padList}`
   : `This strip has EXACTLY these pads, in this printed order from top to bottom:\n${padList}`}
 
-FIRST determine if the image actually shows a pool/spa test strip (a thin plastic strip with multiple colored pads).
-If NOT, set isStrip=false, confidence=0, all values=0, and put a short Hebrew note.
+FIRST determine if the image actually shows a pool/spa test strip: one narrow
+neutral/white carrier with the reagent pads physically attached to it.
+People, faces, body parts, furniture, ordinary scenes, screenshots, charts,
+bottle labels, loose color patches and unrelated objects are NOT test strips.
+Never infer water values unless the actual carrier and attached pads are visible.
+If NOT, set isStrip=false, failureReason="not_strip", confidence=0, all
+values=0, and put a short Hebrew note.
 
 Classify failureReason as one of:
 - "none": clear, usable strip
@@ -205,14 +210,6 @@ function isAquachekProParams(params: ParamKey[]) {
     params.includes("ph") &&
     params.includes("alkalinity")
   );
-}
-
-function calibrateAquachekProPh(value: number) {
-  // Field calibration against the user's AquaChek Pro reader: the AI keeps
-  // interpreting the high pink/magenta pH pad as 7.8, while the calibrated
-  // machine reads that pad as ~8.3. Keep alkalinity untouched.
-  if (value >= 7.75 && value <= 7.9) return 8.3;
-  return value;
 }
 
 export const analyzeStripWithAI = createServerFn({ method: "POST" })
@@ -308,11 +305,9 @@ export const analyzeStripWithAI = createServerFn({ method: "POST" })
 
       // Only return values for the requested parameters.
       const values: Partial<Record<ParamKey, number>> = {};
-      const applyProCalibration = isAquachekProParams(params);
       for (const p of params) {
         if (typeof args[p] === "number") {
-          const value = Number(args[p]);
-          values[p] = applyProCalibration && p === "ph" ? calibrateAquachekProPh(value) : value;
+          values[p] = Number(args[p]);
         }
       }
 

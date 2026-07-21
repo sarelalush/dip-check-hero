@@ -10,12 +10,9 @@
 //
 // Pipeline:
 // 1. Download the uploaded image from Storage or imageUrl.
-// 2. Decode it only for diagnostics. Never alter pad colors before analysis.
-// 3. Run two independent AI chart readings for AquaChek Pro.
-// 4. Run one tie-breaker only when the first readings disagree or one is unusable.
-// 5. Snap AI readings to the printed manufacturer levels and require a majority.
-// 6. Reject only when a real four-pad strip cannot be read safely.
-// 7. If the AI provider is unavailable, return a service-unavailable response.
+// 2. Send the original image and the brand prompt to Gemini exactly once.
+// 3. Validate the JSON response shape and return Gemini's values to the app.
+// 4. If the provider is unavailable, return a service-unavailable response.
 //
 // Required secrets for AI mode:
 // - GEMINI_API_KEY for direct server-side Gemini API access.
@@ -43,7 +40,6 @@ import {
   measureAquachekProSharpness,
   robustRgbFromSamples,
 } from '../_shared/aquachek-pro-reference.js';
-import { selectAquachekProAiConsensus } from '../_shared/aquachek-pro-ai-consensus.js';
 import { readZeroBasedImageScriptRgb } from '../_shared/imagescript-pixel.js';
 
 type StatusTone = 'success' | 'warning' | 'danger';
@@ -270,15 +266,7 @@ interface NormalizedPadBox {
 
 const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-2.5-flash-lite';
-const MULTI_SHOT_RUNS = 3;
-const REQUIRED_CONSENSUS_RUNS = 2;
-const AQUACHEK_MODEL_RUNS = 2;
-const AQUACHEK_REQUIRED_MODEL_RUNS = 2;
-const PROVIDER_RECOVERY_ATTEMPTS = 1;
-const PROVIDER_RECOVERY_DELAY_MS = 1_000;
-const ANALYSIS_VERSION = 'aquachek-pro-v21-ai-chart-consensus';
-const MIN_ACCEPTED_RUN_CONFIDENCE = 0.75;
-const MIN_ACCEPTED_MEAN_CONFIDENCE = 0.8;
+const ANALYSIS_VERSION = 'aquachek-pro-v22-single-gemini';
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.32;
 // Real phone captures remain readable well below the synthetic-image score.
 // A threshold of 4 accepts ordinary camera softness while still rejecting
@@ -1017,6 +1005,13 @@ carefully and perform a second visual comparison before returning JSON.
 VALIDITY GATE - keep it deliberately practical for real phone photos:
 - A valid image shows one real test-strip candidate with exactly four visible,
   physically intact reagent pads.
+- A real strip must include a narrow neutral/white plastic carrier with the
+  reagent pads physically attached to it. Four colors by themselves are not
+  evidence of a test strip.
+- People, faces, body parts, furniture, ordinary scenes, screenshots, charts,
+  bottle labels and unrelated objects are NOT test strips. Never guess water
+  values for those images. Return isStrip=false, failureReason="not_strip" and
+  zero values when the actual carrier and attached pads are not visible.
 - Accept normal phone-photo conditions: background around the strip, a hand,
   crop padding, tilt, perspective, uneven sunlight, shadows, mild glare, mild
   blur, wet texture, printed marks, and a handle that is only partly visible.
@@ -1170,7 +1165,6 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
     }
   }
 
-  const expectedPhysicalPadCount = isAquachekPro(brand) ? 4 : brand.parameters.length;
   const reportedPadCount = Number(args.physicalPadCount ?? 0);
   const physicalPadCount = Number.isFinite(reportedPadCount) ? Math.max(0, Math.round(reportedPadCount)) : 0;
   const allPadsFullyVisible = args.allPadsFullyVisible === true;
@@ -1213,44 +1207,18 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
   const stripBodyEvidence = ['clear_shared_body', 'ambiguous', 'none'].includes(String(args.stripBodyEvidence))
     ? (args.stripBodyEvidence as AiRunData['stripBodyEvidence'])
     : 'none';
-  const groundedStructurePassed =
-    visiblePadBoxes.length === physicalPadCount &&
-    visiblePadBoxes.length === expectedPhysicalPadCount &&
-    padIntegrity.length === physicalPadCount &&
-    padIntegrity.every(Boolean) &&
-    stripBodyEvidence === 'clear_shared_body';
-  const strictPadGatePassed =
-    physicalPadCount === expectedPhysicalPadCount &&
-    allPadsFullyVisible &&
-    hasExactlyOneStrip &&
-    hasSingleContinuousStripBody &&
-    allPadsIntact &&
-    padOrderMatchesSelectedBrand &&
-    !hasExtraPadLikeRegions &&
-    groundedStructurePassed;
-  const practicalAquachekGatePassed =
-    physicalPadCount === expectedPhysicalPadCount &&
-    allPadsFullyVisible &&
-    allPadsIntact;
-  const padGatePassed = isAquachekPro(brand)
-    ? practicalAquachekGatePassed
-    : strictPadGatePassed;
   const reportedFailureReason = (args.failureReason ?? 'none') as FailureReason;
-  let failureReason = reportedFailureReason;
-  if (!padGatePassed && ['none', 'low_confidence'].includes(failureReason)) {
-    failureReason = isAquachekPro(brand)
-      ? 'framing'
-      : !hasExactlyOneStrip || !hasSingleContinuousStripBody
-        ? 'not_strip'
-        : !padOrderMatchesSelectedBrand
-          ? 'unsupported_strip'
-          : 'framing';
-  }
+  const modelIdentifiedStrip = Boolean(args.isStrip);
+  const failureReason = modelIdentifiedStrip
+    ? reportedFailureReason
+    : reportedFailureReason === 'none'
+      ? 'not_strip'
+      : reportedFailureReason;
 
   return {
     ok: true,
     data: {
-      isStrip: Boolean(args.isStrip) && padGatePassed,
+      isStrip: modelIdentifiedStrip,
       failureReason,
       physicalPadCount,
       allPadsFullyVisible,
@@ -1485,374 +1453,70 @@ async function analyzeWithAiProvider(dataUrl: string, brand: StripBrand): Promis
   return analyzeWithGemini(dataUrl, brand, provider);
 }
 
-function sleep(milliseconds: number) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
-function hasNonRecoverableProviderFailure(runs: AiRunResponse[]) {
-  return runs.some(
-    (run) => !run.ok && (run.error === 'rate_limit' || run.error === 'missing_ai_key'),
-  );
-}
-
-async function analyzeWithProviderRecovery(dataUrl: string, brand: StripBrand): Promise<AiRunResponse[]> {
-  const isPro = isAquachekPro(brand);
-  const requestedRuns = isPro ? AQUACHEK_MODEL_RUNS : MULTI_SHOT_RUNS;
-  const requiredRuns = isPro ? AQUACHEK_REQUIRED_MODEL_RUNS : REQUIRED_CONSENSUS_RUNS;
-  const runs = await Promise.all(
-    Array.from({ length: requestedRuns }, () => analyzeWithAiProvider(dataUrl, brand)),
-  );
-
-  let successfulRuns = runs.filter((run) => run.ok).length;
-  if (hasNonRecoverableProviderFailure(runs)) {
-    console.warn('Skipping Gemini provider recovery after a non-recoverable failure', {
-      errors: runs
-        .filter((run): run is Extract<AiRunResponse, { ok: false }> => !run.ok)
-        .map((run) => run.error),
-    });
-    return runs;
-  }
-
-  if (isPro) {
-    const usableRuns = runs
-      .filter((run): run is Extract<AiRunResponse, { ok: true }> => run.ok)
-      .filter(isUsableAquachekAiRun);
-    const consensus = selectAquachekProAiConsensus(
-      usableRuns.map((run) => run.data.values),
-      AQUACHEK_REQUIRED_MODEL_RUNS,
-    );
-
-    if (usableRuns.length >= AQUACHEK_REQUIRED_MODEL_RUNS && consensus.accepted) {
-      return runs;
-    }
-
-    console.warn('AquaChek AI readings need one tie-breaker', {
-      missingConsensus: consensus.missingConsensus,
-      successfulRuns,
-      usableRuns: usableRuns.length,
-    });
-    await sleep(PROVIDER_RECOVERY_DELAY_MS);
-    const tieBreakerRun = await analyzeWithAiProvider(dataUrl, brand);
-    runs.push(tieBreakerRun);
-    return runs;
-  }
-
-  if (successfulRuns >= requiredRuns) return runs;
-
-  console.warn('Gemini analysis batch did not reach consensus; starting provider recovery', {
-    errors: runs
-      .filter((run): run is Extract<AiRunResponse, { ok: false }> => !run.ok)
-      .map((run) => run.error),
-    successfulRuns,
-  });
-
-  for (
-    let attempt = 1;
-    attempt <= PROVIDER_RECOVERY_ATTEMPTS && successfulRuns < requiredRuns;
-    attempt += 1
-  ) {
-    await sleep(PROVIDER_RECOVERY_DELAY_MS * attempt);
-    const recoveryRun = await analyzeWithAiProvider(dataUrl, brand);
-    runs.push(recoveryRun);
-    if (recoveryRun.ok) successfulRuns += 1;
-
-    console.log('Gemini provider recovery attempt completed', {
-      attempt,
-      error: recoveryRun.ok ? undefined : recoveryRun.error,
-      successfulRuns,
-    });
-  }
-
-  return runs;
-}
-
-function manufacturerLevelsFor(brand: StripBrand, parameter: StripParameter) {
-  const references = isAquachekPro(brand)
-    ? PRO_REFS[parameter]
-    : isAquachekYellow(brand)
-      ? YELLOW_REFS[parameter]
-      : undefined;
-
-  return references?.map((reference) => reference.value) ?? [];
-}
-
-function snapToManufacturerLevel(value: number, levels: number[]) {
-  if (!levels.length) return undefined;
-
-  return levels.reduce((nearest, level) =>
-    Math.abs(level - value) < Math.abs(nearest - value) ? level : nearest,
-  levels[0]);
-}
-
-function mostCommonValue(values: number[]): [number | undefined, number] {
-  const counts = new Map<number, number>();
-  for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
-
-  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [undefined, 0];
-}
-
 function safeFailureReason(reason: FailureReason): FailureReason {
   return ['not_strip', 'blurry', 'lighting', 'framing', 'unsupported_strip', 'low_confidence'].includes(reason)
     ? reason
     : 'low_confidence';
 }
 
-function combineAiRuns(
-  runs: AiRunResponse[],
+function buildSingleAiResult(
+  run: Extract<AiRunResponse, { ok: true }>,
   request: AnalyzeStripRequest,
   brand: StripBrand,
-): StripAnalysisResult | null {
-  const okRuns = runs.filter((run): run is Extract<AiRunResponse, { ok: true }> => run.ok);
-  if (!okRuns.length) return null;
+): StripAnalysisResult {
+  const { data } = run;
+  const acceptedFailureReason = data.failureReason === 'none' || data.failureReason === 'low_confidence';
 
-  const isPro = isAquachekPro(brand);
-  const requestedRuns = isPro ? AQUACHEK_MODEL_RUNS : MULTI_SHOT_RUNS;
-  const requiredRuns = isPro ? AQUACHEK_REQUIRED_MODEL_RUNS : REQUIRED_CONSENSUS_RUNS;
-  const expectedPhysicalPadCount = isPro ? 4 : brand.parameters.length;
-  const runConfidences = okRuns.map((run) => Number(run.data.confidence ?? 0));
-  const qualityPassedRuns = okRuns.filter((run) =>
-    isQualityPassedRun(run, expectedPhysicalPadCount, isPro),
-  );
-  const usableAquachekAiRuns = isPro
-    ? okRuns.filter(isUsableAquachekAiRun)
-    : [];
-  const effectiveQualityPassedRuns = isPro ? usableAquachekAiRuns : qualityPassedRuns;
-  const confidencePassedRuns = isPro
-    ? effectiveQualityPassedRuns
-    : effectiveQualityPassedRuns.filter(
-        (run) => Number(run.data.confidence ?? 0) >= MIN_ACCEPTED_RUN_CONFIDENCE,
-      );
-  const confidencePassedValues = confidencePassedRuns.map((run) => Number(run.data.confidence ?? 0));
-  const evidence: AnalysisEvidence = {
-    method: isPro ? 'repeated-model-chart-consensus' : 'repeated-model-discrete-consensus',
-    requiredRuns,
-    successfulRuns: okRuns.length,
-    qualityPassedRuns: effectiveQualityPassedRuns.length,
-    confidencePassedRuns: confidencePassedRuns.length,
-    runConfidences,
-    expectedPhysicalPadCount,
-    detectedPhysicalPadCounts: okRuns.map((run) => run.data.physicalPadCount),
-    fullyVisiblePadRuns: okRuns.filter((run) => run.data.allPadsFullyVisible).length,
-    singleStripRuns: okRuns.filter((run) => run.data.hasExactlyOneStrip).length,
-    continuousBodyRuns: okRuns.filter((run) => run.data.hasSingleContinuousStripBody).length,
-    intactPadRuns: okRuns.filter((run) => run.data.allPadsIntact).length,
-    correctPadOrderRuns: okRuns.filter((run) => run.data.padOrderMatchesSelectedBrand).length,
-    noExtraPadRuns: okRuns.filter((run) => !run.data.hasExtraPadLikeRegions).length,
-    requiredParameters: [...brand.parameters],
-    parameters: {},
-  };
-  const provider = okRuns[0]?.data.provider;
-  const model = okRuns[0]?.data.model;
-  const meanConfidence = confidencePassedValues.length
-    ? confidencePassedValues.reduce((sum, confidence) => sum + confidence, 0) / confidencePassedValues.length
-    : 0;
-
-  const reject = (reason: FailureReason, note: string, acceptanceReasons: string[]) =>
-    buildInvalidStripResult(request, brand, 'ai', safeFailureReason(reason), note, {
-      provider,
-      model,
-      shotsUsed: okRuns.length,
-      confidence: meanConfidence,
-      analysisVersion: ANALYSIS_VERSION,
-      acceptanceReasons,
-      evidence,
-    });
-
-  if (okRuns.length < requiredRuns) {
-    return reject(
-      'low_confidence',
-      'לא התקבלו מספיק קריאות מלאות. יש לצלם שוב כדי למנוע תוצאה חלקית.',
-      [`Only ${okRuns.length} analysis run completed; ${requiredRuns} are required.`],
-    );
-  }
-
-  const qualityFailures = okRuns.filter((run) => !effectiveQualityPassedRuns.includes(run));
-  if (!isPro && effectiveQualityPassedRuns.length < requiredRuns) {
-    const reasonCounts = new Map<FailureReason, number>();
-    for (const run of qualityFailures) {
-      reasonCounts.set(run.data.failureReason, (reasonCounts.get(run.data.failureReason) ?? 0) + 1);
-    }
-    const [dominantReason = 'low_confidence'] = [...reasonCounts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [];
-    const notes = uniqueNonEmpty(qualityFailures.map((run) => run.data.notes)).join(' ');
-    return reject(
-      dominantReason,
-      notes || 'אחת מקריאות האיכות זיהתה בעיה בצילום. יש לצלם שוב סטיק מלא, חד וללא סנוור.',
-      [
-        `Only ${effectiveQualityPassedRuns.length} of ${okRuns.length} completed runs passed image quality.`,
-        ...qualityFailures.map(
-          (run) =>
-            `Quality gate failed: ${run.data.failureReason}; pads=${run.data.physicalPadCount}/${expectedPhysicalPadCount}; groundedBoxes=${run.data.visiblePadBoxes.length}; integrity=${run.data.padIntegrity.join(',')}; bodyEvidence=${run.data.stripBodyEvidence}; oneStrip=${run.data.hasExactlyOneStrip}; continuousBody=${run.data.hasSingleContinuousStripBody}; intactPads=${run.data.allPadsIntact}; correctOrder=${run.data.padOrderMatchesSelectedBrand}; extraPad=${run.data.hasExtraPadLikeRegions}.`,
-        ),
-      ],
-    );
-  }
-
-  if (
-    !isPro &&
-    (confidencePassedRuns.length < requiredRuns || meanConfidence < MIN_ACCEPTED_MEAN_CONFIDENCE)
-  ) {
-    return reject(
-      'low_confidence',
-      'רמת הביטחון בצבעי הסטיק נמוכה מדי. יש לצלם שוב באור טבעי ואחיד וללא השתקפות.',
-      [
-        `${requiredRuns} runs must each be at least ${MIN_ACCEPTED_RUN_CONFIDENCE}.`,
-        `Mean confidence of supporting runs must be at least ${MIN_ACCEPTED_MEAN_CONFIDENCE}.`,
-      ],
-    );
-  }
-
-  if (isPro) {
-    const consensus = selectAquachekProAiConsensus(
-      usableAquachekAiRuns.map((run) => run.data.values),
-      AQUACHEK_REQUIRED_MODEL_RUNS,
-    );
-    evidence.parameters = consensus.parameters as Partial<
-      Record<StripParameter, ParameterAnalysisEvidence>
-    >;
-
-    const proConfidence = usableAquachekAiRuns.length
-      ? usableAquachekAiRuns.reduce(
-          (sum, run) => sum + Number(run.data.confidence ?? 0),
-          0,
-        ) / usableAquachekAiRuns.length
-      : 0;
-
-    if (
-      usableAquachekAiRuns.length < AQUACHEK_REQUIRED_MODEL_RUNS ||
-      !consensus.accepted
-    ) {
-      const missingParameters = consensus.missingConsensus
-        .map((parameter) => PARAM_META[parameter as StripParameter]?.name ?? parameter)
-        .join(', ');
-      const notes = uniqueNonEmpty(okRuns.map((run) => run.data.notes)).join(' ');
-      return buildInvalidStripResult(
-        request,
-        brand,
-        'ai',
-        'low_confidence',
-        notes ||
-          'הקריאות לא היו עקביות מספיק. יש לצלם שוב באור אחיד כאשר כל ארבעת ריבועי הצבע גלויים.',
-        {
-          provider,
-          model,
-          shotsUsed: okRuns.length,
-          confidence: proConfidence,
-          analysisVersion: ANALYSIS_VERSION,
-          acceptanceReasons: [
-            `Usable AI readings: ${usableAquachekAiRuns.length}; ${AQUACHEK_REQUIRED_MODEL_RUNS} matching readings are required.`,
-            ...(missingParameters
-              ? [`No two-read majority was produced for: ${missingParameters}.`]
-              : []),
-            'No local RGB or pixel sampler was used to accept, reject or replace the AI readings.',
-          ],
-          evidence,
-        },
-      );
-    }
-
-    return buildResult(
+  if (!data.isStrip || !acceptedFailureReason) {
+    return buildInvalidStripResult(
       request,
       brand,
-      consensus.values as Partial<Record<StripParameter, number>>,
       'ai',
-      proConfidence,
+      safeFailureReason(data.failureReason),
+      data.notes || 'Gemini לא זיהה בתמונה סטיק בדיקה מתאים.',
       {
-        provider,
-        model,
-        notes:
-          uniqueNonEmpty(usableAquachekAiRuns.map((run) => run.data.notes)).join(' ') ||
-          'צבעי הסטיק נקראו ישירות מול טבלת היצרן ואומתו בקריאת AI נוספת.',
-        shotsUsed: okRuns.length,
-        lowConfidence: false,
-        isValidStrip: true,
-        failureReason: 'none',
+        provider: data.provider,
+        model: data.model,
+        shotsUsed: 1,
+        confidence: data.confidence,
         analysisVersion: ANALYSIS_VERSION,
-        accepted: true,
-        acceptanceReasons: [
-          'Two independent Gemini readings compared every pad directly with its AquaChek Pro manufacturer chart row.',
-          'Every returned reading was snapped only to an official printed chart level; no interpolation was accepted.',
-          'A per-parameter AI majority selected the final values, with a third AI reading used only when needed.',
-          'Total bromine was derived from the same combined-pad chart column as total chlorine.',
-          'No local RGB or pixel sampler altered the AI readings.',
-        ],
-        evidence,
+        acceptanceReasons: ['Gemini rejected the image as a readable test strip.'],
       },
     );
   }
 
-  const values: Partial<Record<StripParameter, number>> = {};
-  for (const parameter of brand.parameters) {
-    const chartValues = manufacturerLevelsFor(brand, parameter);
-    const rawValues = confidencePassedRuns
-      .map((run) => run.data.values[parameter])
-      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-    const snappedValues = rawValues
-      .map((value) => snapToManufacturerLevel(value, chartValues))
-      .filter((value): value is number => typeof value === 'number');
-    const [selectedValue, agreementCount] = mostCommonValue(snappedValues);
-    const parameterEvidence: ParameterAnalysisEvidence = {
-      chartValues,
-      rawValues,
-      snappedValues,
-      selectedValue,
-      agreementCount,
-      requiredAgreement: REQUIRED_CONSENSUS_RUNS,
-    };
-    evidence.parameters[parameter] = parameterEvidence;
-
-    if (
-      chartValues.length === 0 ||
-      rawValues.length < REQUIRED_CONSENSUS_RUNS ||
-      snappedValues.length < REQUIRED_CONSENSUS_RUNS ||
-      agreementCount < REQUIRED_CONSENSUS_RUNS ||
-      typeof selectedValue !== 'number'
-    ) {
-      return reject(
-        'low_confidence',
-        `לא התקבלה התאמה חד-משמעית עבור ${PARAM_META[parameter].name}. יש לצלם שוב ללא צל או סנוור.`,
-        [`No ${REQUIRED_CONSENSUS_RUNS}-run manufacturer-level majority for ${parameter}.`],
-      );
-    }
-
-    values[parameter] = selectedValue;
+  const missingParameters = brand.parameters.filter(
+    (parameter) => !Number.isFinite(data.values[parameter]),
+  );
+  if (missingParameters.length > 0) {
+    return buildInvalidStripResult(
+      request,
+      brand,
+      'ai',
+      'low_confidence',
+      data.notes || 'Gemini לא החזיר את כל ערכי הבדיקה הנדרשים.',
+      {
+        provider: data.provider,
+        model: data.model,
+        shotsUsed: 1,
+        confidence: data.confidence,
+        analysisVersion: ANALYSIS_VERSION,
+        acceptanceReasons: [`Missing parameters: ${missingParameters.join(', ')}`],
+      },
+    );
   }
 
-  if (isAquachekPro(brand)) {
-    const chlorineIndex = PRO_REFS.totalChlorine?.findIndex(
-      (reference) => reference.value === values.totalChlorine,
-    ) ?? -1;
-    const bromineIndex = PRO_REFS.bromine?.findIndex(
-      (reference) => reference.value === values.bromine,
-    ) ?? -2;
-    const combinedPadMatches = chlorineIndex >= 0 && chlorineIndex === bromineIndex;
-
-    if (!combinedPadMatches) {
-      return reject(
-        'low_confidence',
-        'הקריאה המשולבת של כלור כללי וברום אינה עקבית. יש לצלם שוב את הסטיק.',
-        ['Total chlorine and bromine did not resolve to the same combined-pad chart index.'],
-      );
-    }
-  }
-
-  const notes = uniqueNonEmpty(confidencePassedRuns.map((run) => run.data.notes));
-  const ignoredRuns = Math.max(0, requestedRuns - confidencePassedRuns.length);
-  return buildResult(request, brand, values, 'ai', Math.min(...confidencePassedValues), {
-    provider,
-    model,
-    notes: notes.join(' ') || undefined,
-    shotsUsed: okRuns.length,
-    lowConfidence: false,
+  return buildResult(request, brand, data.values, 'ai', data.confidence, {
+    provider: data.provider,
+    model: data.model,
+    shotsUsed: 1,
     isValidStrip: true,
-    failureReason: 'none',
+    failureReason: data.failureReason,
+    lowConfidence: data.failureReason === 'low_confidence',
+    notes: data.notes,
     analysisVersion: ANALYSIS_VERSION,
     accepted: true,
-    acceptanceReasons: [
-      `At least ${REQUIRED_CONSENSUS_RUNS} runs passed image quality and confidence gates.`,
-      `Every manufacturer-level reading reached a ${REQUIRED_CONSENSUS_RUNS}-run majority.`,
-      ...(ignoredRuns > 0 ? [`Ignored ${ignoredRuns} non-supporting analysis run.`] : []),
-    ],
-    evidence,
+    acceptanceReasons: ['Gemini identified and read the selected test strip in one analysis call.'],
   });
 }
 
@@ -2106,7 +1770,6 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
   const brand = getBrand(body.brandId);
   let imageBytes: Uint8Array;
   let mimeType = 'image/jpeg';
-  let image: DecodedImage | undefined;
   let dataUrl: string;
   let authenticatedUserId = body.userId;
 
@@ -2138,34 +1801,22 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
 
   dataUrl = imageBytesToDataUrl(imageBytes, mimeType);
 
-  try {
-    image = (await ImageScript.decode(imageBytes)) as DecodedImage;
-    console.log('Decoded source image without color modification', {
-      width: image.width,
-      height: image.height,
-      mimeType,
-    });
-  } catch (error) {
-    console.warn('remote image decode failed; continuing with raw image data for AI', error);
-  }
-
   console.log('Starting Gemini strip analysis', {
     brandId: brand.id,
-    hasDecodedImageForAiPrep: Boolean(image),
     model: Deno.env.get('GEMINI_MODEL_PRIMARY') || Deno.env.get('GEMINI_MODEL') || GEMINI_DEFAULT_MODEL,
     testId: body.testId,
   });
 
-  const aiRuns = await analyzeWithProviderRecovery(dataUrl, brand);
-  const tokenUsage = summarizeGeminiTokenUsage(aiRuns);
+  const aiRun = await analyzeWithAiProvider(dataUrl, brand);
+  const tokenUsage = summarizeGeminiTokenUsage([aiRun]);
   console.log('Gemini token usage for scan', {
-    aiCallCount: aiRuns.length,
+    aiCallCount: 1,
     model: Deno.env.get('GEMINI_MODEL_PRIMARY') || Deno.env.get('GEMINI_MODEL') || GEMINI_DEFAULT_MODEL,
     testId: body.testId,
     ...tokenUsage,
   });
-  const aiResult = combineAiRuns(aiRuns, body, brand);
-  if (aiResult) {
+  if (aiRun.ok) {
+    const aiResult = buildSingleAiResult(aiRun, body, brand);
     console.log('Gemini strip analysis selected', {
       accepted: aiResult.accepted,
       acceptanceReasons: aiResult.acceptanceReasons,
@@ -2184,11 +1835,10 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     return { ...aiResult, tokenUsage };
   }
 
-  const aiError = aiRuns.find((run): run is Extract<AiRunResponse, { ok: false }> => !run.ok);
   throw new EdgeAnalysisError(
     'unavailable',
-    aiError?.message
-      ? `שירות הניתוח אינו זמין כרגע. ${aiError.message}`
+    aiRun.message
+      ? `שירות הניתוח אינו זמין כרגע. ${aiRun.message}`
       : 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה דקות.',
   );
 }
