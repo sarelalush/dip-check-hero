@@ -194,6 +194,7 @@ interface StripAnalysisResult {
   };
   parameters: ScanResultParameter[];
   recommendation: string;
+  tokenUsage?: GeminiTokenUsageSummary;
 }
 
 interface AiRunData {
@@ -217,9 +218,22 @@ interface AiRunData {
   model: string;
 }
 
+interface GeminiTokenUsage {
+  promptTokenCount: number;
+  candidatesTokenCount: number;
+  thoughtsTokenCount: number;
+  cachedContentTokenCount: number;
+  totalTokenCount: number;
+}
+
+interface GeminiTokenUsageSummary extends GeminiTokenUsage {
+  measuredRuns: number;
+  runs: GeminiTokenUsage[];
+}
+
 type AiRunResponse =
-  | { ok: true; data: AiRunData }
-  | { ok: false; error: string; message?: string; provider?: AiProviderName };
+  | { ok: true; data: AiRunData; usage?: GeminiTokenUsage }
+  | { ok: false; error: string; message?: string; provider?: AiProviderName; usage?: GeminiTokenUsage };
 
 interface AiProviderConfig {
   name: AiProviderName;
@@ -1355,6 +1369,40 @@ function extractGeminiJson(json: Record<string, unknown>) {
   return JSON.parse(cleaned) as Record<string, unknown>;
 }
 
+function extractGeminiTokenUsage(json: Record<string, unknown>): GeminiTokenUsage | undefined {
+  const usage = json.usageMetadata;
+  if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return undefined;
+
+  const metadata = usage as Record<string, unknown>;
+  const tokenCount = (key: string) => {
+    const value = Number(metadata[key] ?? 0);
+    return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+  };
+
+  return {
+    promptTokenCount: tokenCount('promptTokenCount'),
+    candidatesTokenCount: tokenCount('candidatesTokenCount'),
+    thoughtsTokenCount: tokenCount('thoughtsTokenCount'),
+    cachedContentTokenCount: tokenCount('cachedContentTokenCount'),
+    totalTokenCount: tokenCount('totalTokenCount'),
+  };
+}
+
+function summarizeGeminiTokenUsage(runs: AiRunResponse[]): GeminiTokenUsageSummary {
+  const usages = runs.map((run) => run.usage).filter((usage): usage is GeminiTokenUsage => Boolean(usage));
+  const sum = (key: keyof GeminiTokenUsage) => usages.reduce((total, usage) => total + usage[key], 0);
+
+  return {
+    measuredRuns: usages.length,
+    promptTokenCount: sum('promptTokenCount'),
+    candidatesTokenCount: sum('candidatesTokenCount'),
+    thoughtsTokenCount: sum('thoughtsTokenCount'),
+    cachedContentTokenCount: sum('cachedContentTokenCount'),
+    totalTokenCount: sum('totalTokenCount'),
+    runs: usages,
+  };
+}
+
 async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: AiProviderConfig): Promise<AiRunResponse> {
   try {
     const inlineData = dataUrlToGeminiInlineData(dataUrl);
@@ -1402,9 +1450,12 @@ async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: A
       return { ok: false, error: 'gemini_error', message: `שגיאה (${response.status})`, provider: 'gemini' };
     }
 
-    const json = await response.json();
-    const args = extractGeminiJson(json as Record<string, unknown>);
-    return normalizeAiArgs(args, brand, provider);
+    const json = (await response.json()) as Record<string, unknown>;
+    const args = extractGeminiJson(json);
+    return {
+      ...normalizeAiArgs(args, brand, provider),
+      usage: extractGeminiTokenUsage(json),
+    };
   } catch (error) {
     return {
       ok: false,
@@ -2085,6 +2136,13 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
   });
 
   const aiRuns = await analyzeWithProviderRecovery(dataUrl, brand);
+  const tokenUsage = summarizeGeminiTokenUsage(aiRuns);
+  console.log('Gemini token usage for scan', {
+    aiCallCount: aiRuns.length,
+    model: Deno.env.get('GEMINI_MODEL_PRIMARY') || Deno.env.get('GEMINI_MODEL') || GEMINI_DEFAULT_MODEL,
+    testId: body.testId,
+    ...tokenUsage,
+  });
   const aiResult = combineAiRuns(aiRuns, body, brand);
   if (aiResult) {
     console.log('Gemini strip analysis selected', {
@@ -2102,7 +2160,7 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     // result with dosage recommendations before upserting tests/readings and
     // registering usage. Writing here as well can create duplicate history
     // rows when a mobile save follows the remote analysis response.
-    return aiResult;
+    return { ...aiResult, tokenUsage };
   }
 
   const aiError = aiRuns.find((run): run is Extract<AiRunResponse, { ok: false }> => !run.ok);
