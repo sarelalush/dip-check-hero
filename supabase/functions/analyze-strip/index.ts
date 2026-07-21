@@ -1686,6 +1686,38 @@ async function claimStripAnalysisRequest(
   return claim;
 }
 
+async function beginGeminiProviderCall(
+  userId: string,
+  testId: string,
+  imageKey: string,
+  request: Request,
+) {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  if (!supabaseUrl) {
+    throw new EdgeAnalysisError('unavailable', 'Analysis service is temporarily unavailable.');
+  }
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/begin_strip_analysis_provider_call`, {
+    method: 'POST',
+    headers: getServiceHeaders(request),
+    body: JSON.stringify({
+      p_image_key: imageKey,
+      p_test_id: testId,
+      p_user_id: userId,
+    }),
+  });
+
+  if (!response.ok) {
+    console.error('Failed to reserve Gemini provider call', {
+      status: response.status,
+      testId,
+    });
+    throw new EdgeAnalysisError('unavailable', 'Analysis service is temporarily unavailable.');
+  }
+
+  return Boolean(await response.json());
+}
+
 async function waitForStripAnalysisResult(userId: string, testId: string, request: Request) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   if (!supabaseUrl) {
@@ -1741,6 +1773,7 @@ async function completeStripAnalysisRequest(
       error_code: null,
       error_message: null,
       lease_expires_at: new Date().toISOString(),
+      provider_completed_at: new Date().toISOString(),
       result,
       status: 'completed',
       updated_at: new Date().toISOString(),
@@ -1755,6 +1788,7 @@ async function failStripAnalysisRequest(
   testId: string,
   error: unknown,
   request: Request,
+  providerCallStarted: boolean,
 ) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   if (!supabaseUrl) return;
@@ -1774,6 +1808,7 @@ async function failStripAnalysisRequest(
       error_code: errorCode,
       error_message: errorMessage,
       lease_expires_at: new Date(Date.now() + 15_000).toISOString(),
+      ...(providerCallStarted ? { provider_completed_at: new Date().toISOString() } : {}),
       status: 'failed',
       updated_at: new Date().toISOString(),
     }),
@@ -1982,6 +2017,8 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     );
   }
 
+  let providerCallStarted = false;
+
   try {
     if (body.accountId) {
       const quotaAvailable = await canCreateScan(body.accountId, authenticatedUserId, request);
@@ -2000,6 +2037,20 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     }
 
     dataUrl = imageBytesToDataUrl(imageBytes, mimeType);
+
+    const providerCallReserved = await beginGeminiProviderCall(
+      authenticatedUserId,
+      body.testId,
+      imageKey,
+      request,
+    );
+    if (!providerCallReserved) {
+      console.warn('Gemini provider call already reserved; waiting for stored result', {
+        testId: body.testId,
+      });
+      return waitForStripAnalysisResult(authenticatedUserId, body.testId, request);
+    }
+    providerCallStarted = true;
 
     console.log('Starting Gemini strip analysis', {
       brandId: brand.id,
@@ -2044,7 +2095,7 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
         : 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה דקות.',
     );
   } catch (error) {
-    await failStripAnalysisRequest(authenticatedUserId, body.testId, error, request);
+    await failStripAnalysisRequest(authenticatedUserId, body.testId, error, request, providerCallStarted);
     throw error;
   }
 }
