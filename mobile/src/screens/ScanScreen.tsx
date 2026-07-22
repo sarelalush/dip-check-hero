@@ -17,7 +17,7 @@ type ScanGateStatus = 'checking' | 'ready';
 
 export function ScanScreen({ navigation, route }: Props) {
   const { accountId } = useAuth();
-  const { resetScanSession, session, setCurrentStep, setImageUri, setScanError, startScanSession } = useScanSession();
+  const { ensureScanSession, resetScanSession, session, setCurrentStep, setImageUri, setScanError } = useScanSession();
   const didInitializeSession = useRef(false);
   const cameraRef = useRef<CameraView | null>(null);
   const [permission, requestPermission] = useCameraPermissions();
@@ -60,8 +60,8 @@ export function ScanScreen({ navigation, route }: Props) {
     if (didInitializeSession.current) return;
     didInitializeSession.current = true;
 
-    if (route.params?.brandId || route.params?.poolId) {
-      startScanSession({
+    if (!session.testId && (route.params?.brandId || route.params?.poolId)) {
+      ensureScanSession({
         brandId: route.params?.brandId ?? session.selectedBrandId,
         poolId: route.params?.poolId ?? session.selectedPoolId,
       });
@@ -71,7 +71,8 @@ export function ScanScreen({ navigation, route }: Props) {
     route.params?.poolId,
     session.selectedBrandId,
     session.selectedPoolId,
-    startScanSession,
+    session.testId,
+    ensureScanSession,
   ]);
 
   useEffect(() => {

@@ -157,13 +157,6 @@ function uniqueIds(ids: Array<string | undefined | null>) {
   return Array.from(new Set(ids.filter((id): id is string => Boolean(id))));
 }
 
-function imageRequestFingerprint(...values: Array<string | undefined>) {
-  return values
-    .filter((value): value is string => Boolean(value))
-    .map((value) => `${value.length}:${value.slice(0, 48)}:${value.slice(-48)}`)
-    .join('|');
-}
-
 function fallbackAnalysisResultFromRecord(record: SavedHistoryRecord): StripAnalysisResult {
   return {
     id: record.cloudId ?? record.testId,
@@ -204,7 +197,6 @@ export function ResultsScreen({ navigation, route }: Props) {
   const { getHistoryRecord, isHydrated, saveAnalysisResult } = useResultsHistory();
   const { getPool, pools } = usePools();
   const {
-    ensureTestId,
     resetScanSession,
     session,
     setAnalysisResult: setSessionAnalysisResult,
@@ -307,9 +299,17 @@ export function ResultsScreen({ navigation, route }: Props) {
           return;
         }
 
-        const testId = activeScanTestId ?? ensureTestId();
-        const imageFingerprint = imageRequestFingerprint(inputImageUri, inputImagePath, inputImageUrl);
-        analysisRequestKey = `${testId}|${imageFingerprint}|${retryKey}`;
+        if (!activeScanTestId) {
+          const message = 'לא הצלחנו להכין את הסריקה לניתוח. חזרו למסך הצילום ונסו שוב.';
+          setScanError({ code: 'analysisFailed', message });
+          setAnalysisError(message);
+          setAnalysisResult(null);
+          setIsAnalyzing(false);
+          return;
+        }
+
+        const testId = activeScanTestId;
+        analysisRequestKey = `${testId}|${retryKey}`;
 
         if (activeAnalysisKeyRef.current === analysisRequestKey) {
           return;
@@ -405,7 +405,6 @@ export function ResultsScreen({ navigation, route }: Props) {
     accountId,
     activeScanTestId,
     authLoading,
-    ensureTestId,
     inputBrandId,
     inputImagePath,
     inputImageUri,

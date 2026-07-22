@@ -20,7 +20,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'SelectStrip'>;
 export function SelectStripScreen({ navigation, route }: Props) {
   const { getPool, pools } = usePools();
   const { accountId } = useAuth();
-  const { session, setSelectedBrand, startScanSession } = useScanSession();
+  const { ensureScanSession, session, setSelectedBrand } = useScanSession();
   const didStartSession = useRef(false);
   const selectedPoolId = route.params?.poolId ?? session.selectedPoolId;
   const pool = selectedPoolId ? getPool(selectedPoolId) : undefined;
@@ -46,20 +46,21 @@ export function SelectStripScreen({ navigation, route }: Props) {
 
     if (pools.length === 1) {
       const [singlePool] = pools;
-      startScanSession({ brandId: singlePool.stripBrandId ?? initialBrand.id, poolId: singlePool.id });
+      ensureScanSession({ brandId: singlePool.stripBrandId ?? initialBrand.id, poolId: singlePool.id });
       navigation.replace('SelectStrip', { poolId: singlePool.id });
       return;
     }
 
     navigation.replace('SelectPool');
-  }, [initialBrand.id, navigation, pools, selectedPoolId, startScanSession]);
+  }, [ensureScanSession, initialBrand.id, navigation, pools, selectedPoolId]);
 
   useEffect(() => {
     if (!selectedPoolId) return;
     if (didStartSession.current) return;
     didStartSession.current = true;
-    startScanSession({ brandId: initialBrand.id, poolId: selectedPoolId });
-  }, [initialBrand.id, selectedPoolId, startScanSession]);
+    if (session.testId && session.selectedPoolId === selectedPoolId) return;
+    ensureScanSession({ brandId: initialBrand.id, poolId: selectedPoolId });
+  }, [ensureScanSession, initialBrand.id, selectedPoolId, session.selectedPoolId, session.testId]);
 
   function selectBrand(brandId: string) {
     setSelectedBrandId(brandId);

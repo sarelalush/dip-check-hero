@@ -14,7 +14,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ConfirmScan'>;
 const checklistItems = ['הסטיק חתוך ללא רקע', 'כל ריבועי הצבע נראים', 'התמונה חדה ומוכנה לניתוח'];
 
 export function ConfirmScanScreen({ navigation, route }: Props) {
-  const { confirmImage, session, setCurrentStep, setImageUri, setScanError } = useScanSession();
+  const { confirmImage, ensureTestId, session, setCurrentStep, setImageUri, setScanError } = useScanSession();
   const brandId = session.selectedBrandId ?? route.params.brandId;
   const imageUri = session.imageUri ?? route.params.imageUri;
   const poolId = session.selectedPoolId ?? route.params.poolId;
@@ -41,12 +41,13 @@ export function ConfirmScanScreen({ navigation, route }: Props) {
   }, [imageUri, setCurrentStep]);
 
   function continueToResults() {
+    const scanTestId = session.testId ?? ensureTestId();
     confirmImage();
     navigation.navigate('Results', {
       brandId,
       imageUri,
       poolId,
-      scanTestId: session.testId,
+      scanTestId,
     });
   }
 

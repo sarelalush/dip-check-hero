@@ -16,16 +16,18 @@ const POOL_BACKGROUND = require('../../assets/images/home-pool.png');
 
 export function ScanPlaceholderScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
-  const { setScanError, startScanSession } = useScanSession();
+  const { ensureScanSession, session, setScanError } = useScanSession();
   const [galleryBusy, setGalleryBusy] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
-      startScanSession({
+      if (session.testId) return;
+
+      ensureScanSession({
         brandId: route.params.brandId,
         poolId: route.params.poolId,
       });
-    }, [route.params.brandId, route.params.poolId, startScanSession]),
+    }, [ensureScanSession, route.params.brandId, route.params.poolId, session.testId]),
   );
 
   function handleClose() {

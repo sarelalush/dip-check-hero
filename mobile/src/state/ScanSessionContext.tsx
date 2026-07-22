@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { getBrand } from '../config/stripBrands';
 import type { DosageCalculationResult } from '../domain/dosage';
 import type { StripAnalysisResult } from '../domain/scanResults';
@@ -66,6 +66,7 @@ interface SetImageUriOptions {
 interface ScanSessionContextValue {
   session: ScanSessionState;
   confirmImage: () => void;
+  ensureScanSession: (input?: StartScanSessionInput) => string;
   ensureTestId: () => string;
   resetScanSession: () => void;
   markQualityFailed: (notes: string[]) => void;
@@ -110,15 +111,18 @@ function withTimestamp(session: ScanSessionState, timestamp = Date.now()): ScanS
 
 export function ScanSessionProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<ScanSessionState>(initialSession);
+  const testIdRef = useRef<string | undefined>(undefined);
 
   const startScanSession = useCallback((input: StartScanSessionInput = {}) => {
     const timestamp = Date.now();
     const selectedBrand = input.brandId ? getBrand(input.brandId) : undefined;
+    const testId = createScanTestId();
+    testIdRef.current = testId;
     setSession({
       selectedBrandId: input.brandId,
       selectedBrand,
       selectedPoolId: input.poolId,
-      testId: createScanTestId(),
+      testId,
       currentStep: 'selectStrip',
       error: undefined,
       qualityNotes: [],
@@ -126,6 +130,49 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
       createdAt: timestamp,
       updatedAt: timestamp,
     });
+  }, []);
+
+  const ensureScanSession = useCallback((input: StartScanSessionInput = {}) => {
+    const existingTestId = testIdRef.current;
+    if (!existingTestId) {
+      const timestamp = Date.now();
+      const testId = createScanTestId();
+      testIdRef.current = testId;
+      setSession({
+        selectedBrandId: input.brandId,
+        selectedBrand: input.brandId ? getBrand(input.brandId) : undefined,
+        selectedPoolId: input.poolId,
+        testId,
+        currentStep: 'selectStrip',
+        error: undefined,
+        qualityNotes: [],
+        qualityStatus: 'unchecked',
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      });
+      return testId;
+    }
+
+    setSession((current) => {
+      if (
+        current.testId === existingTestId &&
+        (!input.brandId || current.selectedBrandId === input.brandId) &&
+        (!input.poolId || current.selectedPoolId === input.poolId)
+      ) {
+        return current;
+      }
+
+      const selectedBrandId = current.selectedBrandId ?? input.brandId;
+      return withTimestamp({
+        ...current,
+        selectedBrandId,
+        selectedBrand: current.selectedBrand ?? (selectedBrandId ? getBrand(selectedBrandId) : undefined),
+        selectedPoolId: current.selectedPoolId ?? input.poolId,
+        testId: existingTestId,
+      });
+    });
+
+    return existingTestId;
   }, []);
 
   const setSelectedBrand = useCallback((brandId: string) => {
@@ -164,10 +211,9 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
   const setImageUri = useCallback((imageUri?: string, options: SetImageUriOptions = {}) => {
     setSession((current) => {
       const nextTestId = imageUri
-        ? options.preserveTestId && current.testId
-          ? current.testId
-          : createScanTestId()
-        : current.testId;
+        ? current.testId ?? testIdRef.current ?? createScanTestId()
+        : current.testId ?? testIdRef.current;
+      testIdRef.current = nextTestId;
 
       return withTimestamp({
         ...current,
@@ -245,18 +291,23 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const ensureTestId = useCallback(() => {
-    const generatedTestId = createScanTestId();
-    let resolvedTestId = generatedTestId;
+    if (testIdRef.current) {
+      return testIdRef.current;
+    }
+
+    const testId = createScanTestId();
+    testIdRef.current = testId;
 
     setSession((current) => {
-      resolvedTestId = current.testId ?? generatedTestId;
+      const resolvedTestId = current.testId ?? testId;
+      testIdRef.current = resolvedTestId;
       return withTimestamp({
         ...current,
         testId: resolvedTestId,
       });
     });
 
-    return resolvedTestId;
+    return testId;
   }, []);
 
   const setScanImageUpload = useCallback(
@@ -266,9 +317,12 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
           return current;
         }
 
+        const resolvedTestId = testId ?? current.testId ?? testIdRef.current;
+        testIdRef.current = resolvedTestId;
+
         return withTimestamp({
           ...current,
-          testId: testId ?? current.testId,
+          testId: resolvedTestId,
           imagePath: imagePath ?? current.imagePath,
           imageUrl: imageUrl ?? current.imageUrl,
           imageUploadError,
@@ -284,6 +338,8 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         return current;
       }
 
+      testIdRef.current = current.testId ?? result.id;
+
       return withTimestamp({
         ...current,
         testId: current.testId ?? result.id,
@@ -298,6 +354,7 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const resetScanSession = useCallback(() => {
+    testIdRef.current = undefined;
     setSession(initialSession);
   }, []);
 
@@ -305,6 +362,7 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       confirmImage,
+      ensureScanSession,
       ensureTestId,
       markQualityFailed,
       resetScanSession,
@@ -320,6 +378,7 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
     }),
     [
       confirmImage,
+      ensureScanSession,
       ensureTestId,
       markQualityFailed,
       resetScanSession,

@@ -78,6 +78,7 @@ const analysisConfig: StripAnalysisServiceConfig = {
 };
 
 const inFlightAnalyses = new Map<string, Promise<StripAnalysisResult>>();
+const completedAnalyses = new Map<string, StripAnalysisResult>();
 
 export function getStripAnalysisConfig() {
   return analysisConfig;
@@ -103,19 +104,25 @@ function isDirectRemoteImageCandidate(uri?: string) {
 }
 
 function getAnalysisRequestKey(input: StripAnalysisInput) {
-  return [
-    input.accountId ?? '',
-    input.testId ?? '',
-    input.userId ?? '',
-    input.brandId ?? input.selectedBrand?.id ?? '',
-    input.imagePath ?? '',
-    input.imageUrl ?? '',
-    input.imageUri,
-  ].join('|');
+  return [input.accountId ?? '', input.userId ?? '', input.testId ?? ''].join('|');
 }
 
 export function analyzeStripImage(input: StripAnalysisInput): Promise<StripAnalysisResult> {
+  if (!input.testId) {
+    return Promise.reject(
+      new StripAnalysisServiceError('unavailable', 'לא הצלחנו להכין מזהה סריקה. יש לחזור למסך הצילום ולנסות שוב.'),
+    );
+  }
+
   const requestKey = getAnalysisRequestKey(input);
+  const completedResult = completedAnalyses.get(requestKey);
+  if (completedResult) {
+    logAnalysisDebug('reusing completed analysis result', {
+      testId: input.testId,
+    });
+    return Promise.resolve(completedResult);
+  }
+
   const existingRequest = inFlightAnalyses.get(requestKey);
   if (existingRequest) {
     logAnalysisDebug('reusing in-flight analysis request', {
@@ -124,11 +131,20 @@ export function analyzeStripImage(input: StripAnalysisInput): Promise<StripAnaly
     return existingRequest;
   }
 
-  const analysisPromise = analyzeStripImageOnce(input).finally(() => {
-    if (inFlightAnalyses.get(requestKey) === analysisPromise) {
-      inFlightAnalyses.delete(requestKey);
-    }
-  });
+  const analysisPromise = analyzeStripImageOnce(input)
+    .then((result) => {
+      completedAnalyses.set(requestKey, result);
+      if (completedAnalyses.size > 100) {
+        const oldestKey = completedAnalyses.keys().next().value;
+        if (oldestKey) completedAnalyses.delete(oldestKey);
+      }
+      return result;
+    })
+    .finally(() => {
+      if (inFlightAnalyses.get(requestKey) === analysisPromise) {
+        inFlightAnalyses.delete(requestKey);
+      }
+    });
   inFlightAnalyses.set(requestKey, analysisPromise);
   return analysisPromise;
 }
@@ -206,7 +222,10 @@ async function analyzeStripImageRemote(
     throw new StripAnalysisServiceError('unavailable', 'יש להתחבר כדי לבצע ניתוח AI.');
   }
 
-  const testId = input.testId ?? `remote-test-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  if (!input.testId) {
+    throw new StripAnalysisServiceError('unavailable', 'לא הצלחנו להכין מזהה סריקה. יש לחזור למסך הצילום ולנסות שוב.');
+  }
+  const testId = input.testId;
   let imagePath = input.imagePath;
   let imageUrl = input.imageUrl ?? (/^https?:\/\//i.test(input.imageUri) ? input.imageUri : undefined);
   let imageUriForRemote = input.imageUri;
