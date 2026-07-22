@@ -197,6 +197,7 @@ type StripAnalysisRequestStatus = 'processing' | 'completed' | 'failed' | 'confl
 interface StripAnalysisClaim {
   claimed: boolean;
   status: StripAnalysisRequestStatus;
+  canonicalTestId?: string;
   result?: StripAnalysisResult;
   errorCode?: string;
   errorMessage?: string;
@@ -1641,6 +1642,37 @@ async function createStripAnalysisImageKey(body: AnalyzeStripRequest) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
+async function sha256Hex(value: Uint8Array | string) {
+  const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value;
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function createStripAnalysisContentKey(body: AnalyzeStripRequest, imageBytes: Uint8Array) {
+  const imageDigest = await sha256Hex(imageBytes);
+  return sha256Hex(
+    JSON.stringify({
+      accountId: body.accountId ?? null,
+      analysisVersion: ANALYSIS_VERSION,
+      brandId: body.brandId ?? null,
+      imageDigest,
+      model: Deno.env.get('GEMINI_MODEL_PRIMARY') || Deno.env.get('GEMINI_MODEL') || GEMINI_DEFAULT_MODEL,
+      poolId: body.poolId ?? null,
+    }),
+  );
+}
+
+function remapAnalysisResult(result: StripAnalysisResult, body: AnalyzeStripRequest): StripAnalysisResult {
+  return {
+    ...result,
+    id: body.testId,
+    imagePath: body.imagePath ?? result.imagePath,
+    imageUri: body.imageUri ?? result.imageUri,
+    imageUrl: body.imageUrl ?? result.imageUrl,
+    poolId: body.poolId ?? result.poolId,
+  };
+}
+
 function storedAnalysisError(errorCode?: string | null, errorMessage?: string | null) {
   return new EdgeAnalysisError(
     errorCode === 'invalid_strip' ? 'invalid_strip' : 'unavailable',
@@ -1652,6 +1684,7 @@ async function claimStripAnalysisRequest(
   userId: string,
   body: AnalyzeStripRequest,
   imageKey: string,
+  contentKey: string,
   request: Request,
 ): Promise<StripAnalysisClaim> {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -1659,11 +1692,12 @@ async function claimStripAnalysisRequest(
     throw new EdgeAnalysisError('unavailable', 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה רגעים.');
   }
 
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/claim_strip_analysis_request`, {
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/claim_strip_analysis_content`, {
     method: 'POST',
     headers: getServiceHeaders(request),
     body: JSON.stringify({
       p_account_id: body.accountId ?? null,
+      p_content_key: contentKey,
       p_image_key: imageKey,
       p_test_id: body.testId,
       p_user_id: userId,
@@ -1993,18 +2027,36 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     }
   }
 
+  try {
+    const loaded = await loadImageBytes(body, request);
+    imageBytes = loaded.bytes;
+    mimeType = loaded.mimeType;
+  } catch (error) {
+    console.warn('remote image download failed', error);
+    throw new EdgeAnalysisError('unavailable', 'לא הצלחנו לטעון את תמונת הסטיק לניתוח. נסו שוב בעוד כמה דקות.');
+  }
+
   const imageKey = await createStripAnalysisImageKey(body);
-  const claim = await claimStripAnalysisRequest(authenticatedUserId, body, imageKey, request);
+  const contentKey = await createStripAnalysisContentKey(body, imageBytes);
+  const claim = await claimStripAnalysisRequest(authenticatedUserId, body, imageKey, contentKey, request);
+  const canonicalTestId = claim.canonicalTestId ?? body.testId;
 
   if (!claim.claimed) {
     if (claim.status === 'completed' && claim.result) {
-      console.log('Returning cached Gemini strip analysis', { testId: body.testId });
-      return claim.result;
+      console.log('Returning cached Gemini strip analysis', {
+        canonicalTestId,
+        testId: body.testId,
+      });
+      return remapAnalysisResult(claim.result, body);
     }
 
     if (claim.status === 'processing') {
-      console.log('Waiting for in-flight Gemini strip analysis', { testId: body.testId });
-      return waitForStripAnalysisResult(authenticatedUserId, body.testId, request);
+      console.log('Waiting for in-flight Gemini strip analysis', {
+        canonicalTestId,
+        testId: body.testId,
+      });
+      const result = await waitForStripAnalysisResult(authenticatedUserId, canonicalTestId, request);
+      return remapAnalysisResult(result, body);
     }
 
     if (claim.status === 'failed') {
@@ -2027,20 +2079,11 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
       }
     }
 
-    try {
-      const loaded = await loadImageBytes(body, request);
-      imageBytes = loaded.bytes;
-      mimeType = loaded.mimeType;
-    } catch (error) {
-      console.warn('remote image download failed', error);
-      throw new EdgeAnalysisError('unavailable', 'לא הצלחנו לטעון את תמונת הסטיק לניתוח. נסו שוב בעוד כמה דקות.');
-    }
-
     dataUrl = imageBytesToDataUrl(imageBytes, mimeType);
 
     const providerCallReserved = await beginGeminiProviderCall(
       authenticatedUserId,
-      body.testId,
+      canonicalTestId,
       imageKey,
       request,
     );
@@ -2048,7 +2091,8 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
       console.warn('Gemini provider call already reserved; waiting for stored result', {
         testId: body.testId,
       });
-      return waitForStripAnalysisResult(authenticatedUserId, body.testId, request);
+      const result = await waitForStripAnalysisResult(authenticatedUserId, canonicalTestId, request);
+      return remapAnalysisResult(result, body);
     }
     providerCallStarted = true;
 
@@ -2084,8 +2128,8 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
       // result with dosage recommendations before upserting tests/readings and
       // registering usage. The idempotency record stores only the raw response
       // so duplicate screen effects can reuse it without another Gemini call.
-      await completeStripAnalysisRequest(authenticatedUserId, body.testId, result, request);
-      return result;
+      await completeStripAnalysisRequest(authenticatedUserId, canonicalTestId, result, request);
+      return remapAnalysisResult(result, body);
     }
 
     throw new EdgeAnalysisError(
@@ -2095,7 +2139,7 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
         : 'שירות הניתוח אינו זמין כרגע. נסו שוב בעוד כמה דקות.',
     );
   } catch (error) {
-    await failStripAnalysisRequest(authenticatedUserId, body.testId, error, request, providerCallStarted);
+    await failStripAnalysisRequest(authenticatedUserId, canonicalTestId, error, request, providerCallStarted);
     throw error;
   }
 }

@@ -77,8 +77,12 @@ const analysisConfig: StripAnalysisServiceConfig = {
   remoteFunctionName: configuredFunctionName || 'analyze-strip',
 };
 
+const COMPLETED_ANALYSIS_TTL_MS = 2 * 60 * 1000;
 const inFlightAnalyses = new Map<string, Promise<StripAnalysisResult>>();
-const completedAnalyses = new Map<string, StripAnalysisResult>();
+const completedAnalyses = new Map<
+  string,
+  { completedAt: number; result: StripAnalysisResult }
+>();
 
 export function getStripAnalysisConfig() {
   return analysisConfig;
@@ -103,8 +107,45 @@ function isDirectRemoteImageCandidate(uri?: string) {
   return Boolean(uri && (uri.startsWith('data:image/') || /^https?:\/\//i.test(uri)));
 }
 
+function fingerprintImageIdentity(value?: string) {
+  if (!value) {
+    return 'missing-image';
+  }
+
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${value.length}:${(hash >>> 0).toString(16)}`;
+}
+
 function getAnalysisRequestKey(input: StripAnalysisInput) {
-  return [input.accountId ?? '', input.userId ?? '', input.testId ?? ''].join('|');
+  const imageIdentity =
+    input.imageUri ??
+    input.imagePath ??
+    input.imageUrl ??
+    input.scanSession?.imagePath ??
+    input.scanSession?.imageUrl;
+
+  return [
+    input.accountId ?? '',
+    input.userId ?? '',
+    input.poolId ?? input.scanSession?.selectedPoolId ?? '',
+    input.brandId ?? input.selectedBrand?.id ?? input.scanSession?.selectedBrandId ?? '',
+    fingerprintImageIdentity(imageIdentity),
+  ].join('|');
+}
+
+function remapAnalysisResult(result: StripAnalysisResult, input: StripAnalysisInput): StripAnalysisResult {
+  return {
+    ...result,
+    id: input.testId ?? result.id,
+    imagePath: input.imagePath ?? result.imagePath,
+    imageUri: input.imageUri ?? result.imageUri,
+    imageUrl: input.imageUrl ?? result.imageUrl,
+    poolId: input.poolId ?? result.poolId,
+  };
 }
 
 export function analyzeStripImage(input: StripAnalysisInput): Promise<StripAnalysisResult> {
@@ -115,12 +156,15 @@ export function analyzeStripImage(input: StripAnalysisInput): Promise<StripAnaly
   }
 
   const requestKey = getAnalysisRequestKey(input);
-  const completedResult = completedAnalyses.get(requestKey);
-  if (completedResult) {
+  const completedAnalysis = completedAnalyses.get(requestKey);
+  if (completedAnalysis && Date.now() - completedAnalysis.completedAt <= COMPLETED_ANALYSIS_TTL_MS) {
     logAnalysisDebug('reusing completed analysis result', {
       testId: input.testId,
     });
-    return Promise.resolve(completedResult);
+    return Promise.resolve(remapAnalysisResult(completedAnalysis.result, input));
+  }
+  if (completedAnalysis) {
+    completedAnalyses.delete(requestKey);
   }
 
   const existingRequest = inFlightAnalyses.get(requestKey);
@@ -128,12 +172,15 @@ export function analyzeStripImage(input: StripAnalysisInput): Promise<StripAnaly
     logAnalysisDebug('reusing in-flight analysis request', {
       testId: input.testId,
     });
-    return existingRequest;
+    return existingRequest.then((result) => remapAnalysisResult(result, input));
   }
 
   const analysisPromise = analyzeStripImageOnce(input)
     .then((result) => {
-      completedAnalyses.set(requestKey, result);
+      completedAnalyses.set(requestKey, {
+        completedAt: Date.now(),
+        result,
+      });
       if (completedAnalyses.size > 100) {
         const oldestKey = completedAnalyses.keys().next().value;
         if (oldestKey) completedAnalyses.delete(oldestKey);
@@ -146,7 +193,7 @@ export function analyzeStripImage(input: StripAnalysisInput): Promise<StripAnaly
       }
     });
   inFlightAnalyses.set(requestKey, analysisPromise);
-  return analysisPromise;
+  return analysisPromise.then((result) => remapAnalysisResult(result, input));
 }
 
 async function analyzeStripImageOnce(input: StripAnalysisInput): Promise<StripAnalysisResult> {
