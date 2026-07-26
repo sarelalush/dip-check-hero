@@ -1,5 +1,6 @@
 const { createClient } = window.supabase;
 const config = window.ADMIN_CONFIG;
+const SCAN_IMAGES_BUCKET = "scan-images";
 const supabase = createClient(config.supabaseUrl, config.supabaseKey, {
   auth: {
     persistSession: true,
@@ -23,6 +24,8 @@ let state = {
   scansLoading: false,
   error: "",
   scanError: "",
+  imageUrlCache: {},
+  imageViewer: null,
 };
 
 boot();
@@ -160,7 +163,7 @@ async function loadScans(accountId) {
         : `טעינת הסריקות נכשלה: ${error.message}`;
     state.scans = [];
   } else {
-    state.scans = data ?? [];
+    state.scans = await hydrateScanImages(data ?? []);
   }
 
   state.scansLoading = false;
@@ -213,6 +216,7 @@ function renderDashboard() {
       </section>
     </main>
     ${state.selectedGrant ? renderGrantModal(state.selectedGrant) : ""}
+    ${state.imageViewer ? renderImageViewer(state.imageViewer) : ""}
   `;
 
   bindDashboardEvents();
@@ -248,8 +252,25 @@ function bindDashboardEvents() {
     });
   }
 
+  for (const button of document.querySelectorAll("[data-open-image]")) {
+    button.addEventListener("click", () => {
+      const url = button.getAttribute("data-open-image");
+      if (!url) return;
+      state.imageViewer = {
+        url,
+        title: button.getAttribute("data-image-title") || "תמונת סריקה",
+      };
+      renderDashboard();
+    });
+  }
+
   document.querySelector("#close-modal")?.addEventListener("click", () => {
     state.selectedGrant = null;
+    renderDashboard();
+  });
+
+  document.querySelector("#close-image-viewer")?.addEventListener("click", () => {
+    state.imageViewer = null;
     renderDashboard();
   });
 
@@ -383,9 +404,49 @@ function renderScanCard(scan) {
       <div class="scan-side">
         <span class="confidence">${confidenceLabel(scan.confidence)}</span>
         <span class="billable ${scan.is_billable ? "yes" : "no"}">${scan.is_billable ? "נספר במכסה" : "לא נספר"}</span>
-        ${scan.image_url ? `<a class="image-link" href="${escapeAttr(scan.image_url)}" target="_blank" rel="noreferrer">פתח תמונה</a>` : ""}
+        ${renderScanImage(scan)}
       </div>
     </article>
+  `;
+}
+
+function renderScanImage(scan) {
+  const source = scan.image_source || scan.image_url || scan.image_path || "";
+  if (!source) {
+    return `<div class="scan-image-empty">לא נשמרה תמונה</div>`;
+  }
+
+  if (!scan.image_preview_url) {
+    return `<div class="scan-image-empty">לא ניתן לטעון תמונה</div>`;
+  }
+
+  const title = `${formatDateTime(scan.analyzed_at || scan.created_at)} · ${scan.pool_name || "ללא בריכה"}`;
+
+  return `
+    <button class="scan-image-thumb" type="button" data-open-image="${escapeAttr(scan.image_preview_url)}" data-image-title="${escapeAttr(title)}">
+      <img src="${escapeAttr(scan.image_preview_url)}" alt="תמונת סריקה" loading="lazy" />
+      <span>פתח תמונה</span>
+    </button>
+  `;
+}
+
+function renderImageViewer(viewer) {
+  return `
+    <div class="modal image-viewer">
+      <section class="modal-card image-viewer-card">
+        <div class="modal-head">
+          <div>
+            <p class="eyebrow">תמונת סריקה</p>
+            <h2>${escapeHtml(viewer.title || "תמונת סריקה")}</h2>
+          </div>
+          <button class="button ghost" id="close-image-viewer" type="button">סגור</button>
+        </div>
+        <div class="image-viewer-frame">
+          <img src="${escapeAttr(viewer.url)}" alt="תמונת סריקה מלאה" />
+        </div>
+        <a class="image-link" href="${escapeAttr(viewer.url)}" target="_blank" rel="noreferrer">פתח בלשונית חדשה</a>
+      </section>
+    </div>
   `;
 }
 
@@ -575,6 +636,73 @@ function renderBigLoading(label) {
 
 function renderNotice(message) {
   return `<div class="notice">${escapeHtml(message)}</div>`;
+}
+
+async function hydrateScanImages(scans) {
+  return Promise.all(
+    scans.map(async (scan) => {
+      const source = scan.image_url || scan.image_path || "";
+      return {
+        ...scan,
+        image_source: source,
+        image_preview_url: await resolveScanImageUrl(source),
+      };
+    }),
+  );
+}
+
+async function resolveScanImageUrl(value) {
+  const source = String(value || "").trim();
+  if (!source) return "";
+  if (state.imageUrlCache[source]) return state.imageUrlCache[source];
+
+  if (/^(https?:|data:|blob:)/i.test(source)) {
+    state.imageUrlCache[source] = source;
+    return source;
+  }
+
+  if (/^file:/i.test(source)) {
+    return "";
+  }
+
+  const path = normalizeStoragePath(source);
+  if (!path) return "";
+
+  const { data, error } = await supabase.storage.from(SCAN_IMAGES_BUCKET).createSignedUrl(path, 60 * 60);
+  if (error || !data?.signedUrl) {
+    console.warn("Could not create signed scan image URL", { source, path, error });
+    return "";
+  }
+
+  state.imageUrlCache[source] = data.signedUrl;
+  return data.signedUrl;
+}
+
+function normalizeStoragePath(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    const url = new URL(raw);
+    const publicMarker = `/object/public/${SCAN_IMAGES_BUCKET}/`;
+    const signedMarker = `/object/sign/${SCAN_IMAGES_BUCKET}/`;
+
+    if (url.pathname.includes(publicMarker)) {
+      return decodeURIComponent(url.pathname.split(publicMarker)[1] || "").split("?")[0];
+    }
+
+    if (url.pathname.includes(signedMarker)) {
+      return decodeURIComponent(url.pathname.split(signedMarker)[1] || "").split("?")[0];
+    }
+  } catch {
+    // Plain storage paths are handled below.
+  }
+
+  let path = raw.replace(/^\/+/, "");
+  if (path.startsWith(`${SCAN_IMAGES_BUCKET}/`)) {
+    path = path.slice(SCAN_IMAGES_BUCKET.length + 1);
+  }
+  return path;
 }
 
 function buildStats(rows) {

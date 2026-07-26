@@ -8,7 +8,7 @@ This dashboard is not part of the mobile app routes or builds. It runs as a sepa
 
 - Searchable user list with quick switching between accounts.
 - Subscription status, scan quota, pool quota, and last scan summary.
-- Full scan history per user, including readings, recommendations, image links, model/provider metadata, confidence, and billable status.
+- Full scan history per user, including readings, recommendations, signed scan image previews, model/provider metadata, confidence, and billable status.
 - Manual admin subscription grants with custom dates, pool limits, and scan limits.
 - AquaSense-style visual design for easier desktop use.
 
