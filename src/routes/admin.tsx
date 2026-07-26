@@ -1,266 +1,213 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  AlertTriangle,
   ArrowRight,
+  CalendarDays,
+  CheckCircle2,
+  Crown,
+  Loader2,
+  RefreshCcw,
+  ScanLine,
+  Search,
   Shield,
   Users,
-  FlaskConical,
-  Loader2,
-  ChevronDown,
-  ChevronUp,
-  Crown,
-  CreditCard,
-  Plus,
-  Minus,
   Waves,
+  X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useIsAdmin } from "@/hooks/useIsAdmin";
-import { TestItem, type TestRow, type PoolRow } from "@/components/ScanHistory";
-import { getPaddleEnvironment } from "@/lib/paddle";
-import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin")({
-  head: () => ({ meta: [{ title: "לוח ניהול — PoolCheck" }] }),
+  head: () => ({ meta: [{ title: "לוח ניהול - AquaSense" }] }),
   component: AdminScreen,
 });
 
-interface ProfileRow {
-  user_id: string;
-  display_name: string | null;
+type RpcError = { message: string };
+
+type RpcClient = {
+  rpc: (
+    functionName: string,
+    args?: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: RpcError | null }>;
+};
+
+type AdminUserRow = {
+  account_id: string;
+  user_id: string | null;
   email: string | null;
-  created_at: string;
-  free_scans_used: number;
-}
-
-interface RoleRow {
-  user_id: string;
-  role: string;
-}
-
-interface SubscriptionRow {
-  id: string;
-  user_id: string;
-  product_id: string;
-  price_id: string;
-  status: string;
-  environment: string;
-  quantity: number;
+  full_name: string | null;
+  account_name: string | null;
+  account_status: string | null;
+  member_role: string | null;
+  joined_at: string | null;
+  subscription_id: string | null;
+  plan_id: string | null;
+  subscription_status: string | null;
+  subscription_provider: string | null;
+  current_period_start: string | null;
   current_period_end: string | null;
-  paddle_subscription_id: string;
-  paddle_customer_id: string;
-}
+  included_pools: number;
+  extra_pools: number;
+  total_pool_limit: number;
+  pools_active_count: number;
+  included_scans: number;
+  extra_scan_packs: number;
+  total_scan_limit: number;
+  scans_used: number;
+  scans_billable: number;
+  scans_remaining: number;
+  tests_count: number;
+  last_scan_at: string | null;
+};
 
-const FAR_FUTURE = "2099-12-31T00:00:00.000Z";
+type GrantForm = {
+  start: string;
+  end: string;
+  poolLimit: string;
+  scanLimit: string;
+};
 
-function isSubActive(s: SubscriptionRow): boolean {
-  if (!["active", "trialing"].includes(s.status)) {
-    if (s.status === "canceled" && s.current_period_end && new Date(s.current_period_end) > new Date()) return true;
-    return false;
-  }
-  if (!s.current_period_end) return true;
-  return new Date(s.current_period_end) > new Date();
-}
+const rpcClient = supabase as unknown as RpcClient;
 
 function AdminScreen() {
   const navigate = useNavigate();
   const { isAuthenticated, loading: authLoading } = useAuth();
   const { isAdmin, loading: adminLoading } = useIsAdmin();
-  const [profiles, setProfiles] = useState<ProfileRow[]>([]);
-  const [tests, setTests] = useState<TestRow[]>([]);
-  const [pools, setPools] = useState<PoolRow[]>([]);
-  const [roles, setRoles] = useState<RoleRow[]>([]);
-  const [subs, setSubs] = useState<SubscriptionRow[]>([]);
+  const [rows, setRows] = useState<AdminUserRow[]>([]);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
-  const [expandedUser, setExpandedUser] = useState<string | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-
-  const env = getPaddleEnvironment();
+  const [refreshing, setRefreshing] = useState(false);
+  const [granting, setGranting] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<AdminUserRow | null>(null);
+  const [grantForm, setGrantForm] = useState<GrantForm>(() => createDefaultGrantForm());
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) navigate({ to: "/login" });
+    if (!authLoading && !isAuthenticated) {
+      navigate({ to: "/login" });
+    }
   }, [authLoading, isAuthenticated, navigate]);
 
-  const refresh = useCallback(async () => {
-    const [p, t, pl, r, s] = await Promise.all([
-      supabase.from("profiles").select("*").order("created_at", { ascending: false }),
-      supabase.from("tests").select("*").order("tested_at", { ascending: false }),
-      supabase.from("pools").select("id, user_id, name"),
-      supabase.from("user_roles").select("user_id, role"),
-      supabase.from("subscriptions").select("*").eq("environment", "live"),
-    ]);
-    setProfiles((p.data ?? []) as ProfileRow[]);
-    setTests((t.data ?? []) as TestRow[]);
-    setPools((pl.data ?? []) as PoolRow[]);
-    setRoles((r.data ?? []) as RoleRow[]);
-    setSubs((s.data ?? []) as SubscriptionRow[]);
+  const loadDashboard = useCallback(async ({ quiet = false }: { quiet?: boolean } = {}) => {
+    if (!quiet) setLoading(true);
+    setRefreshing(true);
+
+    const { data, error } = await rpcClient.rpc("admin_dashboard_users");
+
+    if (error) {
+      toast.error(`טעינת הדשבורד נכשלה: ${error.message}`);
+      setRows([]);
+    } else {
+      setRows((data ?? []) as AdminUserRow[]);
+    }
+
+    setRefreshing(false);
     setLoading(false);
-  }, [env]);
+  }, []);
 
   useEffect(() => {
     if (adminLoading || !isAdmin) return;
-    refresh();
-  }, [adminLoading, isAdmin, refresh]);
+    void loadDashboard();
+  }, [adminLoading, isAdmin, loadDashboard]);
 
-  const testsByUser = useMemo(() => {
-    const map = new Map<string, TestRow[]>();
-    for (const t of tests) {
-      const arr = map.get(t.user_id) ?? [];
-      arr.push(t);
-      map.set(t.user_id, arr);
-    }
-    return map;
-  }, [tests]);
+  const filteredRows = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    if (!normalizedQuery) return rows;
 
-  const poolsByUser = useMemo(() => {
-    const map = new Map<string, PoolRow[]>();
-    for (const p of pools) {
-      const arr = map.get(p.user_id) ?? [];
-      arr.push(p);
-      map.set(p.user_id, arr);
-    }
-    return map;
-  }, [pools]);
+    return rows.filter((row) => {
+      const haystack = [
+        row.email,
+        row.full_name,
+        row.account_name,
+        row.subscription_status,
+        row.subscription_provider,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedQuery);
+    });
+  }, [query, rows]);
 
-  const poolName = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const p of pools) map.set(p.id, p.name);
-    return map;
-  }, [pools]);
+  const stats = useMemo(() => {
+    const activeSubscriptions = rows.filter((row) => isSubscriptionActive(row)).length;
+    const totalScans = rows.reduce((sum, row) => sum + (row.scans_billable || 0), 0);
+    const totalRemaining = rows.reduce((sum, row) => sum + (row.scans_remaining || 0), 0);
+    const activePools = rows.reduce((sum, row) => sum + (row.pools_active_count || 0), 0);
 
-  const adminIds = useMemo(() => new Set(roles.filter((r) => r.role === "admin").map((r) => r.user_id)), [roles]);
+    return { activeSubscriptions, totalScans, totalRemaining, activePools };
+  }, [rows]);
 
-  // First 20 registered users get one free month (matches public.is_early_bird_free)
-  const earlyBirdIds = useMemo(() => {
-    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const sorted = [...profiles].sort(
-      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
-    );
-    return new Set(
-      sorted
-        .slice(0, 20)
-        .filter((p) => new Date(p.created_at).getTime() > cutoff)
-        .map((p) => p.user_id),
-    );
-  }, [profiles]);
-
-  const subsByUser = useMemo(() => {
-    const map = new Map<string, { base?: SubscriptionRow; addon?: SubscriptionRow }>();
-    for (const s of subs) {
-      const cur = map.get(s.user_id) ?? {};
-      if (s.product_id === "pool_base_plan" && isSubActive(s)) cur.base = s;
-      if (s.product_id === "pool_extra_addon" && isSubActive(s)) cur.addon = s;
-      map.set(s.user_id, cur);
-    }
-    return map;
-  }, [subs]);
-
-  async function toggleAdmin(userId: string, currentlyAdmin: boolean) {
-    setBusy(`admin-${userId}`);
-    try {
-      if (currentlyAdmin) {
-        const { error } = await supabase.from("user_roles").delete().eq("user_id", userId).eq("role", "admin");
-        if (error) throw error;
-        toast.success("הרשאת מנהל הוסרה");
-      } else {
-        const { error } = await supabase.from("user_roles").insert({ user_id: userId, role: "admin" });
-        if (error) throw error;
-        toast.success("המשתמש הוגדר כמנהל");
-      }
-      await refresh();
-    } catch (e) {
-      toast.error("פעולה נכשלה: " + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setBusy(null);
-    }
+  function openGrantDialog(row: AdminUserRow) {
+    setSelectedUser(row);
+    setGrantForm({
+      start: toDateTimeInput(row.current_period_start) || toDateTimeInput(new Date().toISOString()),
+      end: toDateTimeInput(row.current_period_end) || toDateTimeInput(addMonths(new Date(), 1).toISOString()),
+      poolLimit: String(Math.max(row.total_pool_limit || 1, 1)),
+      scanLimit: String(Math.max(row.total_scan_limit || 200, 200)),
+    });
   }
 
-  async function togglePaidAccess(userId: string, existing: SubscriptionRow | undefined) {
-    setBusy(`paid-${userId}`);
-    try {
-      if (existing) {
-        const { error } = await supabase.from("subscriptions").delete().eq("id", existing.id);
-        if (error) throw error;
-        toast.success("גישת הסריקה הוסרה");
-      } else {
-        const { error } = await supabase.from("subscriptions").insert({
-          user_id: userId,
-          environment: "live",
-          product_id: "pool_base_plan",
-          price_id: "admin_grant",
-          status: "active",
-          quantity: 1,
-          current_period_end: FAR_FUTURE,
-          paddle_subscription_id: `admin_${userId}_base_${Date.now()}`,
-          paddle_customer_id: `admin_${userId}`,
-        });
-        if (error) throw error;
-        toast.success("ניתנה גישת סריקה");
-      }
-      await refresh();
-    } catch (e) {
-      toast.error("פעולה נכשלה: " + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setBusy(null);
-    }
-  }
+  async function submitGrant() {
+    if (!selectedUser) return;
 
-  async function adjustExtraPools(userId: string, addon: SubscriptionRow | undefined, delta: number) {
-    setBusy(`pool-${userId}`);
-    try {
-      const newQty = (addon?.quantity ?? 0) + delta;
-      if (newQty <= 0) {
-        if (addon) {
-          const { error } = await supabase.from("subscriptions").delete().eq("id", addon.id);
-          if (error) throw error;
-        }
-      } else if (addon) {
-        const { error } = await supabase
-          .from("subscriptions")
-          .update({ quantity: newQty })
-          .eq("id", addon.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("subscriptions").insert({
-          user_id: userId,
-          environment: "live",
-          product_id: "pool_extra_addon",
-          price_id: "admin_grant",
-          status: "active",
-          quantity: newQty,
-          current_period_end: FAR_FUTURE,
-          paddle_subscription_id: `admin_${userId}_addon_${Date.now()}`,
-          paddle_customer_id: `admin_${userId}`,
-        });
-        if (error) throw error;
-      }
-      toast.success("מכסת הבריכות עודכנה");
-      await refresh();
-    } catch (e) {
-      toast.error("פעולה נכשלה: " + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setBusy(null);
+    const poolLimit = Number(grantForm.poolLimit);
+    const scanLimit = Number(grantForm.scanLimit);
+    const start = new Date(grantForm.start);
+    const end = new Date(grantForm.end);
+
+    if (!Number.isFinite(poolLimit) || poolLimit < 1) {
+      toast.error("מכסת הבריכות חייבת להיות לפחות 1");
+      return;
     }
+
+    if (!Number.isFinite(scanLimit) || scanLimit < 0) {
+      toast.error("מכסת הסריקות לא תקינה");
+      return;
+    }
+
+    if (!grantForm.start || !grantForm.end || end <= start) {
+      toast.error("טווח התאריכים לא תקין");
+      return;
+    }
+
+    setGranting(true);
+    const { error } = await rpcClient.rpc("admin_grant_subscription", {
+      p_account_id: selectedUser.account_id,
+      p_start: start.toISOString(),
+      p_end: end.toISOString(),
+      p_pool_limit: poolLimit,
+      p_scan_limit: scanLimit,
+      p_plan_id: "basic_monthly",
+    });
+
+    if (error) {
+      toast.error(`פתיחת המנוי נכשלה: ${error.message}`);
+    } else {
+      toast.success("המנוי עודכן בהצלחה");
+      setSelectedUser(null);
+      await loadDashboard({ quiet: true });
+    }
+
+    setGranting(false);
   }
 
   if (authLoading || adminLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
-    );
+    return <AdminLoading label="בודק הרשאות..." />;
   }
 
   if (!isAdmin) {
     return (
-      <div dir="rtl" className="min-h-screen bg-background">
-        <div className="mx-auto max-w-md px-5 pt-10 text-center">
-          <Shield className="mx-auto h-12 w-12 text-muted-foreground" />
-          <h1 className="mt-4 text-xl font-extrabold text-foreground">אין לך הרשאת גישה</h1>
-          <p className="mt-2 text-sm text-muted-foreground">דף זה מיועד למנהלי המערכת בלבד.</p>
-          <Link to="/" className="mt-6 inline-flex items-center gap-1 text-sm font-bold text-primary">
-            <ArrowRight className="h-4 w-4" /> חזרה לעמוד הראשי
+      <div dir="rtl" className="min-h-screen bg-slate-50 px-5 py-10">
+        <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+          <Shield className="mx-auto h-12 w-12 text-slate-400" />
+          <h1 className="mt-4 text-xl font-extrabold text-slate-900">אין לך הרשאת גישה</h1>
+          <p className="mt-2 text-sm text-slate-500">הדשבורד מיועד למנהלי AquaSense בלבד.</p>
+          <Link to="/" className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-cyan-700">
+            <ArrowRight className="h-4 w-4" />
+            חזרה לאפליקציה
           </Link>
         </div>
       </div>
@@ -268,207 +215,331 @@ function AdminScreen() {
   }
 
   return (
-    <div dir="rtl" className="min-h-screen bg-background">
-      <div className="mx-auto max-w-4xl px-5 pt-6 pb-10">
-        <Link to="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground mb-4 hover:text-foreground">
-          <ArrowRight className="h-4 w-4" /> חזרה לעמוד הראשי
-        </Link>
-
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
-            <Shield className="h-6 w-6" />
-          </div>
+    <div dir="rtl" className="min-h-screen bg-slate-50 text-slate-900">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-extrabold text-foreground leading-tight">לוח ניהול</h1>
-            <p className="text-sm text-muted-foreground">ניהול משתמשים, הרשאות ותוכניות</p>
-          </div>
-        </div>
-
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <StatCard icon={<Users className="h-5 w-5" />} label="משתמשים רשומים" value={profiles.length} />
-          <StatCard icon={<FlaskConical className="h-5 w-5" />} label="סך סריקות" value={tests.length} />
-          <StatCard icon={<Crown className="h-5 w-5" />} label="מנהלים" value={adminIds.size} />
-        </div>
-
-        {loading ? (
-          <div className="mt-10 flex justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
-        ) : (
-          <div className="mt-6 space-y-3">
-            {profiles.length === 0 && (
-              <div className="rounded-2xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
-                עדיין אין משתמשים רשומים.
+            <Link to="/" className="inline-flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-cyan-700">
+              <ArrowRight className="h-4 w-4" />
+              חזרה לאפליקציה
+            </Link>
+            <div className="mt-4 flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-700">
+                <Shield className="h-6 w-6" />
               </div>
-            )}
-            {profiles.map((p) => {
-              const userTests = testsByUser.get(p.user_id) ?? [];
-              const userPools = poolsByUser.get(p.user_id) ?? [];
-              const expanded = expandedUser === p.user_id;
-              const isUserAdmin = adminIds.has(p.user_id);
-              const userSubs = subsByUser.get(p.user_id) ?? {};
-              const hasPaid = !!userSubs.base;
-              const isEarlyBird = earlyBirdIds.has(p.user_id);
-              const hasAccess = hasPaid || isUserAdmin || isEarlyBird;
-              const extraPools = userSubs.addon?.quantity ?? 0;
-              const allowedPools = isUserAdmin ? 999 : (hasPaid || isEarlyBird ? 1 : 0) + extraPools;
-
-              return (
-                <div key={p.user_id} className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-                  <button
-                    onClick={() => setExpandedUser(expanded ? null : p.user_id)}
-                    className="flex w-full items-center justify-between gap-3 px-4 py-4 text-right transition hover:bg-muted/50"
-                  >
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">
-                        {userTests.length} סריקות
-                      </span>
-                      <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-bold text-sky-700">
-                        {userPools.length} בריכות
-                      </span>
-                      {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-foreground truncate">
-                          {p.display_name || p.email || "ללא שם"}
-                        </span>
-                        {isUserAdmin && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                            <Crown className="h-3 w-3" /> מנהל
-                          </span>
-                        )}
-                        {hasPaid && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                            <CreditCard className="h-3 w-3" /> בתשלום
-                          </span>
-                        )}
-                        {isEarlyBird && !hasPaid && !isUserAdmin && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
-                            🎁 חודש חינם
-                          </span>
-                        )}
-                        {!hasAccess && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-bold text-rose-700">
-                            ללא גישה
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground truncate">
-                        {p.email} · נרשם {new Date(p.created_at).toLocaleDateString("he-IL")}
-                      </div>
-                    </div>
-                  </button>
-
-                  {expanded && (
-                    <div className="border-t border-border bg-muted/30 px-4 py-4 space-y-4">
-                      {/* Admin controls */}
-                      <div className="rounded-xl border border-border bg-background p-3 space-y-3">
-                        <div className="text-xs font-extrabold text-muted-foreground">פעולות ניהול</div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div className="flex items-center gap-2 text-sm">
-                            <Crown className="h-4 w-4 text-amber-600" />
-                            <span className="font-semibold text-foreground">הרשאת מנהל</span>
-                            <span className="text-xs text-muted-foreground">{isUserAdmin ? "פעיל" : "לא פעיל"}</span>
-                          </div>
-                          <button
-                            disabled={busy === `admin-${p.user_id}`}
-                            onClick={() => toggleAdmin(p.user_id, isUserAdmin)}
-                            className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${
-                              isUserAdmin
-                                ? "bg-rose-100 text-rose-700 hover:bg-rose-200"
-                                : "bg-amber-500 text-white hover:bg-amber-600"
-                            }`}
-                          >
-                            {busy === `admin-${p.user_id}` && <Loader2 className="h-3 w-3 animate-spin" />}
-                            {isUserAdmin ? "הסר הרשאת מנהל" : "הפוך למנהל"}
-                          </button>
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-                          <div className="flex items-center gap-2 text-sm">
-                            <CreditCard className="h-4 w-4 text-emerald-600" />
-                            <span className="font-semibold text-foreground">גישת סריקה (תשלום)</span>
-                            <span className="text-xs text-muted-foreground">{hasPaid ? "פעיל" : "ללא"}</span>
-                          </div>
-                          <button
-                            disabled={busy === `paid-${p.user_id}`}
-                            onClick={() => togglePaidAccess(p.user_id, userSubs.base)}
-                            className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-50 ${
-                              hasPaid
-                                ? "bg-rose-100 text-rose-700 hover:bg-rose-200"
-                                : "bg-emerald-500 text-white hover:bg-emerald-600"
-                            }`}
-                          >
-                            {busy === `paid-${p.user_id}` && <Loader2 className="h-3 w-3 animate-spin" />}
-                            {hasPaid ? "בטל גישה" : "הענק גישה"}
-                          </button>
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-                          <div className="flex items-center gap-2 text-sm">
-                            <Waves className="h-4 w-4 text-sky-600" />
-                            <span className="font-semibold text-foreground">מכסת בריכות</span>
-                            <span className="text-xs text-muted-foreground">
-                              {allowedPools} מורשות · {extraPools} תוספות
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              disabled={busy === `pool-${p.user_id}` || extraPools <= 0}
-                              onClick={() => adjustExtraPools(p.user_id, userSubs.addon, -1)}
-                              className="rounded-lg bg-muted px-2 py-1.5 text-foreground hover:bg-muted/80 disabled:opacity-40"
-                            >
-                              <Minus className="h-3.5 w-3.5" />
-                            </button>
-                            <span className="min-w-[2rem] text-center text-sm font-bold text-foreground">
-                              {extraPools}
-                            </span>
-                            <button
-                              disabled={busy === `pool-${p.user_id}`}
-                              onClick={() => adjustExtraPools(p.user_id, userSubs.addon, +1)}
-                              className="rounded-lg bg-sky-500 px-2 py-1.5 text-white hover:bg-sky-600 disabled:opacity-50"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Scans */}
-                      <div>
-                        <div className="mb-2 text-xs font-extrabold text-muted-foreground">סריקות</div>
-                        {userTests.length === 0 ? (
-                          <p className="text-sm text-muted-foreground text-center py-3">אין סריקות למשתמש זה</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {userTests.map((t) => (
-                              <TestItem key={t.id} test={t} poolName={poolName.get(t.pool_id) ?? "—"} />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+              <div>
+                <h1 className="text-2xl font-black tracking-tight">דשבורד ניהול משתמשים</h1>
+                <p className="text-sm text-slate-500">צפייה בסריקות, מכסות ומנויים ידניים</p>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
+
+          <button
+            onClick={() => loadDashboard({ quiet: true })}
+            disabled={refreshing}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 shadow-sm transition hover:border-cyan-200 hover:text-cyan-700 disabled:opacity-60"
+          >
+            {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
+            רענן נתונים
+          </button>
+        </header>
+
+        <section className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <StatCard icon={<Users className="h-5 w-5" />} label="משתמשים" value={rows.length} />
+          <StatCard icon={<CheckCircle2 className="h-5 w-5" />} label="מנויים פעילים" value={stats.activeSubscriptions} />
+          <StatCard icon={<ScanLine className="h-5 w-5" />} label="סריקות שנוצלו" value={stats.totalScans} />
+          <StatCard icon={<ScanLine className="h-5 w-5" />} label="סריקות שנותרו" value={stats.totalRemaining} />
+          <StatCard icon={<Waves className="h-5 w-5" />} label="בריכות פעילות" value={stats.activePools} />
+        </section>
+
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-slate-100 p-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-black">משתמשים וחשבונות</h2>
+              <p className="text-sm text-slate-500">הנתונים מתעדכנים דרך Supabase ולא מפעילים סריקות או Gemini.</p>
+            </div>
+            <label className="relative block md:w-80">
+              <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="חפש לפי שם, אימייל או סטטוס"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pr-10 pl-3 text-sm outline-none transition focus:border-cyan-400 focus:bg-white"
+              />
+            </label>
+          </div>
+
+          {loading ? (
+            <AdminLoading label="אוסף נתוני משתמשים..." compact />
+          ) : filteredRows.length === 0 ? (
+            <div className="p-10 text-center">
+              <AlertTriangle className="mx-auto h-10 w-10 text-slate-300" />
+              <p className="mt-3 font-bold text-slate-700">לא נמצאו משתמשים</p>
+              <p className="text-sm text-slate-500">נסה לחפש אימייל או שם אחר.</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {filteredRows.map((row) => (
+                <UserDashboardRow key={row.account_id} row={row} onGrant={() => openGrantDialog(row)} />
+              ))}
+            </div>
+          )}
+        </section>
+      </main>
+
+      {selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-4 sm:items-center">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-xl font-black">פתיחת / עדכון מנוי</h3>
+                <p className="text-sm text-slate-500">
+                  {selectedUser.full_name || selectedUser.email || selectedUser.account_name || "משתמש"}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedUser(null)}
+                className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200"
+                aria-label="סגור"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <Field label="מתאריך">
+                <input
+                  type="datetime-local"
+                  value={grantForm.start}
+                  onChange={(event) => setGrantForm((prev) => ({ ...prev, start: event.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-cyan-400"
+                />
+              </Field>
+              <Field label="עד תאריך">
+                <input
+                  type="datetime-local"
+                  value={grantForm.end}
+                  onChange={(event) => setGrantForm((prev) => ({ ...prev, end: event.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-cyan-400"
+                />
+              </Field>
+              <Field label="מכסת בריכות">
+                <input
+                  type="number"
+                  min={1}
+                  value={grantForm.poolLimit}
+                  onChange={(event) => setGrantForm((prev) => ({ ...prev, poolLimit: event.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-cyan-400"
+                />
+              </Field>
+              <Field label="מכסת סריקות לתקופה">
+                <input
+                  type="number"
+                  min={0}
+                  step={50}
+                  value={grantForm.scanLimit}
+                  onChange={(event) => setGrantForm((prev) => ({ ...prev, scanLimit: event.target.value }))}
+                  className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-cyan-400"
+                />
+              </Field>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-cyan-100 bg-cyan-50 p-3 text-sm text-cyan-900">
+              המערכת משתמשת בתוכנית הבסיסית ומוסיפה בריכות/חבילות סריקות לפי המספרים שתבחר. חבילות סריקה מעוגלות כלפי מעלה ל־200.
+            </div>
+
+            <button
+              onClick={submitGrant}
+              disabled={granting}
+              className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-cyan-600 text-base font-black text-white shadow-lg shadow-cyan-600/20 transition hover:bg-cyan-700 disabled:opacity-60"
+            >
+              {granting && <Loader2 className="h-5 w-5 animate-spin" />}
+              שמור מנוי
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+function UserDashboardRow({ row, onGrant }: { row: AdminUserRow; onGrant: () => void }) {
+  const activeSubscription = isSubscriptionActive(row);
+  const scanPercent = row.total_scan_limit > 0 ? Math.min(100, Math.round((row.scans_billable / row.total_scan_limit) * 100)) : 0;
+  const poolPercent = row.total_pool_limit > 0 ? Math.min(100, Math.round((row.pools_active_count / row.total_pool_limit) * 100)) : 0;
+
   return (
-    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-      <div className="flex items-center gap-2 text-muted-foreground">
-        {icon}
-        <span className="text-xs font-semibold">{label}</span>
+    <article className="grid gap-4 p-4 lg:grid-cols-[1.4fr_1fr_1fr_auto] lg:items-center">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="truncate text-base font-black text-slate-900">
+            {row.full_name || row.email || row.account_name || "משתמש ללא שם"}
+          </h3>
+          <StatusPill active={activeSubscription} status={row.subscription_status} provider={row.subscription_provider} />
+        </div>
+        <p className="truncate text-sm text-slate-500">{row.email || "אין אימייל בפרופיל"}</p>
+        <p className="mt-1 text-xs text-slate-400">
+          חשבון: {row.account_name || "ללא שם"} · הצטרף: {formatDate(row.joined_at)}
+        </p>
       </div>
-      <div className="mt-1 text-3xl font-extrabold text-foreground">{value}</div>
+
+      <MetricBlock
+        icon={<ScanLine className="h-4 w-4" />}
+        title="סריקות"
+        value={`${row.scans_remaining} נותרו`}
+        description={`${row.scans_billable}/${row.total_scan_limit} נוצלו`}
+        percent={scanPercent}
+      />
+
+      <MetricBlock
+        icon={<Waves className="h-4 w-4" />}
+        title="בריכות"
+        value={`${row.pools_active_count}/${row.total_pool_limit}`}
+        description={`${row.tests_count} סריקות, אחרונה ${formatDate(row.last_scan_at)}`}
+        percent={poolPercent}
+      />
+
+      <div className="flex flex-col gap-2 lg:w-48">
+        <button
+          onClick={onGrant}
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-cyan-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-cyan-700"
+        >
+          <Crown className="h-4 w-4" />
+          פתח מנוי
+        </button>
+        <p className="text-center text-xs text-slate-400">
+          תוקף: {formatDate(row.current_period_start)} - {formatDate(row.current_period_end)}
+        </p>
+      </div>
+    </article>
+  );
+}
+
+function StatusPill({
+  active,
+  status,
+  provider,
+}: {
+  active: boolean;
+  status: string | null;
+  provider: string | null;
+}) {
+  if (active) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-black text-emerald-700">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        מנוי פעיל {provider ? `(${provider})` : ""}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 px-2.5 py-1 text-xs font-black text-rose-700">
+      <AlertTriangle className="h-3.5 w-3.5" />
+      {status ? `לא פעיל (${status})` : "אין מנוי"}
+    </span>
+  );
+}
+
+function MetricBlock({
+  icon,
+  title,
+  value,
+  description,
+  percent,
+}: {
+  icon: ReactNode;
+  title: string;
+  value: string;
+  description: string;
+  percent: number;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-2 text-xs font-black text-slate-500">
+          {icon}
+          {title}
+        </span>
+        <span className="text-sm font-black text-slate-900">{value}</span>
+      </div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200">
+        <div className="h-full rounded-full bg-cyan-500" style={{ width: `${percent}%` }} />
+      </div>
+      <p className="mt-2 text-xs text-slate-500">{description}</p>
     </div>
   );
+}
+
+function StatCard({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-cyan-700">
+        {icon}
+        <span className="text-xs font-black text-slate-500">{label}</span>
+      </div>
+      <div className="mt-2 text-3xl font-black text-slate-900">{value.toLocaleString("he-IL")}</div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-sm font-black text-slate-700">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function AdminLoading({ label, compact = false }: { label: string; compact?: boolean }) {
+  return (
+    <div dir="rtl" className={compact ? "flex items-center justify-center gap-3 p-10" : "flex min-h-screen items-center justify-center gap-3 bg-slate-50"}>
+      <Loader2 className="h-6 w-6 animate-spin text-cyan-600" />
+      <span className="text-sm font-bold text-slate-600">{label}</span>
+    </div>
+  );
+}
+
+function isSubscriptionActive(row: AdminUserRow) {
+  if (!row.subscription_status) return false;
+  if (["active", "trialing", "past_due"].includes(row.subscription_status)) {
+    return !row.current_period_end || new Date(row.current_period_end) > new Date();
+  }
+  return row.subscription_status === "canceled" && !!row.current_period_end && new Date(row.current_period_end) > new Date();
+}
+
+function createDefaultGrantForm(): GrantForm {
+  const now = new Date();
+  return {
+    start: toDateTimeInput(now.toISOString()),
+    end: toDateTimeInput(addMonths(now, 1).toISOString()),
+    poolLimit: "1",
+    scanLimit: "200",
+  };
+}
+
+function addMonths(date: Date, months: number) {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + months);
+  return next;
+}
+
+function toDateTimeInput(value: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "אין נתון";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "אין נתון";
+  return date.toLocaleDateString("he-IL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  });
 }
