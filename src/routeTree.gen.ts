@@ -21,7 +21,6 @@ import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PoolsRouteImport } from './routes/pools'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as HistoryRouteImport } from './routes/history'
-import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ResultsTestIdRouteImport } from './routes/results.$testId'
 import { Route as PoolNewRouteImport } from './routes/pool.new'
@@ -88,11 +87,6 @@ const HistoryRoute = HistoryRouteImport.update({
   path: '/history',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AdminRoute = AdminRouteImport.update({
-  id: '/admin',
-  path: '/admin',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -122,7 +116,6 @@ const ApiPublicPaymentsWebhookRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
   '/history': typeof HistoryRoute
   '/login': typeof LoginRoute
   '/pools': typeof PoolsRoute
@@ -142,7 +135,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
   '/history': typeof HistoryRoute
   '/login': typeof LoginRoute
   '/pools': typeof PoolsRoute
@@ -163,7 +155,6 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/admin': typeof AdminRoute
   '/history': typeof HistoryRoute
   '/login': typeof LoginRoute
   '/pools': typeof PoolsRoute
@@ -185,7 +176,6 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/admin'
     | '/history'
     | '/login'
     | '/pools'
@@ -205,7 +195,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/admin'
     | '/history'
     | '/login'
     | '/pools'
@@ -225,7 +214,6 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
-    | '/admin'
     | '/history'
     | '/login'
     | '/pools'
@@ -246,7 +234,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AdminRoute: typeof AdminRoute
   HistoryRoute: typeof HistoryRoute
   LoginRoute: typeof LoginRoute
   PoolsRoute: typeof PoolsRoute
@@ -351,13 +338,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/admin': {
-      id: '/admin'
-      path: '/admin'
-      fullPath: '/admin'
-      preLoaderRoute: typeof AdminRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -398,7 +378,6 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AdminRoute: AdminRoute,
   HistoryRoute: HistoryRoute,
   LoginRoute: LoginRoute,
   PoolsRoute: PoolsRoute,
