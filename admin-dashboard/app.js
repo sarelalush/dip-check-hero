@@ -9,14 +9,20 @@ const supabase = createClient(config.supabaseUrl, config.supabaseKey, {
 });
 
 const app = document.querySelector("#app");
+
 let state = {
   session: null,
   user: null,
   rows: [],
+  scans: [],
   query: "",
+  scanQuery: "",
+  selectedAccountId: "",
+  selectedGrant: null,
   loading: true,
+  scansLoading: false,
   error: "",
-  selected: null,
+  scanError: "",
 };
 
 boot();
@@ -48,9 +54,10 @@ function renderLogin() {
   app.innerHTML = `
     <main class="login-shell">
       <section class="login-card">
-        <div class="logo" style="margin:0 auto 14px">💧</div>
-        <h1>AquaSense Admin</h1>
-        <p class="subtitle" style="text-align:center">כניסה לדשבורד ניהול חיצוני</p>
+        <div class="water-logo" aria-hidden="true">💧</div>
+        <p class="eyebrow">AquaSense Admin</p>
+        <h1>דשבורד ניהול חיצוני</h1>
+        <p class="subtitle center">כניסה למחשב בלבד לניהול משתמשים, מנויים וסריקות.</p>
         <form id="login-form" class="form-grid">
           <label class="field">
             אימייל
@@ -60,11 +67,11 @@ function renderLogin() {
             סיסמה
             <input class="input" name="password" type="password" autocomplete="current-password" required placeholder="סיסמת המשתמש" />
           </label>
-          <button class="button" type="submit">התחבר</button>
+          <button class="button primary" type="submit">התחבר</button>
           <button class="button secondary" type="button" id="google-login">כניסה עם Google</button>
         </form>
         <p class="hint">
-          זה כלי נפרד מהאפליקציה. רק משתמש שמוגדר כאדמין בטבלת user_roles יכול לראות נתונים ולפתוח מנויים.
+          הדשבורד אינו חלק מאפליקציית המובייל ולא יופיע למשתמשים. רק משתמש שמוגדר כאדמין ב-Supabase יכול להיכנס.
         </p>
         <p class="error hidden" id="login-error"></p>
       </section>
@@ -112,129 +119,311 @@ async function loadDashboard() {
   const { data, error } = await supabase.rpc("admin_dashboard_users");
   if (error) {
     state.rows = [];
+    state.scans = [];
     state.error =
       error.message === "not_authorized"
         ? "אין הרשאת אדמין למשתמש הזה. צריך להוסיף אותו לטבלת user_roles."
         : `טעינת הדשבורד נכשלה: ${error.message}`;
-  } else {
-    state.rows = data ?? [];
+    state.loading = false;
+    renderDashboard();
+    return;
+  }
+
+  state.rows = data ?? [];
+  if (!state.rows.some((row) => row.account_id === state.selectedAccountId)) {
+    state.selectedAccountId = state.rows[0]?.account_id ?? "";
   }
 
   state.loading = false;
+  renderDashboard();
+
+  if (state.selectedAccountId) {
+    await loadScans(state.selectedAccountId);
+  }
+}
+
+async function loadScans(accountId) {
+  state.scansLoading = true;
+  state.scanError = "";
+  state.scans = [];
+  renderDashboard();
+
+  const { data, error } = await supabase.rpc("admin_dashboard_scans", {
+    p_account_id: accountId,
+    p_limit: 250,
+  });
+
+  if (error) {
+    state.scanError =
+      error.message === "not_authorized"
+        ? "אין הרשאת אדמין לצפייה בסריקות."
+        : `טעינת הסריקות נכשלה: ${error.message}`;
+    state.scans = [];
+  } else {
+    state.scans = data ?? [];
+  }
+
+  state.scansLoading = false;
   renderDashboard();
 }
 
 function renderDashboard() {
   const rows = filteredRows();
+  const selected = selectedRow();
   const stats = buildStats(state.rows);
 
   app.innerHTML = `
-    <main class="page">
-      <header class="topbar">
-        <div class="brand">
-          <div class="logo">💧</div>
-          <div>
-            <h1>דשבורד ניהול</h1>
-            <p class="subtitle">משתמשים, מנויים, בריכות וסריקות</p>
-          </div>
+    <main class="admin-page">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">AquaSense Admin</p>
+          <h1>ניהול משתמשים וסריקות</h1>
+          <p class="subtitle">דשבורד חיצוני לצפייה בלקוחות, מכסות, מנויים והיסטוריית בדיקות.</p>
         </div>
-        <div class="actions">
-          <button class="button secondary" id="refresh">רענן נתונים</button>
-          <button class="button danger" id="logout">יציאה</button>
+        <div class="hero-actions">
+          <span class="external-badge">חיצוני לאפליקציה</span>
+          <button class="button secondary" id="refresh" type="button">רענן</button>
+          <button class="button ghost" id="logout" type="button">יציאה</button>
         </div>
-      </header>
-
-      <section class="stats">
-        ${statCard("משתמשים", stats.users)}
-        ${statCard("מנויים פעילים", stats.active)}
-        ${statCard("בריכות פעילות", stats.pools)}
-        ${statCard("סריקות שנוצלו", stats.used)}
-        ${statCard("סריקות שנותרו", stats.remaining)}
       </section>
 
-      <section class="panel">
-        <div class="panel-head">
-          <div>
-            <h2>חשבונות משתמשים</h2>
-            <p class="subtitle">הדשבורד לא מפעיל סריקה ולא קורא ל-Gemini.</p>
+      <section class="stats-grid">
+        ${statCard("משתמשים", stats.users, "חשבונות במערכת")}
+        ${statCard("מנויים פעילים", stats.active, "כולל מנויי admin")}
+        ${statCard("בריכות", stats.pools, "בריכות פעילות")}
+        ${statCard("סריקות", stats.used, "חיוביות שנוצלו")}
+        ${statCard("נותרו", stats.remaining, "סריקות זמינות")}
+      </section>
+
+      <section class="workspace">
+        <aside class="users-panel">
+          <div class="panel-title">
+            <div>
+              <h2>משתמשים</h2>
+              <p class="subtitle">${number(rows.length)} מתוך ${number(state.rows.length)}</p>
+            </div>
           </div>
           <input class="input search" id="search" value="${escapeHtml(state.query)}" placeholder="חיפוש לפי שם, אימייל או סטטוס" />
-        </div>
-        ${renderRows(rows)}
+          ${renderUserList(rows)}
+        </aside>
+
+        <section class="detail-panel">
+          ${state.loading ? renderBigLoading("אוסף נתונים מהמסד...") : state.error ? renderNotice(state.error) : renderSelectedUser(selected)}
+        </section>
       </section>
     </main>
-    ${state.selected ? renderGrantModal(state.selected) : ""}
+    ${state.selectedGrant ? renderGrantModal(state.selectedGrant) : ""}
   `;
 
-  document.querySelector("#refresh").addEventListener("click", loadDashboard);
-  document.querySelector("#logout").addEventListener("click", () => supabase.auth.signOut());
-  document.querySelector("#search").addEventListener("input", (event) => {
+  bindDashboardEvents();
+}
+
+function bindDashboardEvents() {
+  document.querySelector("#refresh")?.addEventListener("click", loadDashboard);
+  document.querySelector("#logout")?.addEventListener("click", () => supabase.auth.signOut());
+  document.querySelector("#search")?.addEventListener("input", (event) => {
     state.query = event.target.value;
     renderDashboard();
   });
+  document.querySelector("#scan-search")?.addEventListener("input", (event) => {
+    state.scanQuery = event.target.value;
+    renderDashboard();
+  });
+
+  for (const button of document.querySelectorAll("[data-select-account]")) {
+    button.addEventListener("click", async () => {
+      const accountId = button.getAttribute("data-select-account");
+      if (!accountId || accountId === state.selectedAccountId) return;
+      state.selectedAccountId = accountId;
+      state.scanQuery = "";
+      await loadScans(accountId);
+    });
+  }
 
   for (const button of document.querySelectorAll("[data-grant-account]")) {
     button.addEventListener("click", () => {
       const accountId = button.getAttribute("data-grant-account");
-      state.selected = state.rows.find((row) => row.account_id === accountId) ?? null;
+      state.selectedGrant = state.rows.find((row) => row.account_id === accountId) ?? null;
       renderDashboard();
     });
   }
 
-  const closeModal = document.querySelector("#close-modal");
-  if (closeModal) {
-    closeModal.addEventListener("click", () => {
-      state.selected = null;
-      renderDashboard();
-    });
-  }
+  document.querySelector("#close-modal")?.addEventListener("click", () => {
+    state.selectedGrant = null;
+    renderDashboard();
+  });
 
-  const grantForm = document.querySelector("#grant-form");
-  if (grantForm) {
-    grantForm.addEventListener("submit", submitGrant);
-  }
+  document.querySelector("#preset-month")?.addEventListener("click", () => applyPreset(1, null));
+  document.querySelector("#preset-year")?.addEventListener("click", () => applyPreset(12, null));
+  document.querySelector("#preset-decade")?.addEventListener("click", () => applyPreset(120, { pools: 1000, scans: 120000 }));
+  document.querySelector("#grant-form")?.addEventListener("submit", submitGrant);
 }
 
-function renderRows(rows) {
+function renderUserList(rows) {
   if (state.loading) {
-    return `<div class="loading"><span class="spinner"></span>אוסף נתוני משתמשים...</div>`;
+    return renderBigLoading("טוען משתמשים...");
   }
-
   if (state.error) {
-    return `<div class="empty">${escapeHtml(state.error)}</div>`;
+    return renderNotice(state.error);
   }
-
   if (!rows.length) {
-    return `<div class="empty">לא נמצאו משתמשים</div>`;
+    return `<div class="empty-state">לא נמצאו משתמשים</div>`;
   }
 
   return `
-    <div class="rows">
-      ${rows.map(renderUserRow).join("")}
+    <div class="user-list">
+      ${rows.map(renderUserButton).join("")}
     </div>
   `;
 }
 
-function renderUserRow(row) {
+function renderUserButton(row) {
+  const active = isSubscriptionActive(row);
+  const selected = row.account_id === state.selectedAccountId;
+  const title = row.full_name || row.email || row.account_name || "משתמש ללא שם";
+  const initials = makeInitials(title);
+
+  return `
+    <button class="user-card ${selected ? "selected" : ""}" data-select-account="${escapeHtml(row.account_id)}" type="button">
+      <span class="avatar">${escapeHtml(initials)}</span>
+      <span class="user-card-body">
+        <strong>${escapeHtml(title)}</strong>
+        <small>${escapeHtml(row.email || "אין אימייל בפרופיל")}</small>
+        <span class="mini-line">
+          <span>${number(row.scans_remaining)} סריקות</span>
+          <span>${number(row.pools_active_count)}/${number(row.total_pool_limit)} בריכות</span>
+        </span>
+      </span>
+      <span class="status-dot ${active ? "ok" : "bad"}" title="${active ? "מנוי פעיל" : "ללא מנוי פעיל"}"></span>
+    </button>
+  `;
+}
+
+function renderSelectedUser(row) {
+  if (!row) {
+    return `<div class="empty-state tall">בחר משתמש כדי לראות פרטים וסריקות</div>`;
+  }
+
   const active = isSubscriptionActive(row);
   const scanPercent = percent(row.scans_billable, row.total_scan_limit);
   const poolPercent = percent(row.pools_active_count, row.total_pool_limit);
-  const title = row.full_name || row.email || row.account_name || "משתמש ללא שם";
 
   return `
-    <article class="user-row">
+    <div class="detail-header">
       <div>
-        <div class="user-title">
-          <h3>${escapeHtml(title)}</h3>
-          <span class="pill ${active ? "green" : "red"}">${active ? "מנוי פעיל" : "ללא מנוי פעיל"}</span>
-        </div>
-        <p class="small">${escapeHtml(row.email || "אין אימייל בפרופיל")}</p>
-        <p class="small">חשבון: ${escapeHtml(row.account_name || "ללא שם")} · תוקף: ${formatDate(row.current_period_start)} - ${formatDate(row.current_period_end)}</p>
+        <p class="eyebrow">${active ? "מנוי פעיל" : "ללא מנוי פעיל"}</p>
+        <h2>${escapeHtml(row.full_name || row.email || row.account_name || "משתמש")}</h2>
+        <p class="subtitle">${escapeHtml(row.email || "אין אימייל")} · ${escapeHtml(row.account_name || "חשבון ללא שם")}</p>
       </div>
-      ${metric("סריקות", `${number(row.scans_remaining)} נותרו`, `${number(row.scans_billable)}/${number(row.total_scan_limit)} נוצלו`, scanPercent)}
-      ${metric("בריכות", `${number(row.pools_active_count)}/${number(row.total_pool_limit)}`, `${number(row.tests_count)} בדיקות · אחרונה ${formatDate(row.last_scan_at)}`, poolPercent)}
-      <button class="button" data-grant-account="${escapeHtml(row.account_id)}">פתח מנוי</button>
+      <button class="button primary" data-grant-account="${escapeHtml(row.account_id)}" type="button">פתח / עדכן מנוי</button>
+    </div>
+
+    <div class="quota-grid">
+      ${quotaCard("סריקות", row.scans_billable, row.total_scan_limit, `${number(row.scans_remaining)} נותרו`, scanPercent)}
+      ${quotaCard("בריכות", row.pools_active_count, row.total_pool_limit, "בריכות פעילות", poolPercent)}
+      ${infoCard("תוקף מנוי", `${formatDate(row.current_period_start)} - ${formatDate(row.current_period_end)}`, row.subscription_provider || "אין ספק")}
+      ${infoCard("בדיקה אחרונה", formatDateTime(row.last_scan_at), `${number(row.tests_count)} סריקות במערכת`)}
+    </div>
+
+    <section class="scans-panel">
+      <div class="section-head">
+        <div>
+          <h3>סריקות של המשתמש</h3>
+          <p class="subtitle">היסטוריית בדיקות, תוצאות, תמונות והמלצות. אין כאן קריאה ל-Gemini.</p>
+        </div>
+        <input class="input scan-search" id="scan-search" value="${escapeHtml(state.scanQuery)}" placeholder="חיפוש בסריקות" />
+      </div>
+      ${renderScans()}
+    </section>
+  `;
+}
+
+function renderScans() {
+  if (state.scansLoading) {
+    return renderBigLoading("טוען סריקות...");
+  }
+  if (state.scanError) {
+    return renderNotice(state.scanError);
+  }
+
+  const scans = filteredScans();
+  if (!scans.length) {
+    return `<div class="empty-state">אין סריקות להצגה עבור המשתמש הזה</div>`;
+  }
+
+  return `
+    <div class="scan-list">
+      ${scans.map(renderScanCard).join("")}
+    </div>
+  `;
+}
+
+function renderScanCard(scan) {
+  const readings = asArray(scan.readings);
+  const recommendations = asArray(scan.recommendations);
+  const statusClass = scan.analysis_status === "completed" ? "ok" : scan.analysis_status === "failed" ? "bad" : "warn";
+
+  return `
+    <article class="scan-card">
+      <div class="scan-main">
+        <div class="scan-top">
+          <span class="scan-status ${statusClass}">${statusLabel(scan.analysis_status)}</span>
+          <strong>${formatDateTime(scan.analyzed_at || scan.created_at)}</strong>
+        </div>
+        <div class="scan-meta">
+          <span>${escapeHtml(scan.pool_name || "ללא בריכה")}</span>
+          <span>${escapeHtml(scan.strip_brand_id || "ללא סטיק")}</span>
+          <span>${escapeHtml([scan.provider, scan.model].filter(Boolean).join(" · ") || "ללא מודל")}</span>
+        </div>
+        ${scan.error_message ? `<p class="scan-error">${escapeHtml(scan.error_message)}</p>` : ""}
+        ${scan.recommendation ? `<p class="scan-note">${escapeHtml(scan.recommendation)}</p>` : ""}
+        ${readings.length ? renderReadings(readings) : `<p class="muted-line">אין ערכי קריאה שמורים לסריקה הזו</p>`}
+        ${recommendations.length ? renderRecommendations(recommendations) : ""}
+      </div>
+      <div class="scan-side">
+        <span class="confidence">${confidenceLabel(scan.confidence)}</span>
+        <span class="billable ${scan.is_billable ? "yes" : "no"}">${scan.is_billable ? "נספר במכסה" : "לא נספר"}</span>
+        ${scan.image_url ? `<a class="image-link" href="${escapeAttr(scan.image_url)}" target="_blank" rel="noreferrer">פתח תמונה</a>` : ""}
+      </div>
     </article>
+  `;
+}
+
+function renderReadings(readings) {
+  return `
+    <div class="reading-grid">
+      ${readings
+        .map((reading) => {
+          const status = normalizeStatus(reading.status);
+          return `
+            <div class="reading-chip ${status}">
+              <span>${escapeHtml(reading.label || reading.key || "מדד")}</span>
+              <strong>${formatReadingValue(reading)}</strong>
+              <small>${statusText(status)}</small>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderRecommendations(recommendations) {
+  return `
+    <div class="recommendations">
+      ${recommendations
+        .slice(0, 3)
+        .map(
+          (item) => `
+            <div class="recommendation">
+              <strong>${escapeHtml(item.title || "המלצה")}</strong>
+              <p>${escapeHtml(item.description || "")}</p>
+              ${item.amount ? `<small>${escapeHtml(item.amount)} ${escapeHtml(item.unit || "")} · ${escapeHtml(item.product_type || "")}</small>` : ""}
+            </div>
+          `,
+        )
+        .join("")}
+    </div>
   `;
 }
 
@@ -248,11 +437,19 @@ function renderGrantModal(row) {
       <section class="modal-card">
         <div class="modal-head">
           <div>
+            <p class="eyebrow">מנוי ידני</p>
             <h2>פתיחת / עדכון מנוי</h2>
             <p class="subtitle">${escapeHtml(row.full_name || row.email || row.account_name || "משתמש")}</p>
           </div>
-          <button class="button secondary" id="close-modal" type="button">סגור</button>
+          <button class="button ghost" id="close-modal" type="button">סגור</button>
         </div>
+
+        <div class="preset-row">
+          <button class="button secondary" id="preset-month" type="button">חודש</button>
+          <button class="button secondary" id="preset-year" type="button">שנה</button>
+          <button class="button secondary" id="preset-decade" type="button">10 שנים + 1000 בריכות</button>
+        </div>
+
         <form id="grant-form">
           <div class="modal-grid">
             <label class="field">
@@ -272,8 +469,8 @@ function renderGrantModal(row) {
               <input class="input" name="scanLimit" type="number" min="0" step="50" value="${Math.max(row.total_scan_limit || 200, 200)}" required />
             </label>
           </div>
-          <p class="hint">המערכת תפתח מנוי admin ידני ותעדכן את מגבלות הבריכות והסריקות לחשבון הזה.</p>
-          <button class="button" style="width:100%;margin-top:16px" type="submit">שמור מנוי</button>
+          <p class="hint">שמירה כאן יוצרת מנוי מסוג admin ומעדכנת את המכסות בחשבון הנבחר בלבד.</p>
+          <button class="button primary full" type="submit">שמור מנוי</button>
           <p class="error hidden" id="grant-error"></p>
         </form>
       </section>
@@ -283,7 +480,7 @@ function renderGrantModal(row) {
 
 async function submitGrant(event) {
   event.preventDefault();
-  if (!state.selected) return;
+  if (!state.selectedGrant) return;
 
   const errorEl = document.querySelector("#grant-error");
   errorEl.classList.add("hidden");
@@ -304,7 +501,7 @@ async function submitGrant(event) {
   button.textContent = "שומר...";
 
   const { error } = await supabase.rpc("admin_grant_subscription", {
-    p_account_id: state.selected.account_id,
+    p_account_id: state.selectedGrant.account_id,
     p_start: start.toISOString(),
     p_end: end.toISOString(),
     p_pool_limit: poolLimit,
@@ -320,27 +517,64 @@ async function submitGrant(event) {
     return;
   }
 
-  state.selected = null;
+  state.selectedGrant = null;
   await loadDashboard();
 }
 
-function statCard(label, value) {
+function applyPreset(months, overrides) {
+  const form = document.querySelector("#grant-form");
+  if (!form) return;
+  const now = new Date();
+  const end = addMonths(now, months);
+  form.elements.start.value = toInputDateTime(now.toISOString());
+  form.elements.end.value = toInputDateTime(end.toISOString());
+  if (overrides?.pools) form.elements.poolLimit.value = overrides.pools;
+  if (overrides?.scans) form.elements.scanLimit.value = overrides.scans;
+}
+
+function statCard(label, value, description) {
   return `
-    <div class="stat-card">
-      <div class="stat-label">${label}</div>
-      <div class="stat-value">${number(value)}</div>
-    </div>
+    <article class="stat-card">
+      <span>${label}</span>
+      <strong>${number(value)}</strong>
+      <small>${description}</small>
+    </article>
   `;
 }
 
-function metric(title, value, description, progress) {
+function quotaCard(label, used, total, caption, progress) {
   return `
-    <div class="metric">
-      <div class="metric-top"><span>${title}</span><strong>${value}</strong></div>
-      <div class="bar"><span style="width:${progress}%"></span></div>
-      <p class="small">${description}</p>
-    </div>
+    <article class="quota-card">
+      <div>
+        <span>${label}</span>
+        <strong>${number(used)} / ${number(total)}</strong>
+        <small>${caption}</small>
+      </div>
+      <div class="ring" style="--value:${progress}">
+        <b>${progress}%</b>
+      </div>
+    </article>
   `;
+}
+
+function infoCard(label, value, caption) {
+  return `
+    <article class="quota-card simple">
+      <div>
+        <span>${label}</span>
+        <strong>${escapeHtml(value)}</strong>
+        <small>${escapeHtml(caption || "")}</small>
+      </div>
+    </article>
+  `;
+}
+
+function renderBigLoading(label) {
+  return `<div class="empty-state tall"><span class="spinner"></span>${label}</div>`;
+}
+
+function renderNotice(message) {
+  return `<div class="notice">${escapeHtml(message)}</div>`;
 }
 
 function buildStats(rows) {
@@ -370,6 +604,29 @@ function filteredRows() {
   );
 }
 
+function filteredScans() {
+  const query = state.scanQuery.trim().toLowerCase();
+  if (!query) return state.scans;
+
+  return state.scans.filter((scan) => {
+    const readings = asArray(scan.readings)
+      .map((reading) => `${reading.key} ${reading.label} ${reading.value} ${reading.status}`)
+      .join(" ");
+    const recommendations = asArray(scan.recommendations)
+      .map((item) => `${item.title} ${item.description} ${item.product_type}`)
+      .join(" ");
+    return [scan.pool_name, scan.strip_brand_id, scan.analysis_status, scan.overall_status, scan.provider, scan.model, readings, recommendations]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(query);
+  });
+}
+
+function selectedRow() {
+  return state.rows.find((row) => row.account_id === state.selectedAccountId) ?? null;
+}
+
 function isSubscriptionActive(row) {
   if (!row.subscription_status) return false;
   if (["active", "trialing", "past_due"].includes(row.subscription_status)) {
@@ -381,6 +638,63 @@ function isSubscriptionActive(row) {
 function percent(used, total) {
   if (!total || total <= 0) return 0;
   return Math.max(0, Math.min(100, Math.round(((used || 0) / total) * 100)));
+}
+
+function normalizeStatus(value) {
+  const status = String(value || "").toLowerCase();
+  if (["ok", "balanced", "normal", "good", "ideal"].includes(status)) return "ok";
+  if (["high", "low", "warning", "warn"].includes(status)) return "warn";
+  if (["critical", "bad", "danger", "very_high", "very_low"].includes(status)) return "bad";
+  return "neutral";
+}
+
+function statusText(status) {
+  return {
+    ok: "תקין",
+    warn: "דורש תשומת לב",
+    bad: "גבוה / נמוך",
+    neutral: "לא ידוע",
+  }[status];
+}
+
+function statusLabel(status) {
+  return {
+    completed: "הושלם",
+    failed: "נכשל",
+    pending: "ממתין",
+    processing: "בתהליך",
+  }[status] || status || "לא ידוע";
+}
+
+function confidenceLabel(value) {
+  if (value === null || value === undefined || value === "") return "אין ביטחון";
+  return `${Math.round(Number(value) * 100)}% ביטחון`;
+}
+
+function formatReadingValue(reading) {
+  const value = reading.value ?? "-";
+  return `${value}${reading.unit ? ` ${reading.unit}` : ""}`;
+}
+
+function makeInitials(value) {
+  return String(value || "A")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function asArray(value) {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 function toInputDateTime(value) {
@@ -404,6 +718,19 @@ function formatDate(value) {
   return date.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
+function formatDateTime(value) {
+  if (!value) return "אין נתון";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "אין נתון";
+  return date.toLocaleString("he-IL", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function number(value) {
   return Number(value || 0).toLocaleString("he-IL");
 }
@@ -417,6 +744,10 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function escapeAttr(value) {
+  return escapeHtml(value);
+}
+
 function renderLoading(label) {
-  app.innerHTML = `<div class="loading" style="min-height:100vh;display:grid;place-items:center"><span><span class="spinner"></span>${label}</span></div>`;
+  app.innerHTML = `<div class="loading-screen"><span class="spinner"></span>${label}</div>`;
 }
