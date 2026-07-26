@@ -7,16 +7,36 @@ const __dirname = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const rootDir = resolve(__dirname, "..");
 const env = {
   ...loadEnv(resolve(rootDir, ".env")),
+  ...loadEnv(resolve(rootDir, "mobile", ".env")),
   ...loadEnv(resolve(rootDir, ".env.local")),
+  ...loadEnv(resolve(__dirname, ".env.local")),
 };
 
 const port = Number(process.env.ADMIN_DASHBOARD_PORT || env.ADMIN_DASHBOARD_PORT || 8090);
-const supabaseUrl = process.env.VITE_SUPABASE_URL || env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || env.SUPABASE_URL;
+const supabaseUrl =
+  process.env.ADMIN_SUPABASE_URL ||
+  env.ADMIN_SUPABASE_URL ||
+  process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  env.EXPO_PUBLIC_SUPABASE_URL ||
+  process.env.VITE_SUPABASE_URL ||
+  env.VITE_SUPABASE_URL ||
+  process.env.SUPABASE_URL ||
+  env.SUPABASE_URL;
 const supabaseKey =
+  process.env.ADMIN_SUPABASE_PUBLISHABLE_KEY ||
+  env.ADMIN_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.ADMIN_SUPABASE_ANON_KEY ||
+  env.ADMIN_SUPABASE_ANON_KEY ||
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   env.VITE_SUPABASE_PUBLISHABLE_KEY ||
   process.env.SUPABASE_PUBLISHABLE_KEY ||
-  env.SUPABASE_PUBLISHABLE_KEY;
+  env.SUPABASE_PUBLISHABLE_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  env.SUPABASE_ANON_KEY;
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -27,7 +47,7 @@ const mimeTypes = {
 };
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error("Missing SUPABASE_URL or SUPABASE_PUBLISHABLE_KEY in .env");
+  console.error("Missing Supabase URL or publishable/anon key for the admin dashboard.");
   process.exit(1);
 }
 
