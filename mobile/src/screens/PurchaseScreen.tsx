@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
 import { BillingPurchasePanel } from '../components/BillingPurchasePanel';
@@ -9,6 +9,9 @@ import { colors, radius, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Purchase'>;
+
+const APPLE_EULA_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+const PRIVACY_POLICY_URL = 'https://sarelalush.github.io/dip-check-hero/privacy-policy/';
 
 const reasonCopy = {
   poolQuota: {
@@ -51,6 +54,9 @@ export function PurchaseScreen({ navigation, route }: Props) {
           <Text style={styles.price}>30</Text>
           <Text style={styles.priceMeta}>₪ לחודש</Text>
         </View>
+        <Text style={styles.renewalText}>
+          מנוי למשך חודש אחד, המתחדש אוטומטית בכל חודש עד לביטול דרך הגדרות חשבון Apple.
+        </Text>
         <View style={styles.benefits}>
           <Benefit icon="scan" text="200 סריקות סטיק בכל חודש" />
           <Benefit icon="pools" text="בריכה פעילה אחת כלולה" />
@@ -88,14 +94,17 @@ export function PurchaseScreen({ navigation, route }: Props) {
       />
 
       <View style={styles.legalLinks}>
-        <Pressable onPress={() => navigation.navigate('Terms')} hitSlop={8}>
-          <Text style={styles.legalLinkText}>תנאי שימוש</Text>
+        <Pressable accessibilityRole="link" onPress={() => Linking.openURL(APPLE_EULA_URL)} hitSlop={8}>
+          <Text style={styles.legalLinkText}>תנאי שימוש (EULA)</Text>
         </Pressable>
         <Text style={styles.legalSeparator}>•</Text>
-        <Pressable onPress={() => navigation.navigate('PrivacyPolicy')} hitSlop={8}>
+        <Pressable accessibilityRole="link" onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} hitSlop={8}>
           <Text style={styles.legalLinkText}>מדיניות פרטיות</Text>
         </Pressable>
       </View>
+      <Text style={styles.billingDisclosure}>
+        התשלום יחויב בחשבון Apple בעת אישור הרכישה. ניתן לנהל או לבטל את המנוי בהגדרות המינויים של חשבון Apple.
+      </Text>
 
       {accountId ? (
         <Pressable style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]} onPress={() => navigation.navigate('PlanUsage', { reason })}>
@@ -206,6 +215,15 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
   },
+  renewalText: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 18,
+    paddingHorizontal: 8,
+    ...rtl.textCenter,
+  },
   benefits: {
     gap: 9,
   },
@@ -251,6 +269,15 @@ const styles = StyleSheet.create({
     gap: 9,
     justifyContent: 'center',
     marginTop: 12,
+  },
+  billingDisclosure: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 17,
+    paddingHorizontal: 14,
+    ...rtl.textCenter,
   },
   accountActions: {
     flexDirection: 'row-reverse',
@@ -309,6 +336,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamilySemiBold,
     fontSize: 12,
     fontWeight: '900',
+    textDecorationLine: 'underline',
   },
   legalSeparator: {
     color: colors.muted,

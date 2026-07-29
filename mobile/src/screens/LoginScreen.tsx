@@ -74,6 +74,13 @@ export function LoginScreen({ navigation }: Props) {
       subtitle="התחבר כדי לראות את הבריכות והבדיקות שלך"
       footer={
         <>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => navigation.navigate('Purchase', { reason: 'subscriptionRequired' })}
+            style={({ pressed }) => [styles.purchaseLink, pressed && styles.pressed]}
+          >
+            <Text style={styles.purchaseLinkText}>צפייה במנויים ורכישה ללא הרשמה</Text>
+          </Pressable>
           <View style={styles.accountRow}>
             <Text style={styles.accountText}>אין לך חשבון?</Text>
             <Pressable onPress={() => navigation.navigate('Signup')}>
@@ -114,6 +121,9 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.62 },
   forgotButton: { alignSelf: 'flex-start', marginTop: Platform.OS === 'android' ? 1 : -1, marginBottom: Platform.OS === 'android' ? 3 : 0, paddingVertical: 2 },
   forgotText: { color: colors.primary, fontFamily: typography.fontFamilyRegular, fontSize: 14, fontWeight: '700', ...rtl.text },
+  purchaseLink: { alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 6 },
+  purchaseLinkText: { color: colors.primaryDark, fontFamily: typography.fontFamilyBold, fontSize: 13, fontWeight: '900', ...rtl.textCenter },
+  pressed: { opacity: 0.72 },
   accountRow: { marginTop: Platform.OS === 'android' ? 8 : 2, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4 },
   accountText: { color: '#1D2530', fontFamily: typography.fontFamilyRegular, fontSize: 13, fontWeight: '700' },
   accountLink: { color: colors.primary, fontFamily: typography.fontFamilySemiBold, fontSize: 13, fontWeight: '900' },
