@@ -641,7 +641,7 @@ function renderNotice(message) {
 async function hydrateScanImages(scans) {
   return Promise.all(
     scans.map(async (scan) => {
-      const source = scan.image_url || scan.image_path || "";
+      const source = scan.image_path || scan.image_url || "";
       return {
         ...scan,
         image_source: source,
@@ -656,7 +656,7 @@ async function resolveScanImageUrl(value) {
   if (!source) return "";
   if (state.imageUrlCache[source]) return state.imageUrlCache[source];
 
-  if (/^(https?:|data:|blob:)/i.test(source)) {
+  if (/^(data:|blob:)/i.test(source)) {
     state.imageUrlCache[source] = source;
     return source;
   }
@@ -666,7 +666,13 @@ async function resolveScanImageUrl(value) {
   }
 
   const path = normalizeStoragePath(source);
-  if (!path) return "";
+  if (!path) {
+    if (/^https?:/i.test(source)) {
+      state.imageUrlCache[source] = source;
+      return source;
+    }
+    return "";
+  }
 
   const { data, error } = await supabase.storage.from(SCAN_IMAGES_BUCKET).createSignedUrl(path, 60 * 60);
   if (error || !data?.signedUrl) {
@@ -694,6 +700,8 @@ function normalizeStoragePath(value) {
     if (url.pathname.includes(signedMarker)) {
       return decodeURIComponent(url.pathname.split(signedMarker)[1] || "").split("?")[0];
     }
+
+    return "";
   } catch {
     // Plain storage paths are handled below.
   }
