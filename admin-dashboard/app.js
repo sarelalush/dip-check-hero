@@ -174,6 +174,7 @@ function renderDashboard() {
   const rows = filteredRows();
   const selected = selectedRow();
   const stats = buildStats(state.rows);
+  const adminLabel = state.user?.email || "Admin";
 
   app.innerHTML = `
     <div class="admin-shell">
@@ -186,9 +187,11 @@ function renderDashboard() {
           </div>
         </div>
         <nav class="sidebar-nav" aria-label="&#1504;&#1497;&#1493;&#1493;&#1496; &#1512;&#1488;&#1513;&#1497;">
-          <a class="active" href="#overview"><span class="nav-icon overview-icon"></span><span>&#1505;&#1511;&#1497;&#1512;&#1492;</span></a>
-          <a href="#users"><span class="nav-icon users-icon"></span><span>&#1502;&#1513;&#1514;&#1502;&#1513;&#1497;&#1501;</span></a>
+          <a href="#overview"><span class="nav-icon overview-icon"></span><span>&#1505;&#1511;&#1497;&#1512;&#1492;</span></a>
+          <a class="active" href="#users"><span class="nav-icon users-icon"></span><span>&#1502;&#1513;&#1514;&#1502;&#1513;&#1497;&#1501;</span></a>
           <a href="#scans"><span class="nav-icon scans-icon"></span><span>&#1505;&#1512;&#1497;&#1511;&#1493;&#1514;</span></a>
+          <a href="#subscriptions"><span class="nav-icon subscription-icon"></span><span>&#1502;&#1504;&#1493;&#1497;&#1497;&#1501;</span></a>
+          <a href="#settings"><span class="nav-icon settings-icon"></span><span>&#1492;&#1490;&#1491;&#1512;&#1493;&#1514;</span></a>
         </nav>
         <div class="sidebar-status">
           <span></span>
@@ -200,64 +203,57 @@ function renderDashboard() {
       </aside>
       <div class="admin-main">
         <header class="management-topbar">
-          <div>
-            <span class="topbar-kicker">AquaSense Admin</span>
+          <div class="topbar-title">
             <strong>&#1502;&#1512;&#1499;&#1494; &#1492;&#1489;&#1511;&#1512;&#1492;</strong>
+            <span>ניהול משתמשים ופעילות המערכת</span>
           </div>
+          <label class="global-search">
+            <span class="search-icon" aria-hidden="true"></span>
+            <input id="search" value="${escapeHtml(state.query)}" placeholder="חיפוש משתמש, אימייל או סטטוס" />
+          </label>
           <div class="topbar-actions">
-            <button class="button secondary" id="refresh" type="button">&#1512;&#1506;&#1504;&#1493;&#1503; &#1504;&#1514;&#1493;&#1504;&#1497;&#1501;</button>
-            <button class="button ghost" id="logout" type="button">&#1497;&#1510;&#1497;&#1488;&#1492;</button>
+            <button class="icon-button refresh-button" id="refresh" type="button" title="רענון נתונים" aria-label="רענון נתונים"></button>
+            <span class="admin-avatar">${escapeHtml(makeInitials(adminLabel))}</span>
+            <span class="admin-name">${escapeHtml(adminLabel)}</span>
+            <button class="icon-button logout-button" id="logout" type="button" title="יציאה" aria-label="יציאה"></button>
           </div>
         </header>
         <main class="admin-page">
-      <section class="hero">
-        <div class="brand-lockup">
-          <span class="brand-mark" aria-hidden="true"></span>
-          <div>
-            <p class="eyebrow">AquaSense</p>
-            <h1>מרכז הבקרה</h1>
-            <p class="subtitle">משתמשים, מנויים וסריקות במקום אחד</p>
-          </div>
-        </div>
-        <div class="hero-actions legacy-actions">
-          <span class="external-badge"><i></i> המערכת מחוברת</span>
-          <button class="button secondary" id="refresh" type="button">רענון נתונים</button>
-          <button class="button ghost" id="logout" type="button">יציאה</button>
-        </div>
-      </section>
+          <section class="stats-grid" id="overview">
+            ${statCard("משתמשים", stats.users, "חשבונות במערכת")}
+            ${statCard("מנויים פעילים", stats.active, `${percent(stats.active, stats.users)}% מכלל המשתמשים`)}
+            ${statCard("סריקות שבוצעו", stats.used, `${number(stats.remaining)} סריקות זמינות`)}
+            ${statCard("בריכות פעילות", stats.pools, "בכל חשבונות המערכת")}
+          </section>
 
-      <div class="overview-heading" id="overview">
-        <div>
-          <p class="eyebrow">תמונת מצב</p>
-          <h2>מה קורה ב-AquaSense</h2>
-        </div>
-        <p>הנתונים מתעדכנים ישירות ממסד הנתונים</p>
-      </div>
+          <section class="workspace" id="users">
+            <section class="users-table-panel">
+              <div class="table-toolbar">
+                <div>
+                  <h2>משתמשים</h2>
+                  <p>${number(rows.length)} מתוך ${number(state.rows.length)} משתמשים</p>
+                </div>
+                <button class="button secondary compact-refresh" id="table-refresh" type="button">רענון</button>
+              </div>
+              ${renderUserList(rows)}
+            </section>
 
-      <section class="stats-grid">
-        ${statCard("משתמשים", stats.users, "חשבונות במערכת")}
-        ${statCard("מנויים פעילים", stats.active, "כולל מנויי admin")}
-        ${statCard("בריכות", stats.pools, "בריכות פעילות")}
-        ${statCard("סריקות", stats.used, "חיוביות שנוצלו")}
-        ${statCard("נותרו", stats.remaining, "סריקות זמינות")}
-      </section>
+            <aside class="user-inspector">
+              ${state.loading ? renderBigLoading("אוסף נתונים מהמסד...") : state.error ? renderNotice(state.error) : renderSelectedUser(selected)}
+            </aside>
+          </section>
 
-      <section class="workspace" id="users">
-        <aside class="users-panel">
-          <div class="panel-title">
-            <div>
-              <h2>משתמשים</h2>
-              <p class="subtitle">${number(rows.length)} מתוך ${number(state.rows.length)}</p>
+          <section class="scan-history-section" id="scans">
+            <div class="section-head">
+              <div>
+                <p class="section-kicker">פעילות משתמש</p>
+                <h2>היסטוריית סריקות</h2>
+                <p class="subtitle">${selected ? escapeHtml(selected.full_name || selected.email || "המשתמש הנבחר") : "בחר משתמש להצגת הסריקות"}</p>
+              </div>
+              ${selected ? `<input class="input scan-search" id="scan-search" value="${escapeHtml(state.scanQuery)}" placeholder="חיפוש בסריקות" />` : ""}
             </div>
-          </div>
-          <input class="input search" id="search" value="${escapeHtml(state.query)}" placeholder="חיפוש לפי שם, אימייל או סטטוס" />
-          ${renderUserList(rows)}
-        </aside>
-
-        <section class="detail-panel" id="scans">
-          ${state.loading ? renderBigLoading("אוסף נתונים מהמסד...") : state.error ? renderNotice(state.error) : renderSelectedUser(selected)}
-        </section>
-      </section>
+            ${selected ? renderScans() : `<div class="empty-state">בחר משתמש כדי לראות את היסטוריית הסריקות שלו</div>`}
+          </section>
         </main>
       </div>
     </div>
@@ -270,6 +266,7 @@ function renderDashboard() {
 
 function bindDashboardEvents() {
   document.querySelector("#refresh")?.addEventListener("click", loadDashboard);
+  document.querySelector("#table-refresh")?.addEventListener("click", loadDashboard);
   document.querySelector("#logout")?.addEventListener("click", () => supabase.auth.signOut());
   document.querySelector("#search")?.addEventListener("input", (event) => {
     state.query = event.target.value;
@@ -338,8 +335,18 @@ function renderUserList(rows) {
   }
 
   return `
-    <div class="user-list">
-      ${rows.map(renderUserButton).join("")}
+    <div class="user-table">
+      <div class="user-table-header" aria-hidden="true">
+        <span>משתמש</span>
+        <span>סטטוס</span>
+        <span>סריקות</span>
+        <span>בריכות</span>
+        <span>פעילות אחרונה</span>
+        <span></span>
+      </div>
+      <div class="user-table-body">
+        ${rows.map(renderUserButton).join("")}
+      </div>
     </div>
   `;
 }
@@ -351,17 +358,19 @@ function renderUserButton(row) {
   const initials = makeInitials(title);
 
   return `
-    <button class="user-card ${selected ? "selected" : ""}" data-select-account="${escapeHtml(row.account_id)}" type="button">
-      <span class="avatar">${escapeHtml(initials)}</span>
-      <span class="user-card-body">
-        <strong>${escapeHtml(title)}</strong>
-        <small>${escapeHtml(row.email || "אין אימייל בפרופיל")}</small>
-        <span class="mini-line">
-          <span>${number(row.scans_remaining)} סריקות</span>
-          <span>${number(row.pools_active_count)}/${number(row.total_pool_limit)} בריכות</span>
+    <button class="user-table-row ${selected ? "selected" : ""}" data-select-account="${escapeHtml(row.account_id)}" type="button">
+      <span class="table-user">
+        <span class="avatar">${escapeHtml(initials)}</span>
+        <span>
+          <strong>${escapeHtml(title)}</strong>
+          <small>${escapeHtml(row.email || "אין אימייל בפרופיל")}</small>
         </span>
       </span>
-      <span class="status-dot ${active ? "ok" : "bad"}" title="${active ? "מנוי פעיל" : "ללא מנוי פעיל"}"></span>
+      <span class="status-pill ${active ? "ok" : "bad"}"><i></i>${active ? "מנוי פעיל" : "ללא מנוי"}</span>
+      <span class="table-number"><strong>${number(row.scans_billable)}</strong><small>${number(row.scans_remaining)} נותרו</small></span>
+      <span class="table-number"><strong>${number(row.pools_active_count)}</strong><small>מתוך ${number(row.total_pool_limit)}</small></span>
+      <span class="table-date">${formatDateTime(row.last_scan_at)}</span>
+      <span class="row-arrow" aria-hidden="true">‹</span>
     </button>
   `;
 }
@@ -376,35 +385,94 @@ function renderSelectedUser(row) {
   const poolPercent = percent(row.pools_active_count, row.total_pool_limit);
 
   return `
-    <div class="detail-header">
-      <div class="detail-identity">
-        <span class="detail-avatar">${escapeHtml(makeInitials(row.full_name || row.email || row.account_name || "משתמש"))}</span>
-        <div>
-          <p class="eyebrow">${active ? "מנוי פעיל" : "ללא מנוי פעיל"}</p>
-          <h2>${escapeHtml(row.full_name || row.email || row.account_name || "משתמש")}</h2>
-          <p class="subtitle">${escapeHtml(row.email || "אין אימייל")} · ${escapeHtml(row.account_name || "חשבון ללא שם")}</p>
-        </div>
+    <div class="inspector-heading">
+      <div>
+        <p class="section-kicker">משתמש נבחר</p>
+        <h2>פרטי משתמש</h2>
       </div>
-      <button class="button primary" data-grant-account="${escapeHtml(row.account_id)}" type="button">פתח / עדכן מנוי</button>
+      <span class="status-dot ${active ? "ok" : "bad"}" title="${active ? "מנוי פעיל" : "ללא מנוי פעיל"}"></span>
     </div>
 
-    <div class="quota-grid">
-      ${quotaCard("סריקות", row.scans_billable, row.total_scan_limit, `${number(row.scans_remaining)} נותרו`, scanPercent)}
-      ${quotaCard("בריכות", row.pools_active_count, row.total_pool_limit, "בריכות פעילות", poolPercent)}
-      ${infoCard("תוקף מנוי", `${formatDate(row.current_period_start)} - ${formatDate(row.current_period_end)}`, row.subscription_provider || "אין ספק")}
-      ${infoCard("בדיקה אחרונה", formatDateTime(row.last_scan_at), `${number(row.tests_count)} סריקות במערכת`)}
+    <div class="inspector-identity">
+      <span class="detail-avatar">${escapeHtml(makeInitials(row.full_name || row.email || row.account_name || "משתמש"))}</span>
+      <div>
+        <h3>${escapeHtml(row.full_name || row.email || row.account_name || "משתמש")}</h3>
+        <p>${escapeHtml(row.email || "אין אימייל")}</p>
+        <small>${escapeHtml(row.account_name || "חשבון ללא שם")}</small>
+      </div>
     </div>
 
-    <section class="scans-panel">
-      <div class="section-head">
+    <div class="subscription-summary" id="subscriptions">
+      <div class="summary-title">
         <div>
-          <h3>סריקות של המשתמש</h3>
-          <p class="subtitle">היסטוריית בדיקות, תוצאות, תמונות והמלצות. אין כאן קריאה ל-Gemini.</p>
+          <span>מצב מנוי</span>
+          <strong>${active ? "פעיל" : "לא פעיל"}</strong>
         </div>
-        <input class="input scan-search" id="scan-search" value="${escapeHtml(state.scanQuery)}" placeholder="חיפוש בסריקות" />
+        <span class="subscription-badge ${active ? "ok" : "bad"}">${escapeHtml(row.subscription_provider || "ללא ספק")}</span>
       </div>
-      ${renderScans()}
-    </section>
+      <dl>
+        <div><dt>תחילת תקופה</dt><dd>${formatDate(row.current_period_start)}</dd></div>
+        <div><dt>סיום תקופה</dt><dd>${formatDate(row.current_period_end)}</dd></div>
+      </dl>
+    </div>
+
+    <div class="inspector-metrics">
+      <div><strong>${number(row.scans_remaining)}</strong><span>סריקות נותרו</span><i style="--progress:${scanPercent}%"></i></div>
+      <div><strong>${number(row.pools_active_count)}</strong><span>בריכות פעילות</span><i style="--progress:${poolPercent}%"></i></div>
+      <div><strong>${number(row.tests_count)}</strong><span>בדיקות במערכת</span><i style="--progress:${Math.min(number(row.tests_count), 100)}%"></i></div>
+    </div>
+
+    <button class="button primary inspector-action" data-grant-account="${escapeHtml(row.account_id)}" type="button">עדכן מנוי ומכסות</button>
+
+    <div class="recent-scans-head">
+      <div>
+        <h3>סריקות אחרונות</h3>
+        <p>שלוש הפעולות האחרונות</p>
+      </div>
+      <a href="#scans">כל הסריקות</a>
+    </div>
+    ${renderRecentScans()}
+  `;
+}
+
+function renderRecentScans() {
+  if (state.scansLoading) {
+    return `<div class="recent-scans-loading">טוען סריקות...</div>`;
+  }
+  if (state.scanError) {
+    return renderNotice(state.scanError);
+  }
+  if (!state.scans.length) {
+    return `<div class="recent-scans-empty">אין עדיין סריקות למשתמש</div>`;
+  }
+
+  return `
+    <div class="recent-scans">
+      ${state.scans.slice(0, 3).map(renderRecentScan).join("")}
+    </div>
+  `;
+}
+
+function renderRecentScan(scan) {
+  const readings = asArray(scan.readings).slice(0, 3);
+  const statusClass = scan.analysis_status === "completed" ? "ok" : scan.analysis_status === "failed" ? "bad" : "warn";
+  const title = `${formatDateTime(scan.analyzed_at || scan.created_at)} · ${scan.pool_name || "ללא בריכה"}`;
+
+  return `
+    <article class="recent-scan">
+      ${
+        scan.image_preview_url
+          ? `<button class="recent-scan-image" type="button" data-open-image="${escapeAttr(scan.image_preview_url)}" data-image-title="${escapeAttr(title)}"><img src="${escapeAttr(scan.image_preview_url)}" alt="תמונת סריקה" loading="lazy" /></button>`
+          : `<span class="recent-scan-image empty">אין תמונה</span>`
+      }
+      <div class="recent-scan-body">
+        <div><strong>${escapeHtml(scan.pool_name || "ללא בריכה")}</strong><span class="scan-status ${statusClass}">${statusLabel(scan.analysis_status)}</span></div>
+        <small>${formatDateTime(scan.analyzed_at || scan.created_at)}</small>
+        <div class="recent-values">
+          ${readings.map((reading) => `<span><b>${escapeHtml(reading.label || reading.key || "מדד")}</b>${escapeHtml(formatReadingValue(reading))}</span>`).join("")}
+        </div>
+      </div>
+    </article>
   `;
 }
 
