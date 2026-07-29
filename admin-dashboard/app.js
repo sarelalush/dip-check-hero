@@ -178,17 +178,28 @@ function renderDashboard() {
   app.innerHTML = `
     <main class="admin-page">
       <section class="hero">
-        <div>
-          <p class="eyebrow">AquaSense Admin</p>
-          <h1>ניהול משתמשים וסריקות</h1>
-          <p class="subtitle">דשבורד חיצוני לצפייה בלקוחות, מכסות, מנויים והיסטוריית בדיקות.</p>
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <p class="eyebrow">AquaSense</p>
+            <h1>מרכז הבקרה</h1>
+            <p class="subtitle">משתמשים, מנויים וסריקות במקום אחד</p>
+          </div>
         </div>
         <div class="hero-actions">
-          <span class="external-badge">חיצוני לאפליקציה</span>
-          <button class="button secondary" id="refresh" type="button">רענן</button>
+          <span class="external-badge"><i></i> המערכת מחוברת</span>
+          <button class="button secondary" id="refresh" type="button">רענון נתונים</button>
           <button class="button ghost" id="logout" type="button">יציאה</button>
         </div>
       </section>
+
+      <div class="overview-heading">
+        <div>
+          <p class="eyebrow">תמונת מצב</p>
+          <h2>מה קורה ב-AquaSense</h2>
+        </div>
+        <p>הנתונים מתעדכנים ישירות ממסד הנתונים</p>
+      </div>
 
       <section class="stats-grid">
         ${statCard("משתמשים", stats.users, "חשבונות במערכת")}
@@ -331,10 +342,13 @@ function renderSelectedUser(row) {
 
   return `
     <div class="detail-header">
-      <div>
-        <p class="eyebrow">${active ? "מנוי פעיל" : "ללא מנוי פעיל"}</p>
-        <h2>${escapeHtml(row.full_name || row.email || row.account_name || "משתמש")}</h2>
-        <p class="subtitle">${escapeHtml(row.email || "אין אימייל")} · ${escapeHtml(row.account_name || "חשבון ללא שם")}</p>
+      <div class="detail-identity">
+        <span class="detail-avatar">${escapeHtml(makeInitials(row.full_name || row.email || row.account_name || "משתמש"))}</span>
+        <div>
+          <p class="eyebrow">${active ? "מנוי פעיל" : "ללא מנוי פעיל"}</p>
+          <h2>${escapeHtml(row.full_name || row.email || row.account_name || "משתמש")}</h2>
+          <p class="subtitle">${escapeHtml(row.email || "אין אימייל")} · ${escapeHtml(row.account_name || "חשבון ללא שם")}</p>
+        </div>
       </div>
       <button class="button primary" data-grant-account="${escapeHtml(row.account_id)}" type="button">פתח / עדכן מנוי</button>
     </div>
@@ -596,7 +610,10 @@ function applyPreset(months, overrides) {
 function statCard(label, value, description) {
   return `
     <article class="stat-card">
-      <span>${label}</span>
+      <div class="stat-card-top">
+        <span>${label}</span>
+        <i aria-hidden="true"></i>
+      </div>
       <strong>${number(value)}</strong>
       <small>${description}</small>
     </article>
