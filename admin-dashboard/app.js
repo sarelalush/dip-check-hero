@@ -176,7 +176,40 @@ function renderDashboard() {
   const stats = buildStats(state.rows);
 
   app.innerHTML = `
-    <main class="admin-page">
+    <div class="admin-shell">
+      <aside class="app-sidebar">
+        <div class="sidebar-brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <div>
+            <strong>AquaSense</strong>
+            <small>&#1504;&#1497;&#1492;&#1493;&#1500; &#1502;&#1506;&#1512;&#1499;&#1514;</small>
+          </div>
+        </div>
+        <nav class="sidebar-nav" aria-label="&#1504;&#1497;&#1493;&#1493;&#1496; &#1512;&#1488;&#1513;&#1497;">
+          <a class="active" href="#overview"><span class="nav-icon overview-icon"></span><span>&#1505;&#1511;&#1497;&#1512;&#1492;</span></a>
+          <a href="#users"><span class="nav-icon users-icon"></span><span>&#1502;&#1513;&#1514;&#1502;&#1513;&#1497;&#1501;</span></a>
+          <a href="#scans"><span class="nav-icon scans-icon"></span><span>&#1505;&#1512;&#1497;&#1511;&#1493;&#1514;</span></a>
+        </nav>
+        <div class="sidebar-status">
+          <span></span>
+          <div>
+            <strong>&#1502;&#1495;&#1493;&#1489;&#1512; &#1500;&#1502;&#1506;&#1512;&#1499;&#1514;</strong>
+            <small>Supabase live</small>
+          </div>
+        </div>
+      </aside>
+      <div class="admin-main">
+        <header class="management-topbar">
+          <div>
+            <span class="topbar-kicker">AquaSense Admin</span>
+            <strong>&#1502;&#1512;&#1499;&#1494; &#1492;&#1489;&#1511;&#1512;&#1492;</strong>
+          </div>
+          <div class="topbar-actions">
+            <button class="button secondary" id="refresh" type="button">&#1512;&#1506;&#1504;&#1493;&#1503; &#1504;&#1514;&#1493;&#1504;&#1497;&#1501;</button>
+            <button class="button ghost" id="logout" type="button">&#1497;&#1510;&#1497;&#1488;&#1492;</button>
+          </div>
+        </header>
+        <main class="admin-page">
       <section class="hero">
         <div class="brand-lockup">
           <span class="brand-mark" aria-hidden="true"></span>
@@ -186,14 +219,14 @@ function renderDashboard() {
             <p class="subtitle">משתמשים, מנויים וסריקות במקום אחד</p>
           </div>
         </div>
-        <div class="hero-actions">
+        <div class="hero-actions legacy-actions">
           <span class="external-badge"><i></i> המערכת מחוברת</span>
           <button class="button secondary" id="refresh" type="button">רענון נתונים</button>
           <button class="button ghost" id="logout" type="button">יציאה</button>
         </div>
       </section>
 
-      <div class="overview-heading">
+      <div class="overview-heading" id="overview">
         <div>
           <p class="eyebrow">תמונת מצב</p>
           <h2>מה קורה ב-AquaSense</h2>
@@ -209,7 +242,7 @@ function renderDashboard() {
         ${statCard("נותרו", stats.remaining, "סריקות זמינות")}
       </section>
 
-      <section class="workspace">
+      <section class="workspace" id="users">
         <aside class="users-panel">
           <div class="panel-title">
             <div>
@@ -221,11 +254,13 @@ function renderDashboard() {
           ${renderUserList(rows)}
         </aside>
 
-        <section class="detail-panel">
+        <section class="detail-panel" id="scans">
           ${state.loading ? renderBigLoading("אוסף נתונים מהמסד...") : state.error ? renderNotice(state.error) : renderSelectedUser(selected)}
         </section>
       </section>
-    </main>
+        </main>
+      </div>
+    </div>
     ${state.selectedGrant ? renderGrantModal(state.selectedGrant) : ""}
     ${state.imageViewer ? renderImageViewer(state.imageViewer) : ""}
   `;
