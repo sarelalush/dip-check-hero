@@ -14,7 +14,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 const SETTINGS_POOL_IMAGE = require('../../assets/images/home-pool.png');
 
 export function SettingsScreen({ navigation }: Props) {
-  const { user, signOut, updateDisplayName } = useAuth();
+  const { isGuest, user, signOut, updateDisplayName } = useAuth();
   const [busy, setBusy] = useState(false);
   const [savingName, setSavingName] = useState(false);
   const [message, setMessage] = useState('');
@@ -89,7 +89,9 @@ export function SettingsScreen({ navigation }: Props) {
               <Text style={styles.smallPrimaryText}>{savingName ? 'שומר...' : 'שמירת שם'}</Text>
             </Pressable>
             <Pressable disabled={busy} onPress={handleSignOut} style={({ pressed }) => [styles.smallDangerButton, pressed && styles.pressed, busy && styles.disabled]}>
-              <Text style={styles.smallDangerText}>{busy ? 'יוצא...' : 'יציאה מהחשבון'}</Text>
+              <Text style={styles.smallDangerText}>
+                {busy ? 'יוצא...' : isGuest ? 'חזרה למסך הכניסה' : 'יציאה מהחשבון'}
+              </Text>
             </Pressable>
           </View>
           <SettingsRow

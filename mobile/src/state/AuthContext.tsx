@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as QueryParams from 'expo-auth-session/build/QueryParams';
@@ -42,6 +43,7 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 const PASSWORD_RECOVERY_WINDOW_MS = 5 * 60 * 1000;
+const GUEST_MODE_PAUSED_STORAGE_KEY = '@aquasense/guest-mode-paused-v1';
 const APPLE_NONCE_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._';
 
 async function generateAppleNonce(length = 32) {
@@ -149,11 +151,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accountId, setAccountId] = useState<string | undefined>();
   const [passwordRecoveryExpiresAt, setPasswordRecoveryExpiresAt] = useState<number | undefined>();
   const [loading, setLoading] = useState(true);
+  const [guestModePaused, setGuestModePaused] = useState(false);
   const [entitlementsVersion, setEntitlementsVersion] = useState(0);
   const handledOAuthUrls = useRef(new Set<string>());
   const hydrateSessionRunId = useRef(0);
+  const guestModePausedRef = useRef(false);
+  const authBootstrapCompleteRef = useRef(false);
 
   const passwordRecoveryPending = Boolean(passwordRecoveryExpiresAt && Date.now() < passwordRecoveryExpiresAt);
+
+  async function updateGuestModePaused(paused: boolean) {
+    guestModePausedRef.current = paused;
+    setGuestModePaused(paused);
+
+    if (paused) {
+      await AsyncStorage.setItem(GUEST_MODE_PAUSED_STORAGE_KEY, 'true');
+    } else {
+      await AsyncStorage.removeItem(GUEST_MODE_PAUSED_STORAGE_KEY);
+    }
+  }
 
   async function hydrateSession(nextSession: Session | null) {
     const runId = hydrateSessionRunId.current + 1;
@@ -216,14 +232,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     const { data: subscription } = client.auth.onAuthStateChange((_event, nextSession) => {
+      if (!authBootstrapCompleteRef.current) return;
+
       if (_event === 'PASSWORD_RECOVERY') {
         setPasswordRecoveryExpiresAt(Date.now() + PASSWORD_RECOVERY_WINDOW_MS);
+      }
+      if (nextSession?.user && !nextSession.user.is_anonymous && guestModePausedRef.current) {
+        updateGuestModePaused(false).catch((error) => {
+          console.warn('Failed to resume authenticated mode', error);
+        });
       }
       hydrateSession(nextSession);
     });
 
     Promise.resolve()
       .then(async () => {
+        const storedGuestModePaused = await AsyncStorage.getItem(GUEST_MODE_PAUSED_STORAGE_KEY);
+        guestModePausedRef.current = storedGuestModePaused === 'true';
+        setGuestModePaused(guestModePausedRef.current);
+        authBootstrapCompleteRef.current = true;
         const initialUrl = await Linking.getInitialURL();
         await handleOAuthCallback(initialUrl);
         return client.auth.getSession();
@@ -244,23 +271,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const guestSessionHidden = guestModePaused && Boolean(user?.is_anonymous);
+  const visibleSession = guestSessionHidden ? null : session;
+  const visibleUser = guestSessionHidden ? null : user;
+  const visibleAccountId = guestSessionHidden ? undefined : accountId;
+
   const value = useMemo<AuthContextValue>(
     () => ({
-      user,
-      session,
-      accountId,
+      user: visibleUser,
+      session: visibleSession,
+      accountId: visibleAccountId,
       passwordRecoveryExpiresAt,
       passwordRecoveryPending,
       loading,
-      isAuthenticated: Boolean(user),
-      isGuest: Boolean(user?.is_anonymous),
+      isAuthenticated: Boolean(visibleUser),
+      isGuest: Boolean(visibleUser?.is_anonymous),
       isConfigured: isSupabaseConfigured,
       entitlementsVersion,
       async continueAsGuest() {
         if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
-        if (user) return {};
 
         try {
+          if (user?.is_anonymous) {
+            await updateGuestModePaused(false);
+            return {};
+          }
+          if (user) return {};
+
           const { error } = await getSupabaseClient().auth.signInAnonymously();
           return error ? { error: toHebrewAuthError(error.message) } : {};
         } catch (error) {
@@ -469,6 +506,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       },
       async signOut() {
+        if (user?.is_anonymous) {
+          await updateGuestModePaused(true);
+          setPasswordRecoveryExpiresAt(undefined);
+          return;
+        }
+
         if (!isSupabaseConfigured) {
           setSession(null);
           setUser(null);
@@ -486,7 +529,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       },
     }),
-    [accountId, entitlementsVersion, loading, passwordRecoveryExpiresAt, passwordRecoveryPending, session, user],
+    [
+      accountId,
+      entitlementsVersion,
+      guestModePaused,
+      loading,
+      passwordRecoveryExpiresAt,
+      passwordRecoveryPending,
+      session,
+      user,
+      visibleAccountId,
+      visibleSession,
+      visibleUser,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
