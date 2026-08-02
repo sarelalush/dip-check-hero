@@ -70,25 +70,9 @@ function NativeBillingPurchasePanel({
 
       const isApple = storePlatform === 'ios';
 
-      if (!accountId && isApple) {
-        try {
-          await finishTransaction({
-            purchase,
-            isConsumable: isConsumableBillingProduct(productId),
-          });
-          setStatus('success');
-          setMessage('הרכישה נשמרה בחשבון Apple שלך. ניתן להירשם או להתחבר בכל שלב כדי להפעיל ולסנכרן את המנוי באפליקציה.');
-        } catch (error) {
-          processedPurchaseTokens.current.delete(purchaseToken);
-          setStatus('error');
-          setMessage(error instanceof Error ? error.message : 'הרכישה התקבלה, אך לא הצלחנו לסיים את התהליך. נסה שוב.');
-        }
-        return;
-      }
-
       if (!isSupabaseConfigured || !accountId) {
         setStatus('error');
-        setMessage('צריך להתחבר לחשבון כדי לאמת רכישה במכשיר הזה.');
+        setMessage('מכינים את הרכישה המאובטחת. נסה שוב בעוד רגע.');
         return;
       }
 
@@ -188,9 +172,9 @@ function NativeBillingPurchasePanel({
   }, [products, subscriptions]);
 
   const purchase = async (productId: string) => {
-    if (!accountId && storePlatform === 'android') {
+    if (!accountId) {
       setStatus('error');
-      setMessage('צריך להתחבר לחשבון לפני רכישה.');
+      setMessage('מכינים את הרכישה המאובטחת. נסה שוב בעוד רגע.');
       return;
     }
 
@@ -243,9 +227,9 @@ function NativeBillingPurchasePanel({
   };
 
   const restore = async () => {
-    if (!accountId && storePlatform === 'android') {
+    if (!accountId) {
       setStatus('error');
-      setMessage('צריך להתחבר לחשבון לפני שחזור רכישות.');
+      setMessage('מכינים את שחזור הרכישות. נסה שוב בעוד רגע.');
       return;
     }
 
@@ -255,11 +239,7 @@ function NativeBillingPurchasePanel({
       setMessage('מחפשים רכישות פעילות בחנות...');
       await restorePurchases({ alsoPublishToEventListenerIOS: true, onlyIncludeActiveItemsIOS: true });
       setStatus('success');
-      setMessage(
-        accountId
-          ? 'אם נמצאה רכישה פעילה, היא תאומת ותופעל בחשבון שלך.'
-          : 'אם נמצאה רכישה פעילה בחשבון Apple שלך, ניתן להתחבר או להירשם כדי לסנכרן אותה באפליקציה.',
-      );
+      setMessage('אם נמצאה רכישה פעילה, היא תאומת ותופעל במכשיר הזה.');
     } catch (error) {
       setStatus('error');
       setMessage(error instanceof Error ? error.message : 'לא הצלחנו לשחזר רכישות כרגע.');

@@ -142,7 +142,7 @@ function LoadingScreen({ message = 'טוען...' }: { message?: string }) {
 }
 
 function AppNavigator() {
-  const { accountId, loading, isAuthenticated, passwordRecoveryExpiresAt } = useAuth();
+  const { accountId, entitlementsVersion, loading, isAuthenticated, passwordRecoveryExpiresAt } = useAuth();
   const { hydrated: poolsHydrated, initialSyncComplete: poolsInitialSyncComplete } = usePools();
   const { initialSyncComplete: historyInitialSyncComplete, isHydrated: historyHydrated } = useResultsHistory();
   const isPasswordRecovery = Boolean(passwordRecoveryExpiresAt);
@@ -177,7 +177,7 @@ function AppNavigator() {
     return () => {
       cancelled = true;
     };
-  }, [accountId, isAuthenticated, isPasswordRecovery]);
+  }, [accountId, entitlementsVersion, isAuthenticated, isPasswordRecovery]);
 
   const subscriptionRequired = isAuthenticated && !isPasswordRecovery && subscriptionStatus === 'inactive';
   const subscriptionChecking = isAuthenticated && !isPasswordRecovery && subscriptionStatus === 'checking';
@@ -237,6 +237,9 @@ function AppNavigator() {
             <Stack.Screen name="Support" component={SupportScreen} />
             <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Signup" component={SignupScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           </>
         ) : (
           <>

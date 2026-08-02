@@ -13,6 +13,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 interface AuthResult {
   error?: string;
+  requiresPasswordSetup?: boolean;
 }
 
 interface AuthContextValue {
@@ -21,7 +22,11 @@ interface AuthContextValue {
   accountId?: string;
   loading: boolean;
   isAuthenticated: boolean;
+  isGuest: boolean;
   isConfigured: boolean;
+  entitlementsVersion: number;
+  continueAsGuest: () => Promise<AuthResult>;
+  refreshEntitlements: () => void;
   signInWithEmail: (email: string, password: string) => Promise<AuthResult>;
   signUpWithEmail: (email: string, password: string, displayName?: string, phone?: string) => Promise<AuthResult>;
   resetPasswordForEmail: (email: string) => Promise<AuthResult>;
@@ -144,6 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [accountId, setAccountId] = useState<string | undefined>();
   const [passwordRecoveryExpiresAt, setPasswordRecoveryExpiresAt] = useState<number | undefined>();
   const [loading, setLoading] = useState(true);
+  const [entitlementsVersion, setEntitlementsVersion] = useState(0);
   const handledOAuthUrls = useRef(new Set<string>());
   const hydrateSessionRunId = useRef(0);
 
@@ -247,7 +253,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       passwordRecoveryPending,
       loading,
       isAuthenticated: Boolean(user),
+      isGuest: Boolean(user?.is_anonymous),
       isConfigured: isSupabaseConfigured,
+      entitlementsVersion,
+      async continueAsGuest() {
+        if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
+        if (user) return {};
+
+        try {
+          const { error } = await getSupabaseClient().auth.signInAnonymously();
+          return error ? { error: toHebrewAuthError(error.message) } : {};
+        } catch (error) {
+          return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };
+        }
+      },
+      refreshEntitlements() {
+        setEntitlementsVersion((version) => version + 1);
+      },
       async signInWithEmail(email, password) {
         if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
 
@@ -266,6 +288,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
 
         try {
+          if (user?.is_anonymous) {
+            const { error } = await getSupabaseClient().auth.updateUser({
+              email: normalizeEmail(email),
+              data: {
+                display_name: displayName?.trim() || null,
+                phone: phone?.trim() || null,
+              },
+            });
+
+            return error ? { error: toHebrewAuthError(error.message) } : { requiresPasswordSetup: true };
+          }
+
           const { error } = await getSupabaseClient().auth.signUp({
             email: normalizeEmail(email),
             password,
@@ -452,7 +486,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       },
     }),
-    [accountId, loading, passwordRecoveryExpiresAt, passwordRecoveryPending, session, user],
+    [accountId, entitlementsVersion, loading, passwordRecoveryExpiresAt, passwordRecoveryPending, session, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

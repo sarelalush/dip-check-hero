@@ -18,7 +18,7 @@ import type { RootStackParamList } from '../../App';
 type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
 
 export function SignupScreen({ navigation }: Props) {
-  const { signInWithApple, signInWithGoogle, signUpWithEmail } = useAuth();
+  const { isGuest, signInWithApple, signInWithGoogle, signUpWithEmail } = useAuth();
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -37,7 +37,7 @@ export function SignupScreen({ navigation }: Props) {
     if (!email.trim()) return setError('יש להזין אימייל כדי ליצור חשבון.');
     if (!phoneClean) return setError('יש להזין מספר טלפון כדי ליצור חשבון.');
     if (!/^0\d{1,2}-?\d{7}$|^\+?\d{9,15}$/.test(phoneClean)) return setError('יש להזין מספר טלפון תקין.');
-    if (password.length < 6) return setError('הסיסמה חייבת להכיל לפחות 6 תווים.');
+    if (!isGuest && password.length < 6) return setError('הסיסמה חייבת להכיל לפחות 6 תווים.');
 
     setBusy(true);
     setError('');
@@ -50,8 +50,10 @@ export function SignupScreen({ navigation }: Props) {
       return;
     }
 
-    setSuccess('נשלח אליכם אימייל לאימות. לאחר האישור תוכלו להתחבר.');
-    setTimeout(() => navigation.navigate('Login'), 2200);
+    setSuccess(result.requiresPasswordSetup
+      ? 'נשלח אליכם אימייל לאימות. לאחר האישור תוכלו לבחור סיסמה דרך "שכחתי סיסמה" ולהשתמש ברכישה גם במכשירים נוספים.'
+      : 'נשלח אליכם אימייל לאימות. לאחר האישור תוכלו להתחבר.');
+    setTimeout(() => navigation.navigate('Login'), result.requiresPasswordSetup ? 4500 : 2200);
   }
 
   async function google() {
@@ -86,7 +88,7 @@ export function SignupScreen({ navigation }: Props) {
       onLoginTab={() => navigation.navigate('Login')}
       onSignupTab={() => undefined}
       title="ברוך הבא"
-      subtitle="צור חשבון כדי להתחיל לשמור על הבריכה שלך"
+      subtitle={isGuest ? 'הרשמה אופציונלית מאפשרת להשתמש ברכישות גם במכשירים נוספים' : 'צור חשבון כדי להתחיל לשמור על הבריכה שלך'}
       footer={
         <>
           <View style={styles.accountRow}>
@@ -102,14 +104,14 @@ export function SignupScreen({ navigation }: Props) {
       <AuthField compact icon="user" label="שם מלא" onChangeText={setName} placeholder="הכנס שם מלא" value={name} />
       <AuthField compact icon="user" keyboardType="phone-pad" label="טלפון" onChangeText={setPhone} placeholder="050..." value={phone} />
       <AuthField compact icon="mail" keyboardType="email-address" label="אימייל" onChangeText={setEmail} placeholder="הכנס כתובת אימייל" value={email} />
-      <AuthField compact icon="lock" label="סיסמה" onChangeText={setPassword} onSideIconPress={() => setPasswordVisible((visible) => !visible)} placeholder="בחר סיסמה" secure={!passwordVisible} sideIcon="eye" value={password} />
+      {!isGuest ? <AuthField compact icon="lock" label="סיסמה" onChangeText={setPassword} onSideIconPress={() => setPasswordVisible((visible) => !visible)} placeholder="בחר סיסמה" secure={!passwordVisible} sideIcon="eye" value={password} /> : null}
 
       <AuthMessage text={error} tone="error" />
       <AuthMessage text={success} tone="success" />
 
-      <AuthPrimaryButton compact busy={busy} disabled={appleBusy || googleBusy} label="הרשמה" onPress={submit} />
-      <AuthDivider compact />
-      {Platform.OS === 'ios' ? (
+      <AuthPrimaryButton compact busy={busy} disabled={appleBusy || googleBusy} label={isGuest ? 'שלח קישור הרשמה' : 'הרשמה'} onPress={submit} />
+      {!isGuest ? <AuthDivider compact /> : null}
+      {!isGuest && Platform.OS === 'ios' ? (
         <AppleAuthentication.AppleAuthenticationButton
           buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
           buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
@@ -118,7 +120,7 @@ export function SignupScreen({ navigation }: Props) {
           style={[styles.appleButton, (busy || appleBusy || googleBusy) && styles.disabled]}
         />
       ) : null}
-      <SocialButton compact disabled={busy || appleBusy || googleBusy} label={googleBusy ? 'מתחבר עם Google...' : 'המשך עם Google'} mark="google" onPress={google} />
+      {!isGuest ? <SocialButton compact disabled={busy || appleBusy || googleBusy} label={googleBusy ? 'מתחבר עם Google...' : 'המשך עם Google'} mark="google" onPress={google} /> : null}
     </AuthScreenShell>
   );
 }

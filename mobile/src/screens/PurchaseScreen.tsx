@@ -1,4 +1,5 @@
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
 import { BillingPurchasePanel } from '../components/BillingPurchasePanel';
@@ -29,9 +30,15 @@ const reasonCopy = {
 };
 
 export function PurchaseScreen({ navigation, route }: Props) {
-  const { accountId } = useAuth();
+  const { accountId, continueAsGuest, isGuest, refreshEntitlements } = useAuth();
+  const [guestSetupError, setGuestSetupError] = useState<string>();
   const reason = route.params?.reason ?? 'subscriptionRequired';
   const copy = reasonCopy[reason];
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios' || accountId) return;
+    continueAsGuest().then((result) => setGuestSetupError(result.error));
+  }, [accountId, continueAsGuest]);
 
   return (
     <AppShell activeTab="settings" navigation={navigation} contentStyle={styles.content} showBottomTabs={Boolean(accountId)}>
@@ -65,11 +72,11 @@ export function PurchaseScreen({ navigation, route }: Props) {
         </View>
       </Card>
 
-      {!accountId ? (
+      {isGuest ? (
         <Card compact style={styles.accountCard}>
-          <Text style={styles.accountTitle}>אפשר לרכוש גם בלי הרשמה</Text>
+          <Text style={styles.accountTitle}>אין צורך להירשם כדי לרכוש</Text>
           <Text style={styles.accountText}>
-            הרשמה אינה חובה לפני רכישה. חשבון AquaSense מאפשר להפעיל את המנוי באפליקציה, לשמור בריכות ולסנכרן את הרכישה במכשירים נתמכים.
+            הרכישה תופעל מיד במכשיר הזה. הרשמה היא אפשרות בלבד, ומאפשרת לגשת לרכישה ולנתונים גם ממכשירים נתמכים נוספים.
           </Text>
           <View style={styles.accountActions}>
             <Pressable style={({ pressed }) => [styles.accountPrimary, pressed && styles.pressed]} onPress={() => navigation.navigate('Signup')}>
@@ -82,16 +89,19 @@ export function PurchaseScreen({ navigation, route }: Props) {
         </Card>
       ) : null}
 
-      <BillingPurchasePanel
-        accountId={accountId}
-        onPurchaseVerified={() => {
-          if (accountId) {
-            navigation.navigate('Home');
-            return;
-          }
-          navigation.navigate('Signup');
-        }}
-      />
+      {!accountId ? (
+        <Card compact style={styles.accountCard}>
+          <ActivityIndicator color={colors.primaryDark} />
+          <Text style={styles.accountText}>{guestSetupError ?? 'מכינים רכישה מאובטחת...'}</Text>
+        </Card>
+      ) : (
+        <BillingPurchasePanel
+          accountId={accountId}
+          onPurchaseVerified={() => {
+            refreshEntitlements();
+          }}
+        />
+      )}
 
       <View style={styles.legalLinks}>
         <Pressable accessibilityRole="link" onPress={() => Linking.openURL(APPLE_EULA_URL)} hitSlop={8}>
