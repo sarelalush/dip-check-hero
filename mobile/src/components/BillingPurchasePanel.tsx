@@ -130,18 +130,12 @@ function NativeBillingPurchasePanel({
   const storeInAppProductIds = useMemo(() => getStoreInAppProductIds(storePlatform), [storePlatform]);
 
   const queryStoreItems = useCallback(async () => {
-    const loadedItems =
-      storePlatform === 'ios'
-        ? await fetchProducts({
-            skus: [...storeSubscriptionIds, ...storeInAppProductIds],
-            type: 'all',
-          })
-        : (
-            await Promise.all([
-              fetchProducts({ skus: storeSubscriptionIds, type: 'subs' }),
-              fetchProducts({ skus: storeInAppProductIds, type: 'in-app' }),
-            ])
-          ).flatMap((items) => items ?? []);
+    const loadedItems = (
+      await Promise.all([
+        fetchProducts({ skus: storeSubscriptionIds, type: 'subs' }),
+        fetchProducts({ skus: storeInAppProductIds, type: 'in-app' }),
+      ])
+    ).flatMap((items) => items ?? []);
 
     const nextItems = createStoreItems(loadedItems ?? []);
     console.info('[billing] StoreKit products loaded', {
