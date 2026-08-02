@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import type { Product, ProductSubscription, Purchase } from 'expo-iap';
-import { useIAP } from 'expo-iap';
+import type { ProductOrSubscription, ProductSubscription, Purchase } from 'expo-iap';
+import { fetchProducts, useIAP } from 'expo-iap';
 import { Card } from './Card';
 import { LineIcon } from './LineIcon';
 import {
@@ -54,6 +54,7 @@ function NativeBillingPurchasePanel({
   const [status, setStatus] = useState<PurchaseStatus>('idle');
   const [message, setMessage] = useState<string>();
   const [activeProductId, setActiveProductId] = useState<string>();
+  const [storeItems, setStoreItems] = useState(() => new Map<string, StoreItem>());
 
   const handlePurchaseSuccess = useCallback(
     async (purchase: Purchase) => {
@@ -113,7 +114,7 @@ function NativeBillingPurchasePanel({
     [accountId, onPurchaseVerified, storePlatform],
   );
 
-  const { connected, fetchProducts, finishTransaction, products, requestPurchase, restorePurchases, subscriptions } = useIAP({
+  const { connected, finishTransaction, requestPurchase, restorePurchases } = useIAP({
     onPurchaseError(error) {
       setStatus('error');
       setMessage(getPurchaseErrorMessage(error.message, storePlatform));
@@ -128,6 +129,29 @@ function NativeBillingPurchasePanel({
   const storeSubscriptionIds = useMemo(() => getStoreSubscriptionIds(storePlatform), [storePlatform]);
   const storeInAppProductIds = useMemo(() => getStoreInAppProductIds(storePlatform), [storePlatform]);
 
+  const queryStoreItems = useCallback(async () => {
+    const loadedItems =
+      storePlatform === 'ios'
+        ? await fetchProducts({
+            skus: [...storeSubscriptionIds, ...storeInAppProductIds],
+            type: 'all',
+          })
+        : (
+            await Promise.all([
+              fetchProducts({ skus: storeSubscriptionIds, type: 'subs' }),
+              fetchProducts({ skus: storeInAppProductIds, type: 'in-app' }),
+            ])
+          ).flatMap((items) => items ?? []);
+
+    const nextItems = createStoreItems(loadedItems ?? []);
+    console.info('[billing] StoreKit products loaded', {
+      requested: [...storeSubscriptionIds, ...storeInAppProductIds],
+      returned: [...nextItems.keys()],
+      storePlatform,
+    });
+    return nextItems;
+  }, [storeInAppProductIds, storePlatform, storeSubscriptionIds]);
+
   useEffect(() => {
     if (!connected) return;
 
@@ -135,11 +159,9 @@ function NativeBillingPurchasePanel({
     async function loadProducts() {
       try {
         setStatus('loading');
-        await Promise.all([
-          fetchProducts({ skus: storeSubscriptionIds, type: 'subs' }),
-          fetchProducts({ skus: storeInAppProductIds, type: 'in-app' }),
-        ]);
+        const nextItems = await queryStoreItems();
         if (!mounted) return;
+        setStoreItems(nextItems);
         setStatus('idle');
         setMessage(undefined);
       } catch (error) {
@@ -154,22 +176,7 @@ function NativeBillingPurchasePanel({
     return () => {
       mounted = false;
     };
-  }, [connected, fetchProducts, storeInAppProductIds, storeSubscriptionIds]);
-
-  const storeItems = useMemo(() => {
-    const map = new Map<string, StoreItem>();
-    for (const product of products) {
-      map.set(product.id, { displayPrice: product.displayPrice, id: product.id });
-    }
-    for (const subscription of subscriptions) {
-      map.set(subscription.id, {
-        displayPrice: subscription.displayPrice,
-        id: subscription.id,
-        offerToken: getSubscriptionOfferToken(subscription) ?? undefined,
-      });
-    }
-    return map;
-  }, [products, subscriptions]);
+  }, [connected, queryStoreItems]);
 
   const purchase = async (productId: string) => {
     if (!accountId) {
@@ -178,12 +185,28 @@ function NativeBillingPurchasePanel({
       return;
     }
 
-    const storeProductId = resolveLoadedStoreProductId(productId, storePlatform, storeItems);
-    const item = storeItems.get(storeProductId);
+    let availableStoreItems = storeItems;
+    let storeProductId = resolveLoadedStoreProductId(productId, storePlatform, availableStoreItems);
+    let item = availableStoreItems.get(storeProductId);
     if (!item) {
-      setStatus('error');
-      setMessage(getUnavailableProductMessage(storePlatform));
-      return;
+      try {
+        setStatus('loading');
+        setMessage('\u05de\u05e8\u05e2\u05e0\u05e0\u05d9\u05dd \u05d0\u05ea \u05de\u05d5\u05e6\u05e8\u05d9 \u05d4\u05d7\u05e0\u05d5\u05ea...');
+        availableStoreItems = await queryStoreItems();
+        setStoreItems(availableStoreItems);
+        storeProductId = resolveLoadedStoreProductId(productId, storePlatform, availableStoreItems);
+        item = availableStoreItems.get(storeProductId);
+      } catch (error) {
+        setStatus('error');
+        setMessage(error instanceof Error ? getPurchaseErrorMessage(error.message, storePlatform) : getUnavailableProductMessage(storePlatform));
+        return;
+      }
+
+      if (!item) {
+        setStatus('error');
+        setMessage(getUnavailableProductMessage(storePlatform));
+        return;
+      }
     }
 
     try {
@@ -256,12 +279,14 @@ function NativeBillingPurchasePanel({
       </View>
       <BillingButton
         busy={busy && activeProductId === BILLING_PRODUCTS.basicMonthly.id}
+        disabled={busy}
         label="הפעל מנוי בסיסי"
         onPress={() => purchase(BILLING_PRODUCTS.basicMonthly.id)}
         price={getStoreItemPrice(BILLING_PRODUCTS.basicMonthly.id, storePlatform, storeItems) ?? BILLING_PRODUCTS.basicMonthly.fallbackPriceHe}
       />
       <BillingButton
         busy={busy && activeProductId === BILLING_PRODUCTS.extraPoolMonthly.id}
+        disabled={busy}
         label="הוסף בריכה נוספת"
         onPress={() => purchase(BILLING_PRODUCTS.extraPoolMonthly.id)}
         price={
@@ -270,6 +295,7 @@ function NativeBillingPurchasePanel({
       />
       <BillingButton
         busy={busy && activeProductId === BILLING_PRODUCTS.extraScanPack200.id}
+        disabled={busy}
         label="רכוש עוד 200 סריקות"
         onPress={() => purchase(BILLING_PRODUCTS.extraScanPack200.id)}
         price={
@@ -332,9 +358,37 @@ function getSubscriptionOfferToken(subscription: ProductSubscription) {
   );
 }
 
-function BillingButton({ busy, label, onPress, price }: { busy?: boolean; label: string; onPress: () => void; price: string }) {
+function createStoreItems(items: ProductOrSubscription[]) {
+  const map = new Map<string, StoreItem>();
+  for (const item of items) {
+    map.set(item.id, {
+      displayPrice: item.displayPrice,
+      id: item.id,
+      offerToken: getSubscriptionOfferToken(item as ProductSubscription) ?? undefined,
+    });
+  }
+  return map;
+}
+
+function BillingButton({
+  busy,
+  disabled,
+  label,
+  onPress,
+  price,
+}: {
+  busy?: boolean;
+  disabled?: boolean;
+  label: string;
+  onPress: () => void;
+  price: string;
+}) {
   return (
-    <Pressable disabled={busy} style={({ pressed }) => [styles.billingButton, pressed ? styles.pressed : null]} onPress={onPress}>
+    <Pressable
+      disabled={disabled}
+      style={({ pressed }) => [styles.billingButton, disabled ? styles.disabled : null, pressed && !disabled ? styles.pressed : null]}
+      onPress={onPress}
+    >
       <View style={styles.billingIcon}>
         {busy ? <ActivityIndicator color={colors.white} size="small" /> : <LineIcon name="plus" color={colors.white} size={18} />}
       </View>

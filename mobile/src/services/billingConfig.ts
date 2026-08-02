@@ -60,9 +60,7 @@ export function getStoreProductId(productId: string, platform: BillingStorePlatf
 export function getStoreProductIdCandidates(productId: string, platform: BillingStorePlatform) {
   const product = Object.values(BILLING_PRODUCTS).find((item) => item.id === productId || hasStoreProductId(item, productId));
   if (!product) return [productId];
-  if (platform === 'android') return [product.storeIds.android];
-
-  return Array.from(new Set([product.storeIds.ios, product.id, product.storeIds.android]));
+  return [product.storeIds[platform]];
 }
 
 export function getStoreSubscriptionIds(platform: BillingStorePlatform) {
