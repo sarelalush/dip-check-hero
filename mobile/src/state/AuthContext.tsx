@@ -5,6 +5,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as QueryParams from 'expo-auth-session/build/QueryParams';
 import * as Crypto from 'expo-crypto';
+import * as SecureStore from 'expo-secure-store';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import type { Session, User } from '@supabase/supabase-js';
@@ -44,7 +45,19 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 const PASSWORD_RECOVERY_WINDOW_MS = 5 * 60 * 1000;
 const GUEST_MODE_PAUSED_STORAGE_KEY = '@aquasense/guest-mode-paused-v1';
+const GUEST_SESSION_STORAGE_KEY = 'aquasense-guest-session-v2';
+const GUEST_ACCESS_TOKEN_STORAGE_KEY = 'aquasense-guest-access-token-v1';
+const GUEST_REFRESH_TOKEN_STORAGE_KEY = 'aquasense-guest-refresh-token-v1';
+const GUEST_USER_ID_STORAGE_KEY = 'aquasense-guest-user-id-v1';
 const APPLE_NONCE_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._';
+
+interface SavedGuestSession {
+  accessToken: string;
+  refreshToken: string;
+  userId: string;
+}
+
+let guestSessionWriteQueue = Promise.resolve();
 
 async function generateAppleNonce(length = 32) {
   const bytes = await Crypto.getRandomBytesAsync(length);
@@ -60,6 +73,127 @@ function normalizeEmail(email: string) {
     .replace(/\s+/g, '')
     .trim()
     .toLowerCase();
+}
+
+async function setProtectedItem(key: string, value: string) {
+  if (Platform.OS === 'web') {
+    await AsyncStorage.setItem(`@${key}`, value);
+    return;
+  }
+
+  await SecureStore.setItemAsync(key, value, {
+    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  });
+}
+
+async function getProtectedItem(key: string) {
+  if (Platform.OS === 'web') {
+    return AsyncStorage.getItem(`@${key}`);
+  }
+
+  return SecureStore.getItemAsync(key);
+}
+
+async function deleteProtectedItem(key: string) {
+  if (Platform.OS === 'web') {
+    await AsyncStorage.removeItem(`@${key}`);
+    return;
+  }
+
+  await SecureStore.deleteItemAsync(key);
+}
+
+async function saveGuestSession(guestSession: Session | null) {
+  if (!guestSession?.user.is_anonymous) return;
+
+  const savedGuestSession: SavedGuestSession = {
+    accessToken: guestSession.access_token,
+    refreshToken: guestSession.refresh_token,
+    userId: guestSession.user.id,
+  };
+
+  guestSessionWriteQueue = guestSessionWriteQueue
+    .catch(() => undefined)
+    .then(() => setProtectedItem(GUEST_SESSION_STORAGE_KEY, JSON.stringify(savedGuestSession)));
+  await guestSessionWriteQueue;
+}
+
+async function clearSavedGuestSession() {
+  await guestSessionWriteQueue.catch(() => undefined);
+  await Promise.all([
+    deleteProtectedItem(GUEST_SESSION_STORAGE_KEY),
+    deleteProtectedItem(GUEST_ACCESS_TOKEN_STORAGE_KEY),
+    deleteProtectedItem(GUEST_REFRESH_TOKEN_STORAGE_KEY),
+    deleteProtectedItem(GUEST_USER_ID_STORAGE_KEY),
+  ]);
+}
+
+async function getSavedGuestSession(): Promise<SavedGuestSession | null> {
+  await guestSessionWriteQueue.catch(() => undefined);
+  const serializedSession = await getProtectedItem(GUEST_SESSION_STORAGE_KEY);
+
+  if (serializedSession) {
+    try {
+      const parsed = JSON.parse(serializedSession) as Partial<SavedGuestSession>;
+      if (parsed.accessToken && parsed.refreshToken && parsed.userId) {
+        return {
+          accessToken: parsed.accessToken,
+          refreshToken: parsed.refreshToken,
+          userId: parsed.userId,
+        };
+      }
+    } catch (error) {
+      console.warn('Failed to read saved guest session', error);
+    }
+  }
+
+  // One-time migration for installations that saved the guest in three v1 keys.
+  const [accessToken, refreshToken, userId] = await Promise.all([
+    getProtectedItem(GUEST_ACCESS_TOKEN_STORAGE_KEY),
+    getProtectedItem(GUEST_REFRESH_TOKEN_STORAGE_KEY),
+    getProtectedItem(GUEST_USER_ID_STORAGE_KEY),
+  ]);
+
+  if (!accessToken || !refreshToken || !userId) return null;
+
+  const migratedSession = { accessToken, refreshToken, userId };
+  await setProtectedItem(GUEST_SESSION_STORAGE_KEY, JSON.stringify(migratedSession));
+  return migratedSession;
+}
+
+function isInvalidGuestSessionError(message: string) {
+  const normalizedMessage = message.toLowerCase();
+  return (
+    normalizedMessage.includes('invalid refresh token') ||
+    normalizedMessage.includes('refresh token not found') ||
+    normalizedMessage.includes('session from session_id claim in jwt does not exist')
+  );
+}
+
+async function restoreSavedGuestSession() {
+  const savedGuestSession = await getSavedGuestSession();
+
+  if (!savedGuestSession) return false;
+
+  const { data, error } = await getSupabaseClient().auth.setSession({
+    access_token: savedGuestSession.accessToken,
+    refresh_token: savedGuestSession.refreshToken,
+  });
+
+  if (error) {
+    if (isInvalidGuestSessionError(error.message)) {
+      await clearSavedGuestSession();
+    }
+    throw error;
+  }
+
+  if (!data.user?.is_anonymous || data.user.id !== savedGuestSession.userId) {
+    await clearSavedGuestSession();
+    throw new Error('Saved guest session resolved to a different user.');
+  }
+
+  await saveGuestSession(data.session);
+  return true;
 }
 
 function toHebrewAuthError(message: string) {
@@ -157,6 +291,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hydrateSessionRunId = useRef(0);
   const guestModePausedRef = useRef(false);
   const authBootstrapCompleteRef = useRef(false);
+  const continueAsGuestPromiseRef = useRef<Promise<AuthResult> | null>(null);
 
   const passwordRecoveryPending = Boolean(passwordRecoveryExpiresAt && Date.now() < passwordRecoveryExpiresAt);
 
@@ -234,6 +369,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: subscription } = client.auth.onAuthStateChange((_event, nextSession) => {
       if (!authBootstrapCompleteRef.current) return;
 
+      if (nextSession?.user.is_anonymous) {
+        saveGuestSession(nextSession).catch((error) => {
+          console.warn('Failed to persist guest session', error);
+        });
+      }
+
       if (_event === 'PASSWORD_RECOVERY') {
         setPasswordRecoveryExpiresAt(Date.now() + PASSWORD_RECOVERY_WINDOW_MS);
       }
@@ -291,17 +432,44 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async continueAsGuest() {
         if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
 
-        try {
-          if (user?.is_anonymous) {
+        if (continueAsGuestPromiseRef.current) return continueAsGuestPromiseRef.current;
+
+        const continuePromise = (async (): Promise<AuthResult> => {
+          try {
+            const { data: currentSessionData } = await getSupabaseClient().auth.getSession();
+            const currentSession = currentSessionData.session;
+
+            if (currentSession?.user.is_anonymous) {
+              await saveGuestSession(currentSession);
+              await updateGuestModePaused(false);
+              return {};
+            }
+            if (currentSession?.user) return {};
+
+            if (await restoreSavedGuestSession()) {
+              await updateGuestModePaused(false);
+              return {};
+            }
+
+            // A new anonymous identity is created only when this installation has
+            // never stored one (or Supabase has definitively invalidated it).
+            const { data, error } = await getSupabaseClient().auth.signInAnonymously();
+            if (error) return { error: toHebrewAuthError(error.message) };
+            await saveGuestSession(data.session);
             await updateGuestModePaused(false);
             return {};
+          } catch (error) {
+            return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };
           }
-          if (user) return {};
+        })();
 
-          const { error } = await getSupabaseClient().auth.signInAnonymously();
-          return error ? { error: toHebrewAuthError(error.message) } : {};
-        } catch (error) {
-          return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };
+        continueAsGuestPromiseRef.current = continuePromise;
+        try {
+          return await continuePromise;
+        } finally {
+          if (continueAsGuestPromiseRef.current === continuePromise) {
+            continueAsGuestPromiseRef.current = null;
+          }
         }
       },
       refreshEntitlements() {
@@ -311,6 +479,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
 
         try {
+          await saveGuestSession(session);
           const { error } = await getSupabaseClient().auth.signInWithPassword({
             email: normalizeEmail(email),
             password,
@@ -375,6 +544,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
 
         try {
+          await saveGuestSession(session);
           const redirectTo = getOAuthRedirectTo();
           const { data, error } = await getSupabaseClient().auth.signInWithOAuth({
             provider: 'google',
@@ -405,6 +575,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (Platform.OS !== 'ios') return { error: 'התחברות עם Apple זמינה רק במכשירי iOS.' };
 
         try {
+          await saveGuestSession(session);
           const available = await AppleAuthentication.isAvailableAsync();
           if (!available) {
             return { error: 'התחברות עם Apple אינה זמינה במכשיר הזה.' };
@@ -507,6 +678,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       async signOut() {
         if (user?.is_anonymous) {
+          await saveGuestSession(session);
           await updateGuestModePaused(true);
           setPasswordRecoveryExpiresAt(undefined);
           return;
@@ -521,10 +693,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         try {
           await getSupabaseClient().auth.signOut();
+          const restoredGuest = await restoreSavedGuestSession();
+          if (restoredGuest) {
+            await updateGuestModePaused(true);
+          }
         } finally {
-          setSession(null);
-          setUser(null);
-          setAccountId(undefined);
+          const { data } = await getSupabaseClient().auth.getSession();
+          if (!data.session?.user.is_anonymous) {
+            setSession(null);
+            setUser(null);
+            setAccountId(undefined);
+          }
           setPasswordRecoveryExpiresAt(undefined);
         }
       },

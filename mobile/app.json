@@ -42,7 +42,8 @@
       "expo-notifications",
       "expo-apple-authentication",
       "expo-iap",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-secure-store"
     ],
     "owner": "sarelalush1"
   }

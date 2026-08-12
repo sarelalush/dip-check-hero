@@ -1,10 +1,11 @@
 import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
 import { BillingPurchasePanel } from '../components/BillingPurchasePanel';
 import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
+import { fetchPlanUsage, type PlanUsageInfo } from '../services/usageService';
 import { useAuth } from '../state/AuthContext';
 import { colors, radius, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
@@ -32,6 +33,8 @@ const reasonCopy = {
 export function PurchaseScreen({ navigation, route }: Props) {
   const { accountId, continueAsGuest, isGuest, refreshEntitlements } = useAuth();
   const [guestSetupError, setGuestSetupError] = useState<string>();
+  const [planUsage, setPlanUsage] = useState<PlanUsageInfo>();
+  const [planUsageLoading, setPlanUsageLoading] = useState(false);
   const reason = route.params?.reason ?? 'subscriptionRequired';
   const copy = reasonCopy[reason];
 
@@ -39,6 +42,26 @@ export function PurchaseScreen({ navigation, route }: Props) {
     if (Platform.OS !== 'ios' || accountId) return;
     continueAsGuest().then((result) => setGuestSetupError(result.error));
   }, [accountId, continueAsGuest]);
+
+  const loadPlanUsage = useCallback(async () => {
+    if (!accountId) {
+      setPlanUsage(undefined);
+      return;
+    }
+
+    setPlanUsageLoading(true);
+    try {
+      setPlanUsage(await fetchPlanUsage(accountId));
+    } finally {
+      setPlanUsageLoading(false);
+    }
+  }, [accountId]);
+
+  useEffect(() => {
+    loadPlanUsage();
+  }, [loadPlanUsage]);
+
+  const hasActiveSubscription = Boolean(planUsage?.hasActiveSubscription);
 
   return (
     <AppShell activeTab="settings" navigation={navigation} contentStyle={styles.content} showBottomTabs={Boolean(accountId)}>
@@ -94,11 +117,18 @@ export function PurchaseScreen({ navigation, route }: Props) {
           <ActivityIndicator color={colors.primaryDark} />
           <Text style={styles.accountText}>{guestSetupError ?? 'מכינים רכישה מאובטחת...'}</Text>
         </Card>
+      ) : planUsageLoading && !planUsage ? (
+        <Card compact style={styles.accountCard}>
+          <ActivityIndicator color={colors.primaryDark} />
+          <Text style={styles.accountText}>בודקים את מצב המנוי...</Text>
+        </Card>
       ) : (
         <BillingPurchasePanel
           accountId={accountId}
-          onPurchaseVerified={() => {
-            refreshEntitlements();
+          hasActiveSubscription={hasActiveSubscription}
+          onPurchaseVerified={async () => {
+            await Promise.resolve(refreshEntitlements());
+            await loadPlanUsage();
           }}
         />
       )}

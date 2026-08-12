@@ -10,7 +10,6 @@ import {
   getStoreInAppProductIds,
   getStoreProductId,
   getStoreProductIdCandidates,
-  getStoreSubscriptionIds,
   isConsumableBillingProduct,
 } from '../services/billingConfig';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
@@ -21,6 +20,7 @@ type StorePlatform = 'android' | 'ios';
 
 interface BillingPurchasePanelProps {
   accountId?: string;
+  hasActiveSubscription?: boolean;
   onPurchaseVerified?: () => Promise<void> | void;
 }
 
@@ -47,6 +47,7 @@ export function BillingPurchasePanel(props: BillingPurchasePanelProps) {
 
 function NativeBillingPurchasePanel({
   accountId,
+  hasActiveSubscription = false,
   onPurchaseVerified,
   storePlatform,
 }: BillingPurchasePanelProps & { storePlatform: StorePlatform }) {
@@ -126,16 +127,23 @@ function NativeBillingPurchasePanel({
     },
   });
 
-  const storeSubscriptionIds = useMemo(() => getStoreSubscriptionIds(storePlatform), [storePlatform]);
-  const storeInAppProductIds = useMemo(() => getStoreInAppProductIds(storePlatform), [storePlatform]);
+  const storeSubscriptionIds = useMemo(() => {
+    const basicIds = getStoreProductIdCandidates(BILLING_PRODUCTS.basicMonthly.id, storePlatform);
+    if (!hasActiveSubscription) return basicIds;
+
+    return [...basicIds, ...getStoreProductIdCandidates(BILLING_PRODUCTS.extraPoolMonthly.id, storePlatform)];
+  }, [hasActiveSubscription, storePlatform]);
+  const storeInAppProductIds = useMemo(
+    () => (hasActiveSubscription ? getStoreInAppProductIds(storePlatform) : []),
+    [hasActiveSubscription, storePlatform],
+  );
 
   const queryStoreItems = useCallback(async () => {
-    const loadedItems = (
-      await Promise.all([
-        fetchProducts({ skus: storeSubscriptionIds, type: 'subs' }),
-        fetchProducts({ skus: storeInAppProductIds, type: 'in-app' }),
-      ])
-    ).flatMap((items) => items ?? []);
+    const requests: Array<ReturnType<typeof fetchProducts>> = [fetchProducts({ skus: storeSubscriptionIds, type: 'subs' })];
+    if (storeInAppProductIds.length > 0) {
+      requests.push(fetchProducts({ skus: storeInAppProductIds, type: 'in-app' }));
+    }
+    const loadedItems = (await Promise.all(requests)).flatMap((items) => items ?? []);
 
     const nextItems = createStoreItems(loadedItems ?? []);
     console.info('[billing] StoreKit products loaded', {
@@ -176,6 +184,12 @@ function NativeBillingPurchasePanel({
     if (!accountId) {
       setStatus('error');
       setMessage('מכינים את הרכישה המאובטחת. נסה שוב בעוד רגע.');
+      return;
+    }
+
+    if (isAddOnProduct(productId, storePlatform) && !hasActiveSubscription) {
+      setStatus('error');
+      setMessage('כדי לרכוש תוספות צריך קודם להפעיל מנוי בסיסי.');
       return;
     }
 
@@ -278,24 +292,34 @@ function NativeBillingPurchasePanel({
         onPress={() => purchase(BILLING_PRODUCTS.basicMonthly.id)}
         price={getStoreItemPrice(BILLING_PRODUCTS.basicMonthly.id, storePlatform, storeItems) ?? BILLING_PRODUCTS.basicMonthly.fallbackPriceHe}
       />
-      <BillingButton
-        busy={busy && activeProductId === BILLING_PRODUCTS.extraPoolMonthly.id}
-        disabled={busy}
-        label="הוסף בריכה נוספת"
-        onPress={() => purchase(BILLING_PRODUCTS.extraPoolMonthly.id)}
-        price={
-          getStoreItemPrice(BILLING_PRODUCTS.extraPoolMonthly.id, storePlatform, storeItems) ?? BILLING_PRODUCTS.extraPoolMonthly.fallbackPriceHe
-        }
-      />
-      <BillingButton
-        busy={busy && activeProductId === BILLING_PRODUCTS.extraScanPack200.id}
-        disabled={busy}
-        label="רכוש עוד 200 סריקות"
-        onPress={() => purchase(BILLING_PRODUCTS.extraScanPack200.id)}
-        price={
-          getStoreItemPrice(BILLING_PRODUCTS.extraScanPack200.id, storePlatform, storeItems) ?? BILLING_PRODUCTS.extraScanPack200.fallbackPriceHe
-        }
-      />
+      {hasActiveSubscription ? (
+        <>
+          <View style={styles.activePlanNotice}>
+            <LineIcon name="check" color={colors.primaryDark} size={15} />
+            <Text style={styles.activePlanText}>המנוי פעיל. אפשר להוסיף בריכות או חבילת סריקות.</Text>
+          </View>
+          <BillingButton
+            busy={busy && activeProductId === BILLING_PRODUCTS.extraPoolMonthly.id}
+            disabled={busy}
+            label="הוסף בריכה נוספת"
+            onPress={() => purchase(BILLING_PRODUCTS.extraPoolMonthly.id)}
+            price={
+              getStoreItemPrice(BILLING_PRODUCTS.extraPoolMonthly.id, storePlatform, storeItems) ?? BILLING_PRODUCTS.extraPoolMonthly.fallbackPriceHe
+            }
+          />
+          <BillingButton
+            busy={busy && activeProductId === BILLING_PRODUCTS.extraScanPack200.id}
+            disabled={busy}
+            label="רכוש עוד 200 סריקות"
+            onPress={() => purchase(BILLING_PRODUCTS.extraScanPack200.id)}
+            price={
+              getStoreItemPrice(BILLING_PRODUCTS.extraScanPack200.id, storePlatform, storeItems) ?? BILLING_PRODUCTS.extraScanPack200.fallbackPriceHe
+            }
+          />
+        </>
+      ) : (
+        <Text style={styles.addonLockedText}>תוספות לבריכות וסריקות יופיעו כאן אחרי שמנוי בסיסי יהיה פעיל.</Text>
+      )}
       <Pressable disabled={busy} onPress={restore} style={({ pressed }) => [styles.restoreButton, busy && styles.disabled, pressed && !busy ? styles.pressed : null]}>
         <LineIcon name="history" color={colors.primaryDark} size={16} />
         <Text style={styles.restoreText}>שחזור רכישות</Text>
@@ -319,6 +343,13 @@ function resolveLoadedStoreProductId(productId: string, storePlatform: StorePlat
 
 function getStoreItemPrice(productId: string, storePlatform: StorePlatform, storeItems: Map<string, StoreItem>) {
   return storeItems.get(resolveLoadedStoreProductId(productId, storePlatform, storeItems))?.displayPrice;
+}
+
+function isAddOnProduct(productId: string, storePlatform: StorePlatform) {
+  return (
+    getStoreProductIdCandidates(BILLING_PRODUCTS.extraPoolMonthly.id, storePlatform).includes(productId) ||
+    getStoreProductIdCandidates(BILLING_PRODUCTS.extraScanPack200.id, storePlatform).includes(productId)
+  );
 }
 
 function getUnavailableProductMessage(storePlatform: StorePlatform) {
@@ -469,6 +500,33 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginTop: 2,
     ...rtl.text,
+  },
+  activePlanNotice: {
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.borderSoft,
+    borderRadius: 14,
+    borderWidth: 1,
+    flexDirection: 'row-reverse',
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  activePlanText: {
+    color: colors.text,
+    flex: 1,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 12,
+    fontWeight: '900',
+    ...rtl.text,
+  },
+  addonLockedText: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 18,
+    ...rtl.textCenter,
   },
   statusText: {
     color: colors.textSoft,
