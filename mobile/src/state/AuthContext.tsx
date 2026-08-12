@@ -18,6 +18,12 @@ interface AuthResult {
   requiresPasswordSetup?: boolean;
 }
 
+export interface LegalConsent {
+  acceptedAt: string;
+  privacyPolicyVersion: string;
+  termsVersion: string;
+}
+
 interface AuthContextValue {
   user: User | null;
   session: Session | null;
@@ -30,12 +36,12 @@ interface AuthContextValue {
   continueAsGuest: () => Promise<AuthResult>;
   refreshEntitlements: () => void;
   signInWithEmail: (email: string, password: string) => Promise<AuthResult>;
-  signUpWithEmail: (email: string, password: string, displayName?: string, phone?: string) => Promise<AuthResult>;
+  signUpWithEmail: (email: string, password: string, displayName?: string, phone?: string, consent?: LegalConsent) => Promise<AuthResult>;
   resetPasswordForEmail: (email: string) => Promise<AuthResult>;
   passwordRecoveryExpiresAt?: number;
   passwordRecoveryPending: boolean;
-  signInWithApple: () => Promise<AuthResult>;
-  signInWithGoogle: () => Promise<AuthResult>;
+  signInWithApple: (consent?: LegalConsent) => Promise<AuthResult>;
+  signInWithGoogle: (consent?: LegalConsent) => Promise<AuthResult>;
   completePasswordReset: (password: string) => Promise<AuthResult>;
   clearPasswordRecovery: () => void;
   updateDisplayName: (displayName: string) => Promise<AuthResult>;
@@ -490,7 +496,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };
         }
       },
-      async signUpWithEmail(email, password, displayName, phone) {
+      async signUpWithEmail(email, password, displayName, phone, consent) {
         if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
 
         try {
@@ -500,6 +506,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               data: {
                 display_name: displayName?.trim() || null,
                 phone: phone?.trim() || null,
+                legal_consent: consent ?? null,
               },
             });
 
@@ -513,6 +520,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               data: {
                 display_name: displayName?.trim() || null,
                 phone: phone?.trim() || null,
+                legal_consent: consent ?? null,
               },
             },
           });
@@ -540,7 +548,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };
         }
       },
-      async signInWithGoogle() {
+      async signInWithGoogle(consent) {
         if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
 
         try {
@@ -565,12 +573,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           await setSessionFromOAuthUrl(result.url);
 
+          if (consent) {
+            const { error: consentError } = await getSupabaseClient().auth.updateUser({
+              data: { legal_consent: consent },
+            });
+            if (consentError) return { error: toHebrewAuthError(consentError.message) };
+          }
+
           return {};
         } catch (error) {
           return { error: toHebrewAuthError(error instanceof Error ? error.message : '') };
         }
       },
-      async signInWithApple() {
+      async signInWithApple(consent) {
         if (!isSupabaseConfigured) return { error: supabaseConfigMessage };
         if (Platform.OS !== 'ios') return { error: 'התחברות עם Apple זמינה רק במכשירי iOS.' };
 
@@ -613,12 +628,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .trim();
 
           if (fullName && data.user) {
-            await getSupabaseClient().auth.updateUser({
+            const { error: profileError } = await getSupabaseClient().auth.updateUser({
               data: {
                 display_name: fullName,
                 full_name: fullName,
+                ...(consent ? { legal_consent: consent } : {}),
               },
             });
+            if (profileError) return { error: toHebrewAuthError(profileError.message) };
+          } else if (consent && data.user) {
+            const { error: consentError } = await getSupabaseClient().auth.updateUser({
+              data: { legal_consent: consent },
+            });
+            if (consentError) return { error: toHebrewAuthError(consentError.message) };
           }
 
           return {};

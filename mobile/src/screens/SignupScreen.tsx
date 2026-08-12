@@ -11,11 +11,15 @@ import {
   SecureDataNote,
   SocialButton,
 } from '../components/AuthScreenShell';
+import { LineIcon } from '../components/LineIcon';
 import { colors, rtl, typography } from '../theme';
 import { useAuth } from '../state/AuthContext';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
+
+const TERMS_VERSION = '2026-08-12';
+const PRIVACY_POLICY_VERSION = '2026-08-12';
 
 export function SignupScreen({ navigation }: Props) {
   const { isGuest, signInWithApple, signInWithGoogle, signUpWithEmail } = useAuth();
@@ -29,10 +33,26 @@ export function SignupScreen({ navigation }: Props) {
   const [busy, setBusy] = useState(false);
   const [appleBusy, setAppleBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
+  const [legalAccepted, setLegalAccepted] = useState(false);
+
+  function getLegalConsent() {
+    return {
+      acceptedAt: new Date().toISOString(),
+      privacyPolicyVersion: PRIVACY_POLICY_VERSION,
+      termsVersion: TERMS_VERSION,
+    };
+  }
+
+  function requireLegalConsent() {
+    if (legalAccepted) return true;
+    setError('יש לאשר את תנאי השימוש ומדיניות הפרטיות כדי להירשם.');
+    return false;
+  }
 
   async function submit() {
     const phoneClean = phone.trim().replace(/\s+/g, '');
 
+    if (!requireLegalConsent()) return;
     if (!name.trim()) return setError('יש להזין שם מלא כדי ליצור חשבון.');
     if (!email.trim()) return setError('יש להזין אימייל כדי ליצור חשבון.');
     if (!phoneClean) return setError('יש להזין מספר טלפון כדי ליצור חשבון.');
@@ -42,7 +62,7 @@ export function SignupScreen({ navigation }: Props) {
     setBusy(true);
     setError('');
     setSuccess('');
-    const result = await signUpWithEmail(email, password, name, phoneClean);
+    const result = await signUpWithEmail(email, password, name, phoneClean, getLegalConsent());
     setBusy(false);
 
     if (result.error) {
@@ -57,10 +77,11 @@ export function SignupScreen({ navigation }: Props) {
   }
 
   async function google() {
+    if (!requireLegalConsent()) return;
     setGoogleBusy(true);
     setError('');
     setSuccess('');
-    const result = await signInWithGoogle();
+    const result = await signInWithGoogle(getLegalConsent());
     setGoogleBusy(false);
 
     if (result.error) {
@@ -70,10 +91,11 @@ export function SignupScreen({ navigation }: Props) {
 
   async function apple() {
     if (busy || appleBusy || googleBusy) return;
+    if (!requireLegalConsent()) return;
     setAppleBusy(true);
     setError('');
     setSuccess('');
-    const result = await signInWithApple();
+    const result = await signInWithApple(getLegalConsent());
     setAppleBusy(false);
 
     if (result.error) {
@@ -106,6 +128,28 @@ export function SignupScreen({ navigation }: Props) {
       <AuthField compact icon="mail" keyboardType="email-address" label="אימייל" onChangeText={setEmail} placeholder="הכנס כתובת אימייל" value={email} />
       {!isGuest ? <AuthField compact icon="lock" label="סיסמה" onChangeText={setPassword} onSideIconPress={() => setPasswordVisible((visible) => !visible)} placeholder="בחר סיסמה" secure={!passwordVisible} sideIcon="eye" value={password} /> : null}
 
+      <View style={styles.legalRow}>
+        <Pressable
+          accessibilityLabel="אישור תנאי השימוש ומדיניות הפרטיות"
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: legalAccepted }}
+          hitSlop={8}
+          onPress={() => {
+            setLegalAccepted((accepted) => !accepted);
+            setError('');
+          }}
+          style={[styles.checkbox, legalAccepted && styles.checkboxChecked]}
+        >
+          {legalAccepted ? <LineIcon color={colors.white} name="check" size={16} /> : null}
+        </Pressable>
+        <Text style={styles.legalText}>
+          קראתי ואני מסכים/ה ל
+          <Text onPress={() => navigation.navigate('Terms')} style={styles.legalLink}>תנאי השימוש</Text>
+          {' ול'}
+          <Text onPress={() => navigation.navigate('PrivacyPolicy')} style={styles.legalLink}>מדיניות הפרטיות</Text>
+        </Text>
+      </View>
+
       <AuthMessage text={error} tone="error" />
       <AuthMessage text={success} tone="success" />
 
@@ -131,4 +175,9 @@ const styles = StyleSheet.create({
   accountRow: { marginTop: Platform.OS === 'android' ? 8 : 2, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 4 },
   accountText: { color: '#1D2530', fontFamily: typography.fontFamilyRegular, fontSize: 13, fontWeight: '700' },
   accountLink: { color: colors.primary, fontFamily: typography.fontFamilySemiBold, fontSize: 13, fontWeight: '900', ...rtl.text },
+  legalRow: { alignItems: 'center', flexDirection: 'row-reverse', gap: 10, marginVertical: 4, width: '100%' },
+  checkbox: { alignItems: 'center', borderColor: colors.primary, borderRadius: 5, borderWidth: 2, height: 24, justifyContent: 'center', width: 24 },
+  checkboxChecked: { backgroundColor: colors.primary },
+  legalText: { color: '#34495E', flex: 1, fontFamily: typography.fontFamilyRegular, fontSize: 12, lineHeight: 20, textAlign: 'right' },
+  legalLink: { color: colors.primary, fontFamily: typography.fontFamilySemiBold, fontWeight: '800', textDecorationLine: 'underline' },
 });
