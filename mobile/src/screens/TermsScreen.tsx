@@ -6,6 +6,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Terms'>;
 export function TermsScreen({ navigation }: Props) {
   return <StaticInfoScreen navigation={navigation}
     title={legalDocuments.terms.title}
-    subtitle={'גרסה ' + legalDocuments.version + ' · נוסח עבודה מקומי לפני הפצה'}
+    subtitle={'גרסה ' + legalDocuments.version + ' · פניות: ' + legalDocuments.supportEmail + ' · נוסח עבודה'}
     sections={legalDocuments.terms.sections} />;
 }

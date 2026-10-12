@@ -8,7 +8,7 @@ import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Support'>;
 
-const SUPPORT_EMAIL = 'support@dipcheck.app';
+const SUPPORT_EMAIL = 'razoakii17@gmail.com';
 const SUPPORT_POOL_IMAGE = require('../../assets/images/home-pool.png');
 const FAQ_ITEMS = [
   {

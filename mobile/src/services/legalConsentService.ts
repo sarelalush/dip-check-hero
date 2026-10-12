@@ -1,7 +1,9 @@
-import documents from '../config/legalDocuments.json';
+import bundledDocuments from '../config/legalDocuments.json';
 import { getSupabaseClient } from '../integrations/supabase/client';
 
-export { documents as legalDocuments };
+// Display exactly the snapshot selected by the server. A contact/terms rollout
+// can then be staged before an app update reaches all devices.
+export let legalDocuments = bundledDocuments;
 export type ConsentFailureKind = 'service_update' | 'verification';
 export class ConsentVerificationError extends Error {
   constructor(message: string, readonly kind: ConsentFailureKind = 'verification') {
@@ -28,13 +30,27 @@ export interface ServiceConsentStatus {
   privacyVersion: string;
   aiVersion: string;
 }
-function readStatus(data: unknown): ServiceConsentStatus {
+async function readStatus(data: unknown): Promise<ServiceConsentStatus> {
   const status = data as Partial<ServiceConsentStatus> | null;
   if (!status || typeof status.serviceAccepted !== 'boolean' ||
       typeof status.aiAllowed !== 'boolean' || typeof status.releaseReady !== 'boolean' ||
-      status.termsVersion !== documents.version || status.privacyVersion !== documents.version ||
-      status.aiVersion !== documents.version)
+      typeof status.termsVersion !== 'string' || !/^\d{4}-\d{2}-\d{2}(?:\.\d+)?$/.test(status.termsVersion) ||
+      status.privacyVersion !== status.termsVersion || status.aiVersion !== status.termsVersion)
     throw new ConsentVerificationError('לא ניתן לאמת את גרסת התנאים. יש לעדכן את האפליקציה או לנסות שוב.');
+  if (status.termsVersion !== legalDocuments.version) {
+    const { data: rows, error } = await getSupabaseClient().from('legal_document_versions')
+      .select('kind,content').eq('version', status.termsVersion).in('kind',['terms','privacy','ai']);
+    const parts = new Map((rows ?? []).map((row) => [row.kind,row.content]));
+    const valid = (value: unknown): value is typeof bundledDocuments.terms => {
+      const doc = value as typeof bundledDocuments.terms | null;
+      return Boolean(doc && typeof doc.title === 'string' && Array.isArray(doc.sections) && doc.sections.length > 0 &&
+        doc.sections.every((section) => typeof section.title === 'string' && typeof section.body === 'string'));
+    };
+    const terms=parts.get('terms'), privacy=parts.get('privacy'), ai=parts.get('ai');
+    if (error || rows?.length !== 3 || !valid(terms) || !valid(privacy) || !valid(ai))
+      throw new ConsentVerificationError('לא ניתן לטעון את נוסח התנאים שנבחר בשרת. נסה שוב לפני אישור.');
+    legalDocuments={...bundledDocuments,version:status.termsVersion,terms,privacy,ai};
+  }
   return status as ServiceConsentStatus;
 }
 export async function fetchServiceConsent() {
@@ -44,7 +60,7 @@ export async function fetchServiceConsent() {
 }
 export async function acceptServiceConsent() {
   const { data, error } = await getSupabaseClient().rpc('record_service_consent', {
-    p_terms_version: documents.version, p_privacy_version: documents.version,
+    p_terms_version: legalDocuments.version, p_privacy_version: legalDocuments.version,
     p_adult_private_pool_use: true,
   });
   if (error) throw rpcFailure(error, 'ההסכמה לא נשמרה. לא נמשיך לפני שמירה בשרת.');
@@ -52,7 +68,7 @@ export async function acceptServiceConsent() {
 }
 export async function setAiConsent(allowed: boolean) {
   const { data, error } = await getSupabaseClient().rpc('record_ai_consent', {
-    p_version: documents.version, p_allowed: allowed,
+    p_version: legalDocuments.version, p_allowed: allowed,
   });
   if (error) throw rpcFailure(error, 'הבחירה לא נשמרה. נסה שוב לפני שליחת תמונה.');
   return readStatus(data);

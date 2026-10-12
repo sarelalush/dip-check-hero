@@ -1424,12 +1424,14 @@ async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: A
     const inlineData = dataUrlToGeminiInlineData(dataUrl);
     const modelPath = provider.model.startsWith('models/') ? provider.model.slice('models/'.length) : provider.model;
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelPath)}:generateContent?key=${encodeURIComponent(provider.apiKey)}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelPath)}:generateContent`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-goog-api-key': provider.apiKey,
         },
+        signal: AbortSignal.timeout(45000),
         body: JSON.stringify({
           systemInstruction: {
             parts: [{ text: buildSystemPrompt(brand) }],
@@ -1457,11 +1459,9 @@ async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: A
       },
     );
 
-    const errorText = response.ok ? '' : await response.text();
     if (response.status === 429) {
       console.error('Gemini API rate limit:', {
         model: modelPath,
-        providerError: errorText.slice(0, 1500),
         retryAfter: response.headers.get('retry-after'),
       });
       return {
@@ -1733,7 +1733,7 @@ async function beginGeminiProviderCall(
 ) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   if (!supabaseUrl) {
-    throw new EdgeAnalysisError('unavailable', 'Analysis service is temporarily unavailable.');
+    throw new EdgeAnalysisError('unavailable', 'שירות הניתוח אינו זמין כרגע.');
   }
 
   const response = await fetch(`${supabaseUrl}/rest/v1/rpc/begin_strip_analysis_provider_call`, {
@@ -1751,7 +1751,11 @@ async function beginGeminiProviderCall(
       status: response.status,
       testId,
     });
-    throw new EdgeAnalysisError('unavailable', 'Analysis service is temporarily unavailable.');
+    const failure = await response.json().catch(() => ({})) as { message?: string };
+    throw new EdgeAnalysisError('unavailable', failure.message === 'scan_quota_exhausted'
+      ? 'מכסת הסריקות נוצלה. אפשר לצפות בבדיקות הקיימות.'
+      : failure.message === 'scan_rate_limited' ? 'בוצעו כמה בקשות ברצף. המתן דקה לפני בקשה חדשה.'
+        : 'שירות הניתוח אינו זמין כרגע. נסה שוב בעוד כמה רגעים.');
   }
 
   return Boolean(await response.json());
@@ -1918,13 +1922,6 @@ async function persistAnalysisResult(body: AnalyzeStripRequest, result: StripAna
   if (!supabaseUrl) return;
 
   const headers = getServiceHeaders(request);
-  const existingResponse = await fetch(
-    `${supabaseUrl}/rest/v1/tests?select=id&id=eq.${encodeURIComponent(body.testId)}&limit=1`,
-    { headers },
-  );
-  const existingRows = existingResponse.ok ? await existingResponse.json() : [];
-  const alreadyExists = Array.isArray(existingRows) && existingRows.length > 0;
-
   const testRow = {
     account_id: body.accountId,
     analyzed_at: new Date(result.analyzedAt).toISOString(),
@@ -1934,7 +1931,8 @@ async function persistAnalysisResult(body: AnalyzeStripRequest, result: StripAna
     id: body.testId,
     image_path: result.imagePath ?? body.imagePath ?? null,
     image_url: result.imageUrl ?? body.imageUrl ?? null,
-    is_billable: result.isValidStrip !== false,
+    is_billable: result.accepted !== false && result.isValidStrip !== false && !result.lowConfidence
+      && (!result.failureReason || result.failureReason === 'none'),
     low_confidence: result.lowConfidence ?? false,
     model: result.model ?? null,
     overall_status: result.overallStatus.label,
@@ -1972,7 +1970,7 @@ async function persistAnalysisResult(body: AnalyzeStripRequest, result: StripAna
   }));
 
   if (readingRows.length) {
-    await fetch(`${supabaseUrl}/rest/v1/test_readings?on_conflict=test_id,parameter_key`, {
+    const readingsResponse = await fetch(`${supabaseUrl}/rest/v1/test_readings?on_conflict=test_id,parameter_key`, {
       method: 'POST',
       headers: {
         ...headers,
@@ -1980,13 +1978,15 @@ async function persistAnalysisResult(body: AnalyzeStripRequest, result: StripAna
       },
       body: JSON.stringify(readingRows),
     });
+    if (!readingsResponse.ok) throw new Error('Failed to persist readings.');
   }
 
-  await fetch(`${supabaseUrl}/rest/v1/test_recommendations?test_id=eq.${encodeURIComponent(body.testId)}`, {
+  const deleteResponse = await fetch(`${supabaseUrl}/rest/v1/test_recommendations?test_id=eq.${encodeURIComponent(body.testId)}`, {
     method: 'DELETE',
     headers,
   });
-  await fetch(`${supabaseUrl}/rest/v1/test_recommendations`, {
+  if (!deleteResponse.ok) throw new Error('Failed to replace recommendations.');
+  const recommendationsResponse = await fetch(`${supabaseUrl}/rest/v1/test_recommendations`, {
     method: 'POST',
     headers,
     body: JSON.stringify([
@@ -2001,9 +2001,12 @@ async function persistAnalysisResult(body: AnalyzeStripRequest, result: StripAna
       },
     ]),
   });
+  if (!recommendationsResponse.ok) throw new Error('Failed to persist recommendations.');
 
-  if (!alreadyExists && result.isValidStrip !== false) {
-    await fetch(`${supabaseUrl}/rest/v1/rpc/register_scan_usage`, {
+  // The RPC derives billability from the protected completion record and is
+  // idempotent for this canonical scan, including after partial save failures.
+  {
+    const usageResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/register_scan_usage`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -2012,6 +2015,7 @@ async function persistAnalysisResult(body: AnalyzeStripRequest, result: StripAna
         p_user_id: userId,
       }),
     });
+    if (!usageResponse.ok) throw new Error('Failed to record scan usage.');
   }
 }
 
@@ -2076,6 +2080,8 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
         canonicalTestId,
         testId: body.testId,
       });
+      await persistAnalysisResult({ ...body, testId: canonicalTestId, imagePath: claim.result.imagePath },
+        claim.result, authenticatedUserId, request);
       return remapAnalysisResult(claim.result, body);
     }
 
@@ -2085,6 +2091,8 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
         testId: body.testId,
       });
       const result = await waitForStripAnalysisResult(authenticatedUserId, canonicalTestId, request);
+      await persistAnalysisResult({ ...body, testId: canonicalTestId, imagePath: result.imagePath },
+        result, authenticatedUserId, request);
       return remapAnalysisResult(result, body);
     }
 
@@ -2143,7 +2151,7 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
     });
     if (aiRun.ok) {
       const aiResult = buildSingleAiResult(aiRun, body, brand);
-      const result = { ...aiResult, tokenUsage };
+      const result = protectAnalysisResponse({ ...aiResult, tokenUsage });
       console.log('Gemini strip analysis selected', {
         accepted: aiResult.accepted,
         acceptanceReasons: aiResult.acceptanceReasons,
@@ -2155,11 +2163,10 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
         source: aiResult.source,
         testId: body.testId,
       });
-      // Keep persistence in the mobile save flow only. The app enriches the AI
-      // result with dosage recommendations before upserting tests/readings and
-      // registering usage. The idempotency record stores only the raw response
-      // so duplicate screen effects can reuse it without another Gemini call.
+      // Store the provider result first so a failed history save can be retried
+      // from the cache without another paid call. Billing is server-owned.
       await completeStripAnalysisRequest(authenticatedUserId, canonicalTestId, result, request);
+      await persistAnalysisResult({ ...body, testId: canonicalTestId }, result, authenticatedUserId, request);
       return remapAnalysisResult(result, body);
     }
 
@@ -2245,7 +2252,7 @@ Deno.serve(async (request) => {
       { headers: corsHeaders },
     );
   } catch (error) {
-    console.error('analyze-strip failed', error);
+    console.error('analyze-strip failed', { code: error instanceof EdgeAnalysisError ? error.code : 'unavailable' });
     if (error instanceof EdgeAnalysisError) {
       return Response.json(
         {

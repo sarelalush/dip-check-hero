@@ -31,6 +31,8 @@ import { comparisonKind } from '../domain/readingComparison';
 import { NextActionCard } from '../components/NextActionCard';
 import { DisclosureSection } from '../components/DisclosureSection';
 import { requireCurrentAiConsent } from '../services/legalConsentService';
+import { GuidanceSources } from '../components/GuidanceSources';
+import { buildMetricGuidance } from '../domain/metricGuidance';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Results'>;
 const FALLBACK_POOL_NAME = 'הבריכה שלי';
@@ -70,6 +72,7 @@ function targetForParameter(parameter: ScanResultParameter) {
 function mapParameterToRecommendation(parameter: ScanResultParameter): DosageRecommendation {
   return {
     actionHe: parameter.recommendation,
+    guidance: buildMetricGuidance(parameter),
     blocked: parameter.status.kind !== 'ok',
     exactAmountAvailable: false,
     labelHe: parameter.name,
@@ -85,15 +88,17 @@ function getResultCards(result: StripAnalysisResult): DosageRecommendation[] {
   const recommendations = result.dosage?.recommendations
     ?? result.parameters.filter((parameter) => comparisonKind(parameter) !== undefined).map(mapParameterToRecommendation);
 
+  const safeRecommendations = isInvalidStripResult(result)
+    ? recommendations.map((rec) => ({ ...rec, guidance: undefined })) : recommendations;
   const coreRecommendations = CORE_RESULT_PARAMETER_ORDER.map((paramKey) =>
-    recommendations.find((recommendation) => recommendation.paramKey === paramKey),
+    safeRecommendations.find((recommendation) => recommendation.paramKey === paramKey),
   ).filter((recommendation): recommendation is DosageRecommendation => Boolean(recommendation));
 
   if (coreRecommendations.length) {
     return coreRecommendations;
   }
 
-  return recommendations
+  return safeRecommendations
     .filter((recommendation) => CORE_RESULT_PARAMETER_KEYS.has(recommendation.paramKey))
     .slice(0, 3);
 }
@@ -725,11 +730,22 @@ export function ResultsScreen({ navigation, route }: Props) {
         ))}
       </View>
 
+      {!isInvalidStripResult(visibleAnalysisResult) && visibleAnalysisResult.dosage?.recommendations.some(
+        (rec) => !CORE_RESULT_PARAMETER_KEYS.has(rec.paramKey),
+      ) ? (
+        <DisclosureSection title="מדדים נוספים" summary="מייצב, קשיות ומלח — לפי סוג הסטיק">
+          {visibleAnalysisResult.dosage.recommendations.filter((rec) => !CORE_RESULT_PARAMETER_KEYS.has(rec.paramKey))
+            .map((rec) => <ResultCard key={rec.paramKey} rec={rec} compact />)}
+        </DisclosureSection>
+      ) : null}
+
       <View style={styles.section}>
-        <DisclosureSection title="תצוגה גרפית" summary="השוואת המדדים לערכי היעד">
+        <DisclosureSection title="תצוגה גרפית" summary="השוואת המדדים לטווחי ההשוואה">
           <ParameterArcs recs={resultCards} />
         </DisclosureSection>
       </View>
+
+      <GuidanceSources />
 
       {!visibleAnalysisResult.dosage?.safetyNote ? <SafetyCard /> : null}
 

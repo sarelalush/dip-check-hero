@@ -36,7 +36,7 @@ export function DeleteAccountScreen({ navigation }: Props) {
       if (error || !result?.id) throw new Error('לא ניתן לשלוח בקשה כרגע. נסה שוב או פנה לתמיכה.');
       setRequestId(result.id);
       setMessage('הבקשה נרשמה בשרת. מספר פנייה: ' + result.id +
-        '. החשבון עדיין לא נמחק. נעדכן לאחר ביצוע המחיקה; לפנייה על סטטוס: support@dipcheck.app.');
+        '. החשבון עדיין לא נמחק. לפנייה על סטטוס יש לציין את מספר הפנייה: razoakii17@gmail.com.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'הבקשה לא נשלחה. נסה שוב.');
     } finally { setBusy(false); }

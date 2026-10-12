@@ -16,7 +16,7 @@ function PricingScreen() {
         <p className="mt-4 leading-relaxed">רכישות וניתוחים חדשים באתר אינם זמינים עד השלמת תנאי השירות, הפרטיות והחיבור למסלול ההסכמה החדש.</p>
         <p className="mt-4 leading-relaxed text-muted-foreground">השירות מציג הערכת מדדים מצילום, ללא מינון חומרים וללא אישור לרחצה. אפשר לצפות בתוצאות קיימות.</p>
         <p className="mt-4 leading-relaxed text-muted-foreground">מנוי קיים אינו מתבטל בעקבות חסימת רכישות או מחיקת חשבון. לניהול חיובים או בירור זכויות פנה לתמיכה ולספק שבו רכשת.</p>
-        <a className="mt-6 block font-semibold text-primary" href="mailto:support@dipcheck.app">תמיכה בנושא מנוי</a>
+        <a className="mt-6 block font-semibold text-primary" href="mailto:razoakii17@gmail.com">תמיכה בנושא מנוי</a>
       </div>
     </main>
   );

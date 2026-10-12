@@ -22,6 +22,12 @@ export type Database = {
   };
   public: {
     Tables: {
+      legal_document_versions: Table<{
+        kind: 'terms' | 'privacy' | 'ai';
+        version: string;
+        content: Json;
+        created_at: string;
+      }>;
       profiles: Table<{
         avatar_url: string | null;
         created_at: string;

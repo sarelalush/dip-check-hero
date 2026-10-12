@@ -548,12 +548,6 @@ export async function upsertTestToCloud(
     }
   }
 
-  const { data: existingTest } = await getSupabaseClient()
-    .from('tests')
-    .select('id')
-    .eq('id', cloudId)
-    .maybeSingle();
-
   const upsert = mapLocalTestToCloud(recordForCloud, userId, accountId, pools);
   const { error } = await getSupabaseClient().from('tests').upsert(upsert);
   if (error) throw error;
@@ -561,13 +555,8 @@ export async function upsertTestToCloud(
   await upsertReadingsToCloud(recordForCloud, cloudId, accountId);
   await upsertRecommendationsToCloud(recordForCloud, cloudId, accountId);
 
-  if (!existingTest) {
-    await getSupabaseClient().rpc('register_scan_usage', {
-      p_account_id: accountId,
-      p_test_id: cloudId,
-      p_user_id: userId,
-    });
-  }
+  // Usage is recorded once by the analysis server. A client history save must
+  // not determine billing or consume another scan on retries.
 
   return {
     ...recordForCloud,

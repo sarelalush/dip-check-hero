@@ -9,6 +9,8 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import type { DosageRecommendation } from '../domain/dosage';
 import { colors, rtl, typography } from '../theme';
 import { useAuth } from '../state/AuthContext';
+import { buildMetricGuidance } from '../domain/metricGuidance';
+import { GuidanceSources } from '../components/GuidanceSources';
 
 export function DemoResultScreen({
   navigation,
@@ -86,13 +88,20 @@ export function DemoResultScreen({
           <Text style={styles.actionTitle}>מה עושים עכשיו</Text>
           <Text style={styles.body}>
             {needsCare
-              ? 'ה־pH מעל טווח ההשוואה בדוגמה. יש לאמת מדידה לפני טיפול ולקבל הוראות לפי המוצר והמצב בפועל.'
+              ? 'ה־pH מעל טווח ההשוואה בדוגמה. פתח את ההנחיות בכרטיס המדד כדי לראות איך לאמת את הקריאה ומהו כיוון התיקון.'
               : 'המדדים בדוגמה בטווח ההשוואה. זו אינה הוכחה שהמים בטוחים לרחצה.'}
           </Text>
         </Card>
         {cards.map((rec) => (
-          <ResultCard key={rec.paramKey} rec={rec} />
+          <ResultCard key={rec.paramKey} rec={{ ...rec, guidance: buildMetricGuidance({
+            key: rec.paramKey,
+            value: rec.measured,
+            idealRange: rec.paramKey === 'ph' ? { min: 7.2, max: 7.6, label: 'טווח ההשוואה בדוגמה' }
+              : rec.paramKey === 'freeChlorine' ? { min: 1, max: 3, label: 'טווח ההשוואה בדוגמה' }
+                : { min: 80, max: 120, label: 'טווח ההשוואה בדוגמה' },
+          }) }} />
         ))}
+        <GuidanceSources />
         <Text style={styles.body}>
           אפשר לראות היסטוריית מדדים ולהגדיר תזכורות בדיקה. תזכורת אינה אישור לטיפול או לרחצה.
         </Text>

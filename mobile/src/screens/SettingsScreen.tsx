@@ -129,6 +129,7 @@ export function SettingsScreen({ navigation }: Props) {
         </Section>
 
         <Section title="עזרה ומשפטי">
+          <SettingsRow icon="results" label="דוגמה לתוצאות ולהנחיות" value="הסבר המדדים ללא צילום או חיוב" onPress={() => navigation.navigate('DemoResult')} />
           <AiConsentPanel onPrivacy={() => navigation.navigate('PrivacyPolicy')} />
           <SettingsRow icon="help" label="עזרה ותמיכה" value="שאלות נפוצות ויצירת קשר" onPress={() => navigation.navigate('Support')} />
           <SettingsRow icon="results" label="מדיניות פרטיות" value="איזה מידע נשמר ואיך משתמשים בו" onPress={() => navigation.navigate('PrivacyPolicy')} />

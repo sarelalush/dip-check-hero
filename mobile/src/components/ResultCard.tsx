@@ -2,6 +2,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { DosageRecommendation } from '../domain/dosage';
 import { colors, radius, rtl, shadows, typography } from '../theme';
 import { LineIcon } from './LineIcon';
+import { DisclosureSection } from './DisclosureSection';
 
 const STATUS_STYLE: Record<
   DosageRecommendation['status'],
@@ -44,6 +45,23 @@ interface ResultCardProps {
   compact?: boolean;
 }
 
+function Guidance({ rec }: { rec: DosageRecommendation }) {
+  if (!rec.guidance) return null;
+  return <View style={styles.guidance}>
+    <DisclosureSection title="הנחיות לבדיקה ותיקון" summary="משמעות הקריאה והצעדים הבאים">
+      <Text style={styles.guidanceHeading}>משמעות הקריאה</Text>
+      <Text style={styles.guidanceText}>{rec.guidance.meaning}</Text>
+      <Text style={styles.guidanceHeading}>אימות המדידה</Text>
+      <Text style={styles.guidanceText}>{rec.guidance.verification}</Text>
+      <Text style={styles.guidanceHeading}>הצעדים הבאים</Text>
+      {rec.guidance.steps.map((step,index)=><View key={step} style={styles.stepRow}>
+        <View style={styles.stepNumber}><Text style={styles.stepNumberText}>{index+1}</Text></View>
+        <Text style={styles.stepText}>{step}</Text>
+      </View>)}
+    </DisclosureSection>
+  </View>;
+}
+
 export function ResultCard({ rec, compact = false }: ResultCardProps) {
   const status = STATUS_STYLE[rec.status];
   const steps = splitSteps(rec.actionHe);
@@ -72,6 +90,7 @@ export function ResultCard({ rec, compact = false }: ResultCardProps) {
             {'יש לאמת מדידה לפני טיפול'}
           </Text>
         ) : null}
+        <Guidance rec={rec} />
       </View>
     );
   }
@@ -135,11 +154,15 @@ export function ResultCard({ rec, compact = false }: ResultCardProps) {
       ) : rec.status !== 'ok' ? (
         <Text style={styles.waitingText}>יש לאמת מדידה לפני טיפול.</Text>
       ) : null}
+      <Guidance rec={rec} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  guidance: { marginTop: 12 },
+  guidanceHeading: { fontFamily: typography.fontFamilySemiBold, fontSize: 13, color: colors.primaryDeep, ...rtl.text },
+  guidanceText: { fontFamily: typography.fontFamilyRegular, fontSize: 13, lineHeight: 21, color: colors.text, ...rtl.text },
   compactCard: {
     backgroundColor: colors.surface,
     padding: 14,

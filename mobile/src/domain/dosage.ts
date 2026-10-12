@@ -3,6 +3,7 @@ import type { Pool } from './pool';
 import type { ScanParameterStatusKind, ScanResultParameter, StripAnalysisResult } from './scanResults';
 import type { StripParameter } from './strip';
 import { comparisonKind } from './readingComparison';
+import { buildMetricGuidance, type MetricGuidance } from './metricGuidance';
 
 export interface DosageProduct {
   key: ProductKey;
@@ -22,6 +23,7 @@ export interface DosageRecommendation {
   active?: boolean;
   blocked?: boolean;
   exactAmountAvailable: boolean;
+  guidance?: MetricGuidance;
 }
 export interface DosageCalculationResult {
   recommendations: DosageRecommendation[];
@@ -33,12 +35,13 @@ export interface DosageCalculationResult {
   policyVersion?: string;
   treatmentBlocked?: boolean;
 }
-export const TREATMENT_POLICY_VERSION = 'measurement-only-2026-10-11';
+export const TREATMENT_POLICY_VERSION = 'measurement-only-2026-10-12';
 export const MEASUREMENT_SAFETY_NOTE = 'הערכים הם הערכה מצילום בזמן הבדיקה. ייתכנו טעויות. אין להסתמך עליהם לבדם להוספת חומרים או לאישור רחצה. יש לאמת מדידה ולפעול לפי תווית המוצר ואיש מקצוע. אין לערבב חומרים.';
-export const MEASUREMENT_ACTION = 'אמת את המדדים בבדיקה מתאימה לפני טיפול. האפליקציה אינה מחשבת כרגע מינון חומרים.';
+export const MEASUREMENT_ACTION = 'פתח את ההנחיות מתחת למדד כדי להבין את החריגה ואת כיוון התיקון. לפני הוספת חומר יש לאמת מדידה ולהתאים את הטיפול למוצר ולבריכה.';
 const ORDER: StripParameter[] = ['alkalinity', 'ph', 'freeChlorine', 'cyanuricAcid', 'salt', 'hardness'];
 
 function statusCard(parameter: ScanResultParameter): DosageRecommendation {
+  const guidance = buildMetricGuidance(parameter);
   return {
     paramKey: parameter.key,
     labelHe: parameter.name,
@@ -46,7 +49,8 @@ function statusCard(parameter: ScanResultParameter): DosageRecommendation {
     target: (parameter.idealRange.min + parameter.idealRange.max) / 2,
     unit: parameter.unit,
     status: comparisonKind(parameter)!,
-    actionHe: 'להשוואה בלבד; יש לאמת לפני טיפול.',
+    actionHe: guidance?.steps.join('\n') ?? 'להשוואה בלבד; יש לאמת לפני טיפול.',
+    guidance,
     blocked: true,
     active: false,
     exactAmountAvailable: false,

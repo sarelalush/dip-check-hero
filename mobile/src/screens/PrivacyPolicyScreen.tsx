@@ -6,6 +6,6 @@ type Props = NativeStackScreenProps<RootStackParamList, 'PrivacyPolicy'>;
 export function PrivacyPolicyScreen({ navigation }: Props) {
   return <StaticInfoScreen navigation={navigation}
     title={legalDocuments.privacy.title}
-    subtitle={'גרסה ' + legalDocuments.version + ' · נוסח עבודה מקומי לפני הפצה'}
+    subtitle={'גרסה ' + legalDocuments.version + ' · פניות: ' + legalDocuments.supportEmail + ' · נוסח עבודה'}
     sections={legalDocuments.privacy.sections} />;
 }

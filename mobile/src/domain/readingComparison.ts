@@ -1,7 +1,7 @@
 import type { ScanParameterStatusKind, ScanResultParameter } from './scanResults';
 
 // Cached status flags are not authoritative: compare the actual reading.
-export function comparisonKind(parameter: ScanResultParameter): ScanParameterStatusKind | undefined {
+export function comparisonKind(parameter: Pick<ScanResultParameter, 'value' | 'idealRange'>): ScanParameterStatusKind | undefined {
   const range = parameter.idealRange;
   if (!Number.isFinite(parameter.value) || !range || !Number.isFinite(range.min) ||
       !Number.isFinite(range.max) || range.min > range.max) return undefined;
