@@ -6,7 +6,7 @@ import type { RootStackParamList } from '../../App';
 import { Card } from '../components/Card';
 import { ResultCard } from '../components/ResultCard';
 import { PrimaryButton } from '../components/PrimaryButton';
-import type { DosageRecommendation } from '../domain/dosage';
+import { SHORT_TREATMENT_NOTE, type DosageRecommendation } from '../domain/dosage';
 import { colors, rtl, typography } from '../theme';
 import { useAuth } from '../state/AuthContext';
 import { buildMetricGuidance } from '../domain/metricGuidance';
@@ -28,7 +28,7 @@ export function DemoResultScreen({
       active: false,
       exactAmountAvailable: false,
       actionHe: needsCare
-        ? 'יש לאמת מדידה לפני טיפול. הגרסה הנוכחית אינה מחשבת מינון חומרים.'
+        ? 'אם החריגה אומתה, הורד pH עם חומר ייעודי לפי מינון התווית.'
         : 'הערך בטווח.',
     },
     {
@@ -52,6 +52,10 @@ export function DemoResultScreen({
       actionHe: 'הערך בטווח.',
     },
   ];
+  const demoPhGuidance = buildMetricGuidance({
+    key: 'ph', value: needsCare ? 7.9 : 7.4,
+    idealRange: { min: 7.2, max: 7.6, label: 'טווח ההשוואה בדוגמה' },
+  });
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -68,7 +72,7 @@ export function DemoResultScreen({
         </Text>
         <View style={styles.tabs}>
           {[
-            { value: true, label: 'נדרש אימות' },
+            { value: true, label: 'pH גבוה' },
             { value: false, label: 'בטווח ההשוואה' },
           ].map((option) => (
             <Pressable
@@ -87,10 +91,10 @@ export function DemoResultScreen({
         <Card style={styles.action}>
           <Text style={styles.actionTitle}>מה עושים עכשיו</Text>
           <Text style={styles.body}>
-            {needsCare
-              ? 'ה־pH מעל טווח ההשוואה בדוגמה. פתח את ההנחיות בכרטיס המדד כדי לראות איך לאמת את הקריאה ומהו כיוון התיקון.'
-              : 'המדדים בדוגמה בטווח ההשוואה. זו אינה הוכחה שהמים בטוחים לרחצה.'}
+            {demoPhGuidance?.action}
           </Text>
+          {needsCare ? <Text style={styles.body}>{demoPhGuidance?.followUp}</Text> : null}
+          <Text style={styles.note}>{SHORT_TREATMENT_NOTE}</Text>
         </Card>
         {cards.map((rec) => (
           <ResultCard key={rec.paramKey} rec={{ ...rec, guidance: buildMetricGuidance({

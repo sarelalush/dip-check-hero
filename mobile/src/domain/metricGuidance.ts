@@ -3,6 +3,8 @@ import type { StripParameter } from './strip';
 import { comparisonKind } from './readingComparison';
 
 export interface MetricGuidance {
+  action: string;
+  followUp: string;
   meaning: string;
   verification: string;
   steps: string[];
@@ -25,12 +27,18 @@ const SAFE_PRODUCTS = 'אם נדרש חומר, בחר מוצר שמתאים לב
 
 function guidanceFor(key: StripParameter, kind: ScanParameterStatusKind): MetricGuidance {
   if (kind === 'ok') return {
+    action: 'אין צורך בתיקון בגלל מדד זה. המשך מעקב רגיל.',
+    followUp: 'בדוק שוב לפי שגרת התחזוקה ואחרי שינוי במים.',
     meaning: 'ההערכה נמצאת בטווח ההשוואה המוצג. היא אינה מעידה על כל מזהמי המים ואינה אישור רחצה.',
     verification: VERIFY_CURRENT,
     steps: ['המשך מעקב לפי הנחיות התחזוקה של הבריכה. אין צורך להוסיף חומר רק כדי להגיע למרכז הטווח.',
       'בדוק שוב אחרי שינוי במים או טיפול, לפי הוראות הערכה והמוצר. אם המים עכורים או יש גירוי, קבל בדיקה והנחיה מתאימות.'],
   };
   if (key === 'ph') return {
+    action: kind === 'high'
+      ? 'אם החריגה אומתה, הורד pH עם חומר ייעודי לפי מינון התווית.'
+      : 'אם החריגה אומתה, העלה pH עם חומר ייעודי לפי מינון התווית.',
+    followUp: 'אחרי הטיפול, בדוק שוב pH ואלקליניות במועד שמופיע בהוראות המוצר.',
     meaning: kind === 'high'
       ? 'pH גבוה יכול להפחית את יעילות הכלור. החריגה כאן היא ביחס לטווח ההשוואה שבאפליקציה.'
       : 'pH נמוך יכול להגדיל את הסיכון לקורוזיה בציוד. החריגה כאן היא ביחס לטווח ההשוואה שבאפליקציה.',
@@ -42,6 +50,12 @@ function guidanceFor(key: StripParameter, kind: ScanParameterStatusKind): Metric
       SAFE_PRODUCTS],
   };
   if (key === 'freeChlorine') return {
+    action: kind === 'low'
+      ? 'אמת כלור בערכת DPD. אם אושר חוסר, השלם כלור לפי הוראות מערכת החיטוי והמוצר.'
+      : 'אל תוסיף עוד כלור. בדוק את מערכת החיטוי ועקוב אחר הרמה בבדיקה חוזרת.',
+    followUp: kind === 'low'
+      ? 'בדוק גם pH ומייצב לפני בחירת המינון; בדוק כלור שוב לפי הוראות המוצר.'
+      : 'אל תוסיף מנטרל כלור ללא הוראות למוצר המסוים; אין לקבוע זמן רחצה מהצילום.',
     meaning: kind === 'low'
       ? 'כלור חופשי הוא החלק הזמין לחיטוי. רמה נמוכה עלולה להעיד שאין מספיק חומר חיטוי, אך קריאת סטיק לבדה אינה קובעת זאת.'
       : 'ההערכה של הכלור החופשי גבוהה מטווח ההשוואה. אין לקבוע זמן רחצה או טיפול נוסף מהצילום.',
@@ -53,6 +67,10 @@ function guidanceFor(key: StripParameter, kind: ScanParameterStatusKind): Metric
       SAFE_PRODUCTS],
   };
   if (key === 'alkalinity') return {
+    action: kind === 'low'
+      ? 'אם החריגה אומתה, השתמש במעלה אלקליניות לפי מינון התווית.'
+      : 'אמת גם pH. אם נדרש תיקון בשני המדדים, השתמש בחומר מתאים להורדתם לפי התווית.',
+    followUp: 'אחרי הטיפול, בדוק שוב אלקליניות ו־pH לפי הוראות המוצר.',
     meaning: kind === 'low'
       ? 'אלקליניות מסייעת לייצב את ה־pH. אלקליניות נמוכה יכולה לגרום לשינויים חדים בו.'
       : 'אלקליניות גבוהה יכולה להקשות על איזון ה־pH. יש לבחון את שניהם יחד עם שאר נתוני המים.',
@@ -64,22 +82,38 @@ function guidanceFor(key: StripParameter, kind: ScanParameterStatusKind): Metric
       'לאחר טיפול מאושר, בדוק שוב גם אלקליניות וגם pH לפי הוראות המוצר.', SAFE_PRODUCTS],
   };
   if (key === 'salt') return {
+    action: kind === 'low'
+      ? 'אמת מלח מול מפרט מחולל הכלור. אם אושר חוסר, הוסף מלח לפי המפרט.'
+      : 'אל תוסיף מלח. אמת את הקריאה מול מפרט המחולל לפני תכנון דילול מים.',
+    followUp: 'בדוק שוב מלח לפי הוראות המחולל. לפני החלפת מים, בדוק התאמה לבריכה.',
     meaning: 'ריכוז המלח הנדרש נקבע לפי דגם מחולל הכלור. טווח כללי אינו מחליף את מפרט המכשיר.',
     verification: 'אמת מלח בערכה או במכשיר מתאים והשווה להוראות מחולל הכלור שלך, כולל דרישות כיול.',
     steps: [CHECK_SPEC, 'בדוק את דגם המכשיר, הודעותיו ושינויים אחרונים כמו מילוי מים. אל תוסיף מלח לפי צילום בלבד.',
       'אם החריגה אומתה, קבל הוראות תיקון לפי הדגם, נפח הבריכה והמדידה. אין לרוקן מים ללא בדיקת התאמה לבריכה.'],
   };
   if (key === 'hardness') return {
+    action: kind === 'low'
+      ? 'אמת שזו קשיות סידן ושנדרש תיקון; במקרה כזה השתמש במעלה קשיות לפי התווית.'
+      : 'בצע בדיקת איזון מלאה לפני טיפול בקשיות גבוהה או החלפת מים.',
+    followUp: 'בדוק גם pH ואלקליניות והתאם את היעד לחומרי הבריכה ולציוד.',
     meaning: 'קשיות היא חלק מאיזון המים יחד עם pH ואלקליניות. טווח מתאים תלוי גם בחומרי הבריכה ובציוד.',
     verification: 'בדוק האם הערכה מודדת קשיות כוללת או קשיות סידן. אלה מדדים שונים; אין להתייחס אליהם כתחליף זה לזה.',
     steps: [CHECK_SPEC, 'בצע בדיקת איזון מלאה לפני בחירת תיקון. אין להסיק מתוצאה זו אחוז החלפת מים או כמות חומר.'],
   };
   if (key === 'cyanuricAcid') return {
+    action: kind === 'low'
+      ? 'אמת שנדרש מייצב במערכת שלך; אם כן, הוסף מייצב לפי מינון התווית.'
+      : 'אל תוסיף מייצב. בדוק אם מוצר הכלור מכיל מייצב לפני תכנון תיקון.',
+    followUp: 'בדוק גם כלור חופשי ו־pH. אין לחשב החלפת מים בלי נתוני מי המילוי והבריכה.',
     meaning: 'חומצה ציאנורית היא מייצב כלור. נוכחותה משנה את דרישות החיטוי ואת פירוש חלק מהמדדים.',
     verification: 'אמת מייצב בערכה מתאימה ובדוק אם חומר הכלור שבו משתמשים מכיל אותו.',
     steps: [CHECK_SPEC, 'בדוק גם כלור חופשי ו־pH לפני שינוי הטיפול. אל תוסיף מייצב או תרוקן מים על סמך צילום בלבד.'],
   };
   return {
+    action: key === 'totalChlorine'
+      ? 'בדוק כלור חופשי בנפרד לפני שינוי במינון הכלור.'
+      : 'אמת ברום בערכה המתאימה למערכת שלך ופעל לפי הוראות המוצר.',
+    followUp: 'בדוק גם pH לפני שינוי הטיפול.',
     meaning: key === 'totalChlorine' ? 'כלור כולל אינו זהה לכלור חופשי הזמין לחיטוי.' : 'קריאת ברום ניתנת לפירוש רק כשמערכת החיטוי והערכה מתאימות לברום.',
     verification: VERIFY_CURRENT,
     steps: ['ודא שסוג חומר החיטוי תואם לסקלה שעל הערכה. אין להשתמש בקריאת כלור כולל או ברום במקום קריאת כלור חופשי.', CHECK_SPEC],
@@ -88,6 +122,8 @@ function guidanceFor(key: StripParameter, kind: ScanParameterStatusKind): Metric
 
 export function buildMetricGuidance(parameter: Pick<ScanResultParameter, 'key' | 'value' | 'idealRange'>): MetricGuidance | undefined {
   const kind = comparisonKind(parameter);
-  if (!kind || parameter.value < 0 || (parameter.key === 'ph' && (parameter.value <= 0 || parameter.value > 14))) return undefined;
+  if (!kind || parameter.value < 0 || parameter.idealRange.min < 0 ||
+    (parameter.key === 'ph' && (parameter.value <= 0 || parameter.value > 14 ||
+      parameter.idealRange.min <= 0 || parameter.idealRange.max > 14))) return undefined;
   return guidanceFor(parameter.key, kind);
 }

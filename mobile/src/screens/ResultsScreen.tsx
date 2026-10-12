@@ -719,6 +719,7 @@ export function ResultsScreen({ navigation, route }: Props) {
         testId={savedRecord?.testId}
         pool={pool}
         allowRecord={false}
+        isHistorical={isSavedResult}
         onNewScan={handleNewScan}
         onEditPool={() => pool && navigation.navigate('EditPool', { poolId: pool.id })}
       />

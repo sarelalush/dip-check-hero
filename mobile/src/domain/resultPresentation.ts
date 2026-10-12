@@ -1,5 +1,5 @@
 import type { StripAnalysisResult, ScanResultParameter } from './scanResults';
-import { MEASUREMENT_ACTION } from './dosage';
+import { calculateDosage } from './dosage';
 import { comparisonKind } from './readingComparison';
 
 export function formatReading(parameter?: ScanResultParameter) {
@@ -48,8 +48,8 @@ export function resultStatus(result?: StripAnalysisResult) {
 
 export function nextAction(result?: StripAnalysisResult) {
   if (!result) return 'בצע בדיקה ראשונה כדי לקבל הערכה למדדים.';
-  if (resultStatus(result).tone === 'neutral') return 'פתח את הבדיקה כדי לראות אילו נתונים זמינים.';
+  if (resultStatus(result).tone === 'neutral') return 'הבדיקה חלקית. השלם את המדדים החסרים לפני טיפול.';
   if (resultStatus(result).label === 'נדרש צילום חוזר')
     return 'צלם סטיק חדש וברור לפני קבלת המלצת טיפול.';
-  return MEASUREMENT_ACTION;
+  return (result.dosage ?? calculateDosage(result)).summary;
 }

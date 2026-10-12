@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { StripAnalysisResult } from '../domain/scanResults';
 import type { Pool } from '../domain/pool';
-import { MEASUREMENT_SAFETY_NOTE } from '../domain/dosage';
+import { MEASUREMENT_SAFETY_NOTE, SHORT_TREATMENT_NOTE } from '../domain/dosage';
 import { nextAction } from '../domain/resultPresentation';
 import { useTreatments } from '../state/TreatmentContext';
 import {
@@ -20,6 +20,7 @@ export function NextActionCard({
   testId = result.id,
   pool,
   allowRecord = true,
+  isHistorical = false,
   onNewScan,
   onEditPool,
 }: {
@@ -27,6 +28,7 @@ export function NextActionCard({
   testId?: string;
   pool?: Pool;
   allowRecord?: boolean;
+  isHistorical?: boolean;
   onNewScan: () => void;
   onEditPool: () => void;
 }) {
@@ -114,11 +116,20 @@ export function NextActionCard({
     <Card style={styles.card}>
       {treatmentBlocked ? (
         <>
-          <Text style={styles.kicker}>לפני טיפול במים</Text>
-          <Text style={styles.action}>{nextAction(result)}</Text>
-          <Text style={styles.note}>{MEASUREMENT_SAFETY_NOTE}</Text>
-          <Text style={styles.note}>זו הערכה ממועד הבדיקה. בדיקה שמורה אינה מעידה על מצב המים כיום.</Text>
-          <PrimaryButton label="בצע בדיקה חדשה" icon="scan" onPress={onNewScan} />
+          <Text style={styles.kicker}>מה עושים עכשיו</Text>
+          {primary?.guidance ? <>
+            <Text style={styles.amount}>{primary.labelHe} {primary.status === 'high' ? 'גבוה' : 'נמוך'}</Text>
+            <Text style={styles.action}>{primary.guidance.action}</Text>
+            <Text style={styles.followUp}>{primary.guidance.followUp}</Text>
+          </> : <Text style={styles.action}>{nextAction(result)}</Text>}
+          {isHistorical ? <Text style={styles.note}>זו בדיקה קודמת. בצע בדיקה עדכנית לפני טיפול.</Text> : null}
+          <Text style={styles.note}>{SHORT_TREATMENT_NOTE}</Text>
+          <DisclosureSection title="פרטים לפני הטיפול">
+            <Text style={styles.note}>{MEASUREMENT_SAFETY_NOTE}</Text>
+            {primary?.guidance ? <Text style={styles.note}>{primary.guidance.verification}</Text> : null}
+            <Text style={styles.note}>כמות החומר וזמן הסחרור תלויים במוצר ובריכוזו, בנפח הבריכה ובמדדים הנלווים. התאם אותם להוראות היצרן; אל תבחר מינון מתוך טווח ההשוואה בלבד.</Text>
+          </DisclosureSection>
+          <PrimaryButton label={isHistorical ? 'בדיקה עדכנית' : 'בדיקה חוזרת'} icon="scan" onPress={onNewScan} />
         </>
       ) : <>
       <Text style={styles.kicker}>{treatment ? 'הפעולה תועדה' : 'מה עושים עכשיו'}</Text>
@@ -262,6 +273,13 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamilyBold,
     fontSize: 20,
     lineHeight: 30,
+    ...rtl.text,
+  },
+  followUp: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 13,
+    lineHeight: 22,
     ...rtl.text,
   },
   amount: {

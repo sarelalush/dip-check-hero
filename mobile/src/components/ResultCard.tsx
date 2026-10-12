@@ -48,7 +48,7 @@ interface ResultCardProps {
 function Guidance({ rec }: { rec: DosageRecommendation }) {
   if (!rec.guidance) return null;
   return <View style={styles.guidance}>
-    <DisclosureSection title="הנחיות לבדיקה ותיקון" summary="משמעות הקריאה והצעדים הבאים">
+    <DisclosureSection title="למה ואיך מתקנים">
       <Text style={styles.guidanceHeading}>משמעות הקריאה</Text>
       <Text style={styles.guidanceText}>{rec.guidance.meaning}</Text>
       <Text style={styles.guidanceHeading}>אימות המדידה</Text>
@@ -85,11 +85,12 @@ export function ResultCard({ rec, compact = false }: ResultCardProps) {
           <Text style={styles.measured}>{formatValue(rec.measured, rec.unit)}</Text>
           <Text style={styles.target}>מרכז טווח ההשוואה: {formatValue(rec.target, rec.unit)}</Text>
         </View>
-        {rec.status !== 'ok' ? (
-          <Text style={styles.compactNote}>
-            {'יש לאמת מדידה לפני טיפול'}
-          </Text>
-        ) : null}
+        {rec.guidance ? (
+          <View style={styles.recommendationBox}>
+            <Text style={styles.recommendationLabel}>{rec.status === 'ok' ? 'מעקב' : 'מה עושים'}</Text>
+            <Text style={styles.recommendationText}>{rec.guidance.action}</Text>
+          </View>
+        ) : rec.status !== 'ok' ? <Text style={styles.compactNote}>נתוני המדד אינם מספיקים להנחיה.</Text> : null}
         <Guidance rec={rec} />
       </View>
     );
@@ -133,7 +134,12 @@ export function ResultCard({ rec, compact = false }: ResultCardProps) {
         </View>
       </View>
 
-      {isActive ? (
+      {rec.guidance ? (
+        <View style={styles.recommendationBox}>
+          <Text style={styles.recommendationLabel}>{rec.status === 'ok' ? 'מעקב' : 'מה עושים'}</Text>
+          <Text style={styles.recommendationText}>{rec.guidance.action}</Text>
+        </View>
+      ) : isActive ? (
         <View style={styles.recommendationBox}>
           <Text style={styles.recommendationLabel}>המלצה</Text>
           {steps.length <= 1 ? (
