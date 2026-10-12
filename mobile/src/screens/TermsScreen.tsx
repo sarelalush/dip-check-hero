@@ -1,41 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { StaticInfoScreen } from '../components/StaticInfoScreen';
+import { legalDocuments } from '../services/legalConsentService';
 import type { RootStackParamList } from '../../App';
-
 type Props = NativeStackScreenProps<RootStackParamList, 'Terms'>;
-
 export function TermsScreen({ navigation }: Props) {
-  return (
-    <StaticInfoScreen
-      navigation={navigation}
-      title="תנאי שימוש"
-      subtitle="הבהרות חשובות לפני שימוש באפליקציה"
-      sections={[
-        {
-          title: 'המלצות ולא בדיקת מעבדה',
-          body: 'האפליקציה מספקת המלצות על בסיס תמונות סטיק ונתונים שהמשתמש מזין, כמו נפח הבריכה. היא אינה מערכת בטיחות מים מעבדתית או תחליף לבדיקה מקצועית.',
-        },
-        {
-          title: 'אחריות המשתמש',
-          body: 'המשתמש אחראי לפעול לפי הוראות יצרני הסטיקים וחומרי הבריכה, להוסיף חומרים בזהירות, ולא לערבב כימיקלים ישירות.',
-        },
-        {
-          title: 'דיוק וזמינות',
-          body: 'תוצאות עשויות להשתנות לפי איכות הצילום, תאורה, סטיק, נתוני בריכה וזמינות שירותי ענן. השירות עשוי לכלול טעויות או זמני השבתה.',
-        },
-        {
-          title: 'מנויים ותוספות',
-          body: 'המנוי החודשי הבסיסי מתחדש אוטומטית אחת לחודש וכולל 200 סריקות סטיק בחודש, בריכה פעילה אחת, תוצאות והמלצות מיידיות ותזכורות בדיקה. ניתן להוסיף מנוי חודשי לבריכה נוספת או לרכוש חבילת 200 סריקות נוספות לחודש הנוכחי. המחיר, משך המנוי ותנאי החידוש מוצגים במסך הרכישה לפני האישור. ניתן לנהל או לבטל מנויים דרך הגדרות החשבון בחנות שממנה בוצעה הרכישה.',
-        },
-        {
-          title: 'תנאי רכישה וביטול',
-          body: 'הרכישה מתבצעת ומחויבת דרך חשבון החנות של המשתמש. מנויים מתחדשים אוטומטית אלא אם בוטלו לפני מועד החידוש לפי כללי החנות. תנאי השימוש הסטנדרטיים של Apple חלים על רכישות ב-iOS: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/',
-        },
-        {
-          title: 'שימוש אחראי',
-          body: 'יש להשתמש באפליקציה ככלי עזר בלבד. במקרה של ספק לגבי איכות המים או בטיחות הבריכה, מומלץ לפנות לאיש מקצוע.',
-        },
-      ]}
-    />
-  );
+  return <StaticInfoScreen navigation={navigation}
+    title={legalDocuments.terms.title}
+    subtitle={'גרסה ' + legalDocuments.version + ' · נוסח עבודה מקומי לפני הפצה'}
+    sections={legalDocuments.terms.sections} />;
 }

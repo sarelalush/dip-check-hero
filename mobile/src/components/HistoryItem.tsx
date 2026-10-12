@@ -7,24 +7,45 @@ interface HistoryItemProps {
   date: string;
   onPress?: () => void;
   poolName: string;
+  showPoolName?: boolean;
   status: string;
   time: string;
   tone?: StatusTone;
 }
 
-export function HistoryItem({ date, onPress, poolName, status, time, tone = 'success' }: HistoryItemProps) {
+export function HistoryItem({
+  date,
+  onPress,
+  poolName,
+  showPoolName = true,
+  status,
+  time,
+  tone = 'success',
+}: HistoryItemProps) {
   const iconColor = tone === 'success' ? colors.success : colors.warning;
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.item, pressed && onPress && styles.pressed]}>
-      <View style={[styles.icon, { backgroundColor: tone === 'success' ? colors.successSoft : colors.warningSoft }]}>
+    <Pressable
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={`${poolName}, ${date}, ${status}, ${time}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.item, pressed && onPress && styles.pressed]}
+    >
+      <View
+        style={[
+          styles.icon,
+          { backgroundColor: tone === 'success' ? colors.successSoft : colors.warningSoft },
+        ]}
+      >
         <LineIcon name={tone === 'success' ? 'check' : 'help'} color={iconColor} size={17} />
       </View>
       <View style={styles.copy}>
         <Text style={styles.date}>{date}</Text>
-        <Text style={styles.poolName}>{poolName}</Text>
+        {showPoolName ? <Text style={styles.poolName}>{poolName}</Text> : null}
         <Text style={styles.status}>{status}</Text>
-        <Text style={styles.time}>{time}</Text>
+        <Text style={styles.time} numberOfLines={1}>
+          {time}
+        </Text>
       </View>
       <LineIcon name="chevronLeft" color={colors.muted} size={18} />
     </Pressable>
@@ -57,9 +78,8 @@ const styles = StyleSheet.create({
   },
   date: {
     color: colors.text,
-    fontFamily: typography.fontFamilySemiBold,
+    fontFamily: typography.fontFamilyRegular,
     fontSize: 12,
-    fontWeight: '900',
     ...rtl.text,
   },
   poolName: {
@@ -72,18 +92,18 @@ const styles = StyleSheet.create({
   },
   status: {
     marginTop: 2,
-    color: colors.textSoft,
+    color: colors.text,
     fontFamily: typography.fontFamilyBold,
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '800',
     ...rtl.text,
   },
   time: {
     marginTop: 3,
-    color: colors.muted,
+    color: colors.textSoft,
     fontFamily: typography.fontFamilyRegular,
-    fontSize: 10,
-    fontWeight: '800',
+    fontSize: 12,
+    lineHeight: 18,
     ...rtl.text,
   },
   pressed: {

@@ -20,3 +20,7 @@ client_id = "com.stickcheck.app"
 
 [storage.vector]
 enabled = false
+
+[functions.process-account-deletion]
+# Internal endpoint authenticates its dedicated worker secret itself.
+verify_jwt = false

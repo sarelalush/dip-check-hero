@@ -55,7 +55,7 @@ const statusStyles: Record<string, string> = {
   high: "bg-rose-100 text-rose-700 border-rose-200",
 };
 const statusLabel: Record<string, string> = {
-  ok: "תקין",
+  ok: "בטווח ההשוואה",
   low: "נמוך",
   high: "גבוה",
 };
@@ -101,7 +101,7 @@ export function ScanReport({ results, recommendations }: { results: unknown; rec
 
       {recs.length > 0 && (
         <div>
-          <div className="mb-1.5 text-xs font-bold text-muted-foreground">המלצות טיפול</div>
+          <div className="mb-1.5 text-xs font-bold text-muted-foreground">השוואת מדדים</div>
           <div className="space-y-1.5">
             {recs.map((rec, i) => {
               const status = String(rec.status ?? "ok");
@@ -112,10 +112,10 @@ export function ScanReport({ results, recommendations }: { results: unknown; rec
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="text-xs font-bold text-foreground">{rec.labelHe}</div>
-                    <div className="text-[11px] text-muted-foreground">{rec.actionHe}</div>
+                    <div className="text-[11px] text-muted-foreground">להשוואה בלבד; יש לאמת לפני טיפול. אין כאן מינון חומרים או אישור לרחצה.</div>
                     {(rec.measured !== undefined || rec.target !== undefined) && (
                       <div className="mt-0.5 text-[10px] text-muted-foreground">
-                        נמדד: {rec.measured ?? "—"}{rec.unit ? ` ${rec.unit}` : ""} · יעד: {rec.target ?? "—"}{rec.unit ? ` ${rec.unit}` : ""}
+                        נמדד: {rec.measured ?? "—"}{rec.unit ? ` ${rec.unit}` : ""} · ערך השוואה: {rec.target ?? "—"}{rec.unit ? ` ${rec.unit}` : ""}
                       </div>
                     )}
                   </div>

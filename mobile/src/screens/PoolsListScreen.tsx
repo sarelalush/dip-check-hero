@@ -29,7 +29,7 @@ export function PoolsListScreen({ navigation }: Props) {
           <View style={styles.heroOverlayTwo} />
           <Text style={styles.heroIcon}>💧</Text>
           <Text style={styles.heroTitle}>כל הבריכות במקום אחד</Text>
-          <Text style={styles.heroSub}>הגדר נפח, בצע סריקה וקבל המלצות מדויקות לכל בריכה.</Text>
+          <Text style={styles.heroSub}>נהל בריכות, הערך מדדים מצילום ושמור היסטוריית בדיקות.</Text>
         </View>
 
         <Pressable onPress={() => navigation.navigate('AddPool')} style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}>

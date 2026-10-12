@@ -16,6 +16,7 @@ import { useResultsHistory, type SavedHistoryRecord } from '../state/ResultsHist
 import { useScanSession } from '../state/ScanSessionContext';
 import { schedulePoolReminderTestNotification } from '../services/notificationService';
 import type { RootStackParamList } from '../../App';
+import { resultStatus } from '../domain/resultPresentation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'PoolDetails'>;
 
@@ -72,7 +73,7 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
 
     startScanSession({ brandId: canSkipStripSelection ? selectedBrand?.id : pool?.stripBrandId, poolId: route.params.poolId });
     if (canSkipStripSelection && selectedBrand?.id) {
-      navigation.navigate('ScanPlaceholder', { brandId: selectedBrand.id, poolId: route.params.poolId });
+      navigation.navigate('Scan', { brandId: selectedBrand.id, poolId: route.params.poolId });
       return;
     }
 
@@ -117,11 +118,12 @@ export function PoolDetailsScreen({ navigation, route }: Props) {
 
       <Card style={styles.card}>
         <View style={styles.cardHeader}>
-          <StatusBadge label="המים מאוזנים" tone="success" />
+          <StatusBadge {...(recentTests[0] && !recentTests[0].analysisResult ? { label: 'בדיקה שמורה — פתח לפירוט', tone: 'neutral' as const } : resultStatus(recentTests[0]?.analysisResult))} />
           <View style={styles.iconBubble}>
             <LineIcon name="pools" color={colors.primaryDark} size={20} />
           </View>
         </View>
+        {recentTests[0] ? <Text style={styles.description}>לפי הבדיקה מ־{recentTests[0].date}</Text> : null}
         <Text style={styles.metaLabel}>נפח</Text>
         <Text style={styles.metaValue}>{poolVolume}</Text>
         <View style={styles.detailsGrid}>
@@ -251,14 +253,15 @@ function DetailPill({ label, value }: { label: string; value: string }) {
 }
 
 function RecentTestItem({ onPress, record }: { onPress: () => void; record: SavedHistoryRecord }) {
-  const statusColor = record.tone === 'success' ? colors.success : colors.warning;
+  const status = resultStatus(record.analysisResult);
+  const statusColor = status.tone === 'success' ? colors.success : status.tone === 'neutral' ? colors.textSoft : colors.warning;
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.recentItem, pressed && styles.recentItemPressed]}>
       <View style={[styles.recentDot, { backgroundColor: statusColor }]} />
       <View style={styles.recentCopy}>
         <Text style={styles.recentDate}>{record.date}</Text>
-        <Text style={styles.recentStatus}>{record.status}</Text>
+        <Text style={styles.recentStatus}>{record.analysisResult ? status.label : 'בדיקה שמורה — פתח לפירוט'}</Text>
         <Text style={styles.recentSummary} numberOfLines={1}>
           {record.resultSummary}
         </Text>

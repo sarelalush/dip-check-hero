@@ -58,13 +58,11 @@ function buildScanImagePath(accountId: string, userId: string, testId: string, c
 
 export function getPublicScanImageUrl(path?: string | null) {
   if (!path) return undefined;
-  if (isRemoteOrStorageValue(path) || path.startsWith('data:') || path.startsWith('file:') || path.startsWith('blob:')) {
+  if (path.startsWith('data:') || path.startsWith('file:') || path.startsWith('blob:')) {
     return path;
   }
-  if (!isSupabaseConfigured) return undefined;
-
-  const { data } = getSupabaseClient().storage.from(SCAN_IMAGES_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  // A private bucket has no public URL. Resolve previews explicitly under RLS.
+  return undefined;
 }
 
 export function isLocalUploadCandidate(uri?: string) {
@@ -203,7 +201,6 @@ export async function uploadScanImage({ accountId, imageUri, testId, userId }: U
     bucket: SCAN_IMAGES_BUCKET,
     contentType,
     path,
-    publicUrl: getPublicScanImageUrl(path),
   };
 }
 
@@ -222,7 +219,6 @@ export async function prepareScanImageForRemoteAnalysis({
 
     return {
       imagePath: uploadedImage?.path,
-      imageUrl: uploadedImage?.publicUrl,
     };
   } catch (error) {
     console.warn('Failed to prepare scan image for remote analysis', error);

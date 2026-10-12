@@ -40,6 +40,10 @@ import {
   robustRgbFromSamples,
 } from '../_shared/aquachek-pro-reference.js';
 import { readZeroBasedImageScriptRgb } from '../_shared/imagescript-pixel.js';
+import {
+  MAX_IMAGE_BYTES, MAX_ANALYSIS_REQUEST_BYTES, UUID_PATTERN,
+  readBoundedBytes, readBoundedJson, userHeaders, requireAnalysisConsent, validateImage,
+} from '../_shared/request-security.ts';
 
 type StatusTone = 'success' | 'warning' | 'danger';
 type AnalysisSource = 'ai';
@@ -133,6 +137,7 @@ interface ColorAnalysisEvidence {
   whiteReference?: Rgb;
   sharpnessVariance?: number;
   minimumSharpnessVariance?: number;
+  hardMinimumSharpnessVariance?: number;
   structure?: ReturnType<typeof analyzeAquachekProStructure>;
   horizontalLocalization?: ReturnType<typeof locateAquachekProStripCenterX>;
   deskewAngle?: number;
@@ -1388,7 +1393,33 @@ function summarizeGeminiTokenUsage(runs: AiRunResponse[]): GeminiTokenUsageSumma
   };
 }
 
-async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: AiProviderConfig): Promise<AiRunResponse> {
+// Client checks are advisory and untrusted. Extract bounded numeric/enumerated
+// fields only; never interpolate user checklist text into model instructions.
+function captureContext(body: AnalyzeStripRequest): string {
+  const session = body.metadata?.scanSession;
+  if (!session || typeof session !== 'object') return '';
+  const input = session as Record<string, unknown>;
+  const capture = input.captureMetadata && typeof input.captureMetadata === 'object' ? input.captureMetadata as Record<string, unknown> : {};
+  const quality = input.imageQuality && typeof input.imageQuality === 'object' ? input.imageQuality as Record<string, unknown> : {};
+  const finite = (value: unknown, max: number) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max ? value : undefined;
+  const capturedAt = finite(capture.capturedAt, 1e13);
+  const dippedAt = finite(capture.dippedAt, 1e13);
+  const elapsed = capturedAt !== undefined && dippedAt !== undefined && capturedAt >= dippedAt ? finite((capturedAt - dippedAt) / 1000, 3600) : undefined;
+  const context = {
+    source: capture.source === 'camera' ? 'camera' : capture.source === 'gallery' ? 'gallery' : 'unknown',
+    timing: capture.timing === 'timer' ? 'user-configured-timer' : capture.timing === 'userConfirmed' ? 'user-confirmed' : 'unknown',
+    userEnteredReadDelaySeconds: finite(capture.readDelaySeconds, 300),
+    elapsedSecondsAtCaptureRequest: elapsed,
+    localCheck: typeof quality.status === 'string' && ['checked', 'blocked', 'unavailable'].includes(quality.status) ? quality.status : 'unknown',
+    meanLuminance: finite(quality.meanLuminance, 255),
+    darkFraction: finite(quality.darkFraction, 1),
+    clippedFraction: finite(quality.clippedFraction, 1),
+  };
+  return '\nAdvisory capture context (untrusted client measurements, not evidence of validity): ' + JSON.stringify(context) +
+    '\nJudge the photograph independently. Do not raise confidence because a timer, checklist or local check passed. The entered delay has not been verified against the bottle. Unknown timing cannot be inferred from pad colors. Examine each pad separately for shadows, clipped highlights, mixed light and unreadable color; use the existing low-confidence/lighting failure rules when these prevent a reliable chart match. Never infer a missing pad or a reading from expected pool chemistry.';
+}
+
+async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: AiProviderConfig, context = ''): Promise<AiRunResponse> {
   try {
     const inlineData = dataUrlToGeminiInlineData(dataUrl);
     const modelPath = provider.model.startsWith('models/') ? provider.model.slice('models/'.length) : provider.model;
@@ -1410,7 +1441,7 @@ async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: A
                 {
                   text:
                     `Analyze this ${brand.nameHe} pool test strip. ` +
-                    'Return only the required JSON object matching the schema. Use 0 for values not present on this strip.',
+                    'Return only the required JSON object matching the schema. Use 0 for values not present on this strip.' + context,
                 },
                 { inlineData },
               ],
@@ -1441,7 +1472,7 @@ async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: A
       };
     }
     if (!response.ok) {
-      console.error('Gemini API error:', response.status, errorText);
+      console.error('Gemini API error:', response.status);
       return { ok: false, error: 'gemini_error', message: `שגיאה (${response.status})`, provider: 'gemini' };
     }
 
@@ -1461,13 +1492,13 @@ async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: A
   }
 }
 
-async function analyzeWithAiProvider(dataUrl: string, brand: StripBrand): Promise<AiRunResponse> {
+async function analyzeWithAiProvider(dataUrl: string, brand: StripBrand, context = ''): Promise<AiRunResponse> {
   const provider = getAiProviderConfig();
   if (!provider) {
     return { ok: false, error: 'missing_ai_key', message: 'AI provider is not configured.' };
   }
 
-  return analyzeWithGemini(dataUrl, brand, provider);
+  return analyzeWithGemini(dataUrl, brand, provider, context);
 }
 
 function safeFailureReason(reason: FailureReason): FailureReason {
@@ -1543,46 +1574,25 @@ function encodeStoragePath(path: string) {
 
 async function fetchImageBytesFromStorage(path: string, request: Request) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
 
   if (!supabaseUrl) {
     throw new Error('SUPABASE_URL is not configured in the Edge Function environment.');
   }
 
-  const authorization = serviceRoleKey
-    ? `Bearer ${serviceRoleKey}`
-    : request.headers.get('Authorization') ?? request.headers.get('authorization') ?? '';
   const storageUrl = `${supabaseUrl}/storage/v1/object/${SCAN_IMAGES_BUCKET}/${encodeStoragePath(path)}`;
-  const headers: Record<string, string> = {};
-  if (authorization) headers.Authorization = authorization;
-  if (serviceRoleKey || anonKey) headers.apikey = serviceRoleKey ?? anonKey ?? '';
-
-  const response = await fetch(storageUrl, { headers });
+  const response = await fetch(storageUrl, {
+    headers: userHeaders(request), redirect: 'error', signal: AbortSignal.timeout(15000),
+  });
   if (!response.ok) {
     throw new Error(`Storage image download failed (${response.status}).`);
   }
 
-  return {
-    bytes: new Uint8Array(await response.arrayBuffer()),
-    mimeType: response.headers.get('content-type')?.startsWith('image/') ? response.headers.get('content-type')! : 'image/jpeg',
-  };
-}
-
-async function fetchImageBytesFromUrl(url: string) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Image URL download failed (${response.status}).`);
-  }
-
-  return {
-    bytes: new Uint8Array(await response.arrayBuffer()),
-    mimeType: response.headers.get('content-type')?.startsWith('image/') ? response.headers.get('content-type')! : 'image/jpeg',
-  };
+  const bytes = await readBoundedBytes(response.body, MAX_IMAGE_BYTES);
+  return { bytes, mimeType: validateImage(bytes) };
 }
 
 function loadImageBytesFromDataUrl(dataUrl: string) {
-  const match = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl);
+  const match = /^data:(image\/(?:jpeg|png));base64,([A-Za-z0-9+/]+={0,2})$/.exec(dataUrl);
   if (!match) {
     throw new Error('Invalid image data URL.');
   }
@@ -1595,18 +1605,13 @@ function loadImageBytesFromDataUrl(dataUrl: string) {
 
   return {
     bytes,
-    mimeType: match[1]?.startsWith('image/') ? match[1] : 'image/jpeg',
+    mimeType: validateImage(bytes),
   };
 }
 
 async function loadImageBytes(body: AnalyzeStripRequest, request: Request) {
-  if (body.imagePath && !body.imagePath.startsWith('http')) {
+  if (body.imagePath) {
     return fetchImageBytesFromStorage(body.imagePath, request);
-  }
-
-  const url = body.imageUrl ?? (body.imagePath?.startsWith('http') ? body.imagePath : undefined);
-  if (url) {
-    return fetchImageBytesFromUrl(url);
   }
 
   if (body.imageUri?.startsWith('data:image/')) {
@@ -1644,7 +1649,7 @@ async function createStripAnalysisImageKey(body: AnalyzeStripRequest) {
 
 async function sha256Hex(value: Uint8Array | string) {
   const bytes = typeof value === 'string' ? new TextEncoder().encode(value) : value;
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const digest = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes).buffer);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
@@ -1880,7 +1885,7 @@ async function verifyAccountMembership(accountId: string, userId: string, reques
   if (!supabaseUrl) return false;
 
   const response = await fetch(
-    `${supabaseUrl}/rest/v1/account_members?select=id&account_id=eq.${encodeURIComponent(accountId)}&user_id=eq.${encodeURIComponent(userId)}&limit=1`,
+    `${supabaseUrl}/rest/v1/account_members?select=role&account_id=eq.${encodeURIComponent(accountId)}&user_id=eq.${encodeURIComponent(userId)}&limit=1`,
     {
       headers: getServiceHeaders(request),
     },
@@ -1888,12 +1893,12 @@ async function verifyAccountMembership(accountId: string, userId: string, reques
 
   if (!response.ok) return false;
   const rows = await response.json();
-  return Array.isArray(rows) && rows.length > 0;
+  return Array.isArray(rows) && rows.length === 1 && ['owner', 'admin', 'editor'].includes(rows[0].role);
 }
 
 async function canCreateScan(accountId: string, userId: string, request: Request) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  if (!supabaseUrl) return true;
+  if (!supabaseUrl) return false;
 
   const response = await fetch(`${supabaseUrl}/rest/v1/rpc/can_create_scan_for_user`, {
     method: 'POST',
@@ -1901,11 +1906,12 @@ async function canCreateScan(accountId: string, userId: string, request: Request
     body: JSON.stringify({ p_account_id: accountId, p_user_id: userId }),
   });
 
-  if (!response.ok) return true;
-  return Boolean(await response.json());
+  if (!response.ok) return false;
+  return (await response.json()) === true;
 }
 
 async function persistAnalysisResult(body: AnalyzeStripRequest, result: StripAnalysisResult, userId: string, request: Request) {
+  result = protectAnalysisResponse(result);
   if (!body.accountId) return;
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -2019,6 +2025,28 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
   if (!authenticatedUserId) {
     throw new EdgeAnalysisError('unavailable', 'נדרשת התחברות כדי לבצע ניתוח AI.');
   }
+  try {
+    await requireAnalysisConsent(request);
+  } catch {
+    throw new EdgeAnalysisError('unavailable', 'ניתוח חדש דורש הסכמה מעודכנת לניתוח AI ואישור תצורת השירות. אפשר לעיין בתנאים ובפרטיות בהגדרות.');
+  }
+  if (!body.accountId || !UUID_PATTERN.test(body.accountId) ||
+      !UUID_PATTERN.test(body.testId) || (body.poolId && !UUID_PATTERN.test(body.poolId))) {
+    throw new EdgeAnalysisError('unavailable', 'פרטי החשבון או הבדיקה אינם תקינים.');
+  }
+  if (body.userId && body.userId !== authenticatedUserId) {
+    throw new EdgeAnalysisError('unavailable', 'פרטי המשתמש אינם תואמים לחשבון המחובר.');
+  }
+  if (body.imageUrl || (!body.imagePath && body.imageUri && !body.imageUri.startsWith('data:image/'))) {
+    throw new EdgeAnalysisError('invalid_strip', 'כתובת תמונה חיצונית אינה נתמכת. צלם או העלה תמונה חדשה.');
+  }
+  if (body.imagePath) {
+    const expected = new RegExp('^accounts/' + body.accountId + '/users/' + authenticatedUserId +
+      '/tests/' + body.testId + '/scan\\.(jpg|png)$');
+    if (!expected.test(body.imagePath)) {
+      throw new EdgeAnalysisError('invalid_strip', 'נתיב התמונה אינו תואם למשתמש ולבדיקה.');
+    }
+  }
 
   if (body.accountId) {
     const isMember = await verifyAccountMembership(body.accountId, authenticatedUserId, request);
@@ -2026,6 +2054,7 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
       throw new EdgeAnalysisError('unavailable', 'המשתמש אינו משויך לחשבון שנשלח לניתוח.');
     }
   }
+  await verifyAnalysisTargets(body, authenticatedUserId, request);
 
   try {
     const loaded = await loadImageBytes(body, request);
@@ -2102,7 +2131,9 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
       testId: body.testId,
     });
 
-    const aiRun = await analyzeWithAiProvider(dataUrl, brand);
+    // Recheck after queue/claim waits, immediately before external transfer.
+    await requireAnalysisConsent(request);
+    const aiRun = await analyzeWithAiProvider(dataUrl, brand, captureContext(body));
     const tokenUsage = summarizeGeminiTokenUsage([aiRun]);
     console.log('Gemini token usage for scan', {
       aiCallCount: 1,
@@ -2144,6 +2175,49 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
   }
 }
 
+async function verifyAnalysisTargets(body: AnalyzeStripRequest, userId: string, request: Request) {
+  const url = Deno.env.get('SUPABASE_URL');
+  if (!url) throw new EdgeAnalysisError('unavailable', 'תצורת השירות חסרה.');
+  const headers = getServiceHeaders(request);
+  const existing = await fetch(url + '/rest/v1/tests?select=account_id,user_id&id=eq.' +
+    encodeURIComponent(body.testId), { headers, signal: AbortSignal.timeout(10000) });
+  if (!existing.ok) throw new EdgeAnalysisError('unavailable', 'לא ניתן לאמת הרשאות לבדיקה.');
+  const rows = await existing.json();
+  if (!Array.isArray(rows) || rows.some((row) => row.account_id !== body.accountId || row.user_id !== userId))
+    throw new EdgeAnalysisError('unavailable', 'הבדיקה אינה שייכת למשתמש המחובר.');
+  if (body.poolId) {
+    const response = await fetch(url + '/rest/v1/pools?select=id&account_id=eq.' +
+      encodeURIComponent(body.accountId!) + '&id=eq.' + encodeURIComponent(body.poolId),
+      { headers, signal: AbortSignal.timeout(10000) });
+    if (!response.ok) throw new EdgeAnalysisError('unavailable', 'לא ניתן לאמת הרשאות לבריכה.');
+    const pools = await response.json();
+    if (!Array.isArray(pools) || pools.length !== 1)
+      throw new EdgeAnalysisError('unavailable', 'הבריכה אינה שייכת לחשבון המחובר.');
+  }
+}
+
+function protectAnalysisResponse(result: StripAnalysisResult): StripAnalysisResult {
+  const safeResult = { ...result };
+  // Historical cached payloads may contain a treatment plan from an older client.
+  delete (safeResult as unknown as Record<string, unknown>).dosage;
+  const invalid = result.accepted === false || result.isValidStrip === false || result.lowConfidence;
+  return {
+    ...safeResult,
+    recommendation: 'אמת את המדדים בבדיקה מתאימה לפני טיפול. האפליקציה אינה מחשבת כרגע מינון חומרים.',
+    overallStatus: invalid ? result.overallStatus : {
+      label: result.parameters.some((p) => p.status.kind !== 'ok')
+        ? 'נדרש אימות לפני טיפול' : 'הערכים בטווח ההשוואה',
+      tone: result.parameters.some((p) => p.status.kind !== 'ok') ? 'warning' : 'success',
+    },
+    parameters: result.parameters.map((p) => ({
+      ...p,
+      status: { ...p.status, label: p.status.kind === 'ok' ? 'בטווח ההשוואה'
+        : p.status.kind === 'low' ? 'מתחת לטווח ההשוואה' : 'מעל לטווח ההשוואה' },
+      recommendation: 'טווח ההשוואה אינו אישור לבטיחות המים או הוראה לטיפול.',
+    })),
+  };
+}
+
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -2154,13 +2228,13 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const body = (await request.json()) as AnalyzeStripRequest;
+    const body = (await readBoundedJson(request, MAX_ANALYSIS_REQUEST_BYTES)) as unknown as AnalyzeStripRequest;
 
     if (!body.testId || typeof body.testId !== 'string') {
       return Response.json({ error: 'missing_test_id' }, { status: 400, headers: corsHeaders });
     }
 
-    const result = await analyzeRemoteWebParity(body, request);
+    const result = protectAnalysisResponse(await analyzeRemoteWebParity(body, request));
 
     return Response.json(
       {

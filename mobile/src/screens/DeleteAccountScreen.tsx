@@ -4,6 +4,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
 import { useAuth } from '../state/AuthContext';
+import { getSupabaseClient } from '../integrations/supabase/client';
 import { colors, radius, rtl, shadows, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
@@ -15,15 +16,30 @@ export function DeleteAccountScreen({ navigation }: Props) {
   const { user } = useAuth();
   const [confirmation, setConfirmation] = useState('');
   const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [requestId, setRequestId] = useState('');
   const canRequestDeletion = confirmation.trim() === 'מחיקה';
 
-  function requestDeletion() {
+  async function requestDeletion() {
+    if (busy || requestId) return;
     if (!canRequestDeletion) {
       setMessage('כדי להמשיך יש להקליד את המילה מחיקה.');
       return;
     }
 
-    setMessage('מחיקת חשבון מלאה עדיין דורשת טיפול מאובטח בצד השרת. פנה לתמיכה למחיקת חשבון: support@dipcheck.app');
+    setBusy(true); setMessage('');
+    try {
+      const { data, error } = await getSupabaseClient().rpc('request_account_deletion', {
+        p_confirmation: confirmation.trim(),
+      });
+      const result = data as { id?: string; status?: string } | null;
+      if (error || !result?.id) throw new Error('לא ניתן לשלוח בקשה כרגע. נסה שוב או פנה לתמיכה.');
+      setRequestId(result.id);
+      setMessage('הבקשה נרשמה בשרת. מספר פנייה: ' + result.id +
+        '. החשבון עדיין לא נמחק. נעדכן לאחר ביצוע המחיקה; לפנייה על סטטוס: support@dipcheck.app.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'הבקשה לא נשלחה. נסה שוב.');
+    } finally { setBusy(false); }
   }
 
   async function openDeletionPage() {
@@ -42,7 +58,7 @@ export function DeleteAccountScreen({ navigation }: Props) {
       <View style={styles.waterWash} />
       <View style={styles.content}>
         <View style={styles.topBar}>
-          <Pressable onPress={() => navigation.navigate('Settings')} style={styles.iconButton}>
+          <Pressable accessibilityRole="button" accessibilityLabel="חזרה" onPress={() => navigation.goBack()} style={styles.iconButton}>
             <LineIcon name="chevronLeft" color={colors.primaryDark} size={18} />
           </Pressable>
           <View style={styles.headerCopy}>
@@ -57,10 +73,10 @@ export function DeleteAccountScreen({ navigation }: Props) {
           </View>
           <Text style={styles.warningTitle}>פעולה רגישה</Text>
           <Text style={styles.warningText}>
-            מחיקת חשבון תמחק את הבריכות, הבדיקות והתמונות שלך. פעולה זו אינה הפיכה.
+            כאן אפשר להגיש בקשה למחיקת החשבון והמידע המשויך אליו. המחיקה עצמה אינה הפיכה; אישור קבלת הבקשה אינו אישור שהמחיקה בוצעה.
           </Text>
           <Text style={styles.explainText}>
-            מטעמי אבטחה, מחיקה מלאה חייבת להתבצע דרך backend מאובטח ולא ישירות מתוך האפליקציה.
+            המידע שלך ייבחן בנפרד ממידע של משתמשים אחרים בחשבון משותף. מחיקת חשבון אינה מבטלת אוטומטית מנוי בחנות — יש לבדוק גם את ניהול המנוי.
           </Text>
         </Card>
 
@@ -77,8 +93,8 @@ export function DeleteAccountScreen({ navigation }: Props) {
           <Pressable onPress={openDeletionPage} style={({ pressed }) => [styles.linkButton, pressed && styles.pressed]}>
             <Text style={styles.linkButtonText}>פתיחת עמוד מחיקת חשבון</Text>
           </Pressable>
-          <Pressable onPress={requestDeletion} style={({ pressed }) => [styles.dangerButton, !canRequestDeletion && styles.disabled, pressed && styles.pressed]}>
-            <Text style={styles.dangerButtonText}>בקשת מחיקת חשבון</Text>
+          <Pressable accessibilityRole="button" disabled={busy || !canRequestDeletion || Boolean(requestId)} onPress={requestDeletion} style={({ pressed }) => [styles.dangerButton, (!canRequestDeletion || busy || Boolean(requestId)) && styles.disabled, pressed && styles.pressed]}>
+            <Text style={styles.dangerButtonText}>{busy ? 'שולח בקשה...' : requestId ? 'הבקשה התקבלה' : 'שליחת בקשת מחיקת חשבון'}</Text>
           </Pressable>
         </Card>
       </View>

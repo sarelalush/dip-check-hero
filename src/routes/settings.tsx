@@ -79,7 +79,7 @@ function SettingsScreen() {
           <div className="text-sm font-black text-foreground">AquaSense</div>
           <div className="mt-1 text-xs font-semibold text-muted-foreground">גרסה 1.0</div>
           <p className="mt-3 text-[11px] font-medium text-muted-foreground leading-relaxed">
-            AquaSense עוזרת לך לשמור על בריכה נקייה ובטוחה בצורה פשוטה וחכמה — סריקת מדבקות צבע, המלצות תיקון ומעקב היסטורי.
+            AquaSense מסייעת בהערכת מדדים מצילום סטיק ומעקב היסטורי. יש לאמת מדידה לפני טיפול; אין כאן מינון חומרים או אישור לרחצה.
           </p>
           <div className="mt-3 text-[10px] font-bold text-muted-foreground/60">
             2025 AquaSense. כל הזכויות שמורות.

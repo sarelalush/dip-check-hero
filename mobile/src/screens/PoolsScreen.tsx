@@ -13,6 +13,7 @@ import { useStartScanFlow } from '../hooks/useStartScanFlow';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory, type SavedHistoryRecord } from '../state/ResultsHistoryContext';
 import type { RootStackParamList } from '../../App';
+import { formatReading, resultStatus } from '../domain/resultPresentation';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Pools'>;
 const POOL_FALLBACK_IMAGE = require('../../assets/images/home-pool.png');
@@ -32,7 +33,7 @@ function formatVolume(liters: number) {
 
 function formatMetricValue(parameter?: ScanResultParameter) {
   if (!parameter) return '-';
-  return parameter.key === 'ph' ? parameter.value.toFixed(1) : Math.round(parameter.value).toLocaleString('he-IL');
+  return formatReading(parameter);
 }
 
 function getMetric(
@@ -66,16 +67,17 @@ function toneBackground(tone: StatusTone) {
 }
 
 function getPoolSnapshot(pool: Pool, latestRecord?: SavedHistoryRecord) {
-  const parameters = latestRecord?.analysisResult?.parameters;
+  const status = resultStatus(latestRecord?.analysisResult);
+  const parameters = status.label === 'נדרש צילום חוזר' ? undefined : latestRecord?.analysisResult?.parameters;
   return {
     lastTest: latestRecord ? `עודכן ${latestRecord.date}` : 'עדיין לא בוצעה בדיקה',
     metrics: [
       getMetric(parameters, ['ph'], 'pH', 'drop'),
-      getMetric(parameters, ['freeChlorine', 'totalChlorine'], 'כלור', 'help'),
+      getMetric(parameters, ['freeChlorine'], 'כלור חופשי', 'help'),
       getMetric(parameters, ['alkalinity'], 'אלקליניות', 'results'),
     ],
-    status: latestRecord?.status ?? 'מוכן לבדיקה',
-    tone: latestRecord?.tone ?? ('neutral' as StatusTone),
+    status: latestRecord && !latestRecord.analysisResult ? 'בדיקה שמורה — פתח לפירוט' : status.label,
+    tone: status.tone,
     volume: formatVolume(pool.volumeLiters),
   };
 }
@@ -138,7 +140,7 @@ export function PoolsScreen({ navigation }: Props) {
               <LineIcon name="pools" color={colors.primaryDark} size={28} />
             </View>
             <Text style={styles.emptyTitle}>עדיין אין בריכות</Text>
-            <Text style={styles.emptyText}>הוסף בריכה ראשונה כדי להתחיל בדיקות, לעקוב אחרי מצב המים ולקבל המלצות לפי נפח הבריכה.</Text>
+            <Text style={styles.emptyText}>הוסף בריכה ראשונה כדי להעריך מדדים מצילום ולשמור היסטוריית בדיקות.</Text>
           </Card>
         )}
       </View>

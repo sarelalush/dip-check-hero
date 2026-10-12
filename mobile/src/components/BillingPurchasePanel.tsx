@@ -13,6 +13,9 @@ import {
   isConsumableBillingProduct,
 } from '../services/billingConfig';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
+import { fetchServiceConsent } from '../services/legalConsentService';
+import { fetchPlanUsage } from '../services/usageService';
+import { useLegalConsent } from '../state/LegalConsentContext';
 import { colors, radius, rtl, typography } from '../theme';
 
 type PurchaseStatus = 'idle' | 'loading' | 'purchasing' | 'verifying' | 'success' | 'error';
@@ -21,6 +24,7 @@ type StorePlatform = 'android' | 'ios';
 interface BillingPurchasePanelProps {
   accountId?: string;
   hasActiveSubscription?: boolean;
+  activeScanPeriodEnd?: string;
   onPurchaseVerified?: () => Promise<void> | void;
 }
 
@@ -48,10 +52,14 @@ export function BillingPurchasePanel(props: BillingPurchasePanelProps) {
 function NativeBillingPurchasePanel({
   accountId,
   hasActiveSubscription = false,
+  activeScanPeriodEnd,
   onPurchaseVerified,
   storePlatform,
 }: BillingPurchasePanelProps & { storePlatform: StorePlatform }) {
   const processedPurchaseTokens = useRef(new Set<string>());
+  const purchaseInFlight = useRef(false);
+  const { status: consent } = useLegalConsent();
+  const purchasesAllowed = Boolean(consent?.serviceAccepted && consent.releaseReady);
   const [status, setStatus] = useState<PurchaseStatus>('idle');
   const [message, setMessage] = useState<string>();
   const [activeProductId, setActiveProductId] = useState<string>();
@@ -180,11 +188,30 @@ function NativeBillingPurchasePanel({
     };
   }, [connected, queryStoreItems]);
 
-  const purchase = async (productId: string) => {
+  const purchaseUnlocked = async (productId: string) => {
+    try {
+      const current = await fetchServiceConsent();
+      if (!current.serviceAccepted || !current.releaseReady) throw new Error('רכישה חדשה אינה זמינה כרגע או שחסרה הסכמה לתנאים.');
+    } catch (error) {
+      setStatus('error');
+      setMessage(error instanceof Error ? error.message : 'לא ניתן לאמת תנאי רכישה.');
+      return;
+    }
     if (!accountId) {
       setStatus('error');
       setMessage('מכינים את הרכישה המאובטחת. נסה שוב בעוד רגע.');
       return;
+    }
+
+    if (isConsumableBillingProduct(productId)) {
+      const currentUsage = await fetchPlanUsage(accountId);
+      if (!currentUsage.hasActiveSubscription || !activeScanPeriodEnd ||
+          currentUsage.periodEnd !== activeScanPeriodEnd || Date.parse(activeScanPeriodEnd) <= Date.now() ||
+          !Number.isFinite(Date.parse(activeScanPeriodEnd))) {
+        setStatus('error');
+        setMessage('לא ניתן לאמת את תוקף חבילת הסריקות. רענן את המסך לפני רכישה.');
+        return;
+      }
     }
 
     if (isAddOnProduct(productId, storePlatform) && !hasActiveSubscription) {
@@ -217,6 +244,9 @@ function NativeBillingPurchasePanel({
       }
     }
 
+    if (!item.displayPrice?.trim()) {
+      setStatus('error'); setMessage('מחיר החנות אינו זמין. לא נפתח רכישה לפני הצגת המחיר.'); return;
+    }
     try {
       setActiveProductId(productId);
       setStatus('purchasing');
@@ -257,6 +287,16 @@ function NativeBillingPurchasePanel({
     }
   };
 
+  const purchase = async (productId: string) => {
+    if (purchaseInFlight.current || status === 'purchasing' || status === 'verifying' || status === 'loading') return;
+    purchaseInFlight.current = true;
+    try {
+      await purchaseUnlocked(productId);
+    } finally {
+      purchaseInFlight.current = false;
+    }
+  };
+
   const restore = async () => {
     if (!accountId) {
       setStatus('error');
@@ -287,10 +327,10 @@ function NativeBillingPurchasePanel({
       </View>
       <BillingButton
         busy={busy && activeProductId === BILLING_PRODUCTS.basicMonthly.id}
-        disabled={busy}
+        disabled={busy || !purchasesAllowed || !getStoreItemPrice(BILLING_PRODUCTS.basicMonthly.id, storePlatform, storeItems)}
         label="הפעל מנוי בסיסי"
         onPress={() => purchase(BILLING_PRODUCTS.basicMonthly.id)}
-        price={getStoreItemPrice(BILLING_PRODUCTS.basicMonthly.id, storePlatform, storeItems) ?? BILLING_PRODUCTS.basicMonthly.fallbackPriceHe}
+        price={getStoreItemPrice(BILLING_PRODUCTS.basicMonthly.id, storePlatform, storeItems) ?? 'מחיר החנות אינו זמין'}
       />
       {hasActiveSubscription ? (
         <>
@@ -300,22 +340,25 @@ function NativeBillingPurchasePanel({
           </View>
           <BillingButton
             busy={busy && activeProductId === BILLING_PRODUCTS.extraPoolMonthly.id}
-            disabled={busy}
+            disabled={busy || !purchasesAllowed || !getStoreItemPrice(BILLING_PRODUCTS.extraPoolMonthly.id, storePlatform, storeItems)}
             label="הוסף בריכה נוספת"
             onPress={() => purchase(BILLING_PRODUCTS.extraPoolMonthly.id)}
             price={
-              getStoreItemPrice(BILLING_PRODUCTS.extraPoolMonthly.id, storePlatform, storeItems) ?? BILLING_PRODUCTS.extraPoolMonthly.fallbackPriceHe
+              getStoreItemPrice(BILLING_PRODUCTS.extraPoolMonthly.id, storePlatform, storeItems) ?? 'מחיר החנות אינו זמין'
             }
           />
           <BillingButton
             busy={busy && activeProductId === BILLING_PRODUCTS.extraScanPack200.id}
-            disabled={busy}
+            disabled={busy || !purchasesAllowed || !activeScanPeriodEnd || !Number.isFinite(Date.parse(activeScanPeriodEnd)) || Date.parse(activeScanPeriodEnd) <= Date.now() || !getStoreItemPrice(BILLING_PRODUCTS.extraScanPack200.id, storePlatform, storeItems)}
             label="רכוש עוד 200 סריקות"
             onPress={() => purchase(BILLING_PRODUCTS.extraScanPack200.id)}
             price={
-              getStoreItemPrice(BILLING_PRODUCTS.extraScanPack200.id, storePlatform, storeItems) ?? BILLING_PRODUCTS.extraScanPack200.fallbackPriceHe
+              getStoreItemPrice(BILLING_PRODUCTS.extraScanPack200.id, storePlatform, storeItems) ?? 'מחיר החנות אינו זמין'
             }
           />
+          <Text style={styles.statusText}>{activeScanPeriodEnd && Number.isFinite(Date.parse(activeScanPeriodEnd))
+            ? 'חבילת הסריקות אינה מתחדשת. יתרת הסריקות פוקעת ב־' + new Date(activeScanPeriodEnd).toLocaleString('he-IL') + '; סריקות שלא נוצלו אינן מועברות לתקופה הבאה.'
+            : 'תוקף חבילת הסריקות אינו זמין; רכישתה חסומה עד אימות.'}</Text>
         </>
       ) : (
         <Text style={styles.addonLockedText}>תוספות לבריכות וסריקות יופיעו כאן אחרי שמנוי בסיסי יהיה פעיל.</Text>

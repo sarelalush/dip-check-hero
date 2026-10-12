@@ -3,6 +3,7 @@ import { getBrand } from '../config/stripBrands';
 import type { DosageCalculationResult } from '../domain/dosage';
 import type { StripAnalysisResult } from '../domain/scanResults';
 import type { StripBrand } from '../domain/strip';
+import type { CaptureMetadata, ImageQualityReport } from '../domain/captureQuality';
 
 // Parity source: src/utils/scanSession.ts and the web scan flow routes:
 // select-strip, scan, scan-live, scan-confirm, select-pool, results.$testId.
@@ -38,6 +39,8 @@ export interface ScanSessionState {
   imageUri?: string;
   originalImageUri?: string;
   imageProcessingLog?: string[];
+  captureMetadata?: CaptureMetadata;
+  imageQuality?: ImageQualityReport;
   confirmedImageUri?: string;
   imagePath?: string;
   imageUrl?: string;
@@ -58,6 +61,7 @@ interface StartScanSessionInput {
 }
 
 interface SetImageUriOptions {
+  captureMetadata?: CaptureMetadata;
   originalImageUri?: string;
   preserveTestId?: boolean;
   processingLog?: string[];
@@ -76,6 +80,7 @@ interface ScanSessionContextValue {
   setImageUri: (imageUri?: string, options?: SetImageUriOptions) => void;
   setScanImageUpload: (input: { imagePath?: string; imageUrl?: string; imageUploadError?: string; testId?: string }) => void;
   setQualityNotes: (notes: string[], status?: ScanQualityStatus) => void;
+  setImageQuality: (report: ImageQualityReport) => void;
   setSelectedBrand: (brandId: string) => void;
   setSelectedPool: (poolId: string) => void;
   startScanSession: (input?: StartScanSessionInput) => void;
@@ -186,6 +191,8 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         imageUri: undefined,
         originalImageUri: undefined,
         imageProcessingLog: undefined,
+        captureMetadata: undefined,
+        imageQuality: undefined,
         imagePath: undefined,
         imageUrl: undefined,
         imageUploadError: undefined,
@@ -223,6 +230,8 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         dosageResult: undefined,
         error: undefined,
         imageUri,
+        captureMetadata: imageUri ? options.captureMetadata : undefined,
+        imageQuality: undefined,
         originalImageUri: imageUri ? options.originalImageUri : undefined,
         imageProcessingLog: imageUri ? options.processingLog ?? [] : undefined,
         imagePath: undefined,
@@ -242,8 +251,10 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         confirmedImageUri: current.imageUri,
         currentStep: 'confirm',
         error: undefined,
-        qualityNotes: ['הסטיק חד וברור', 'כל ריבועי הצבע נראים', 'התאורה טובה'],
-        qualityStatus: 'passed',
+        // Preserve the measured checks without inventing user confirmations.
+        // Confirming a crop must never invent evidence of sharpness or lighting.
+        qualityNotes: current.qualityNotes,
+        qualityStatus: current.qualityStatus,
       }),
     );
   }, []);
@@ -256,6 +267,10 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
         qualityStatus: status,
       }),
     );
+  }, []);
+
+  const setImageQuality = useCallback((report: ImageQualityReport) => {
+    setSession((current) => withTimestamp({ ...current, imageQuality: report }));
   }, []);
 
   const markQualityFailed = useCallback((notes: string[]) => {
@@ -372,6 +387,7 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
       setImageUri,
       setScanImageUpload,
       setQualityNotes,
+      setImageQuality,
       setSelectedBrand,
       setSelectedPool,
       startScanSession,
@@ -389,6 +405,7 @@ export function ScanSessionProvider({ children }: { children: ReactNode }) {
       setImageUri,
       setScanImageUpload,
       setQualityNotes,
+      setImageQuality,
       setSelectedBrand,
       setSelectedPool,
       startScanSession,

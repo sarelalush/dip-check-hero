@@ -78,7 +78,7 @@ export function SelectStripScreen({ navigation, route }: Props) {
       return;
     }
 
-    navigation.navigate('ScanPlaceholder', { brandId: brand.id, poolId: selectedPoolId });
+    navigation.navigate('Scan', { brandId: brand.id, poolId: selectedPoolId });
   }
 
   function handleContinue() {

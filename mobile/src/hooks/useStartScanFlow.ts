@@ -29,7 +29,7 @@ export function useStartScanFlow(navigation: NavigationProp<RootStackParamList>)
 
         startScanSession({ brandId: canSkipStripSelection ? scanBrandId : selectedPool.stripBrandId, poolId: selectedPool.id });
         if (canSkipStripSelection && scanBrandId) {
-          navigation.navigate('ScanPlaceholder', { poolId: selectedPool.id, brandId: scanBrandId });
+          navigation.navigate('Scan', { poolId: selectedPool.id, brandId: scanBrandId });
         } else {
           navigation.navigate('SelectStrip', { poolId: selectedPool.id });
         }

@@ -7,7 +7,7 @@ import type { RootStackParamList } from '../../App';
 const STATIC_POOL_IMAGE = require('../../assets/images/home-pool.png');
 
 interface StaticInfoScreenProps {
-  navigation: { navigate: (screen: keyof RootStackParamList) => void };
+  navigation: { navigate: (screen: keyof RootStackParamList) => void; goBack?: () => void; canGoBack?: () => boolean };
   title: string;
   subtitle?: string;
   sections: {
@@ -22,7 +22,9 @@ export function StaticInfoScreen({ navigation, sections, subtitle, title }: Stat
       <View style={styles.waterWash} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
-          <Pressable onPress={() => navigation.navigate('Settings')} style={styles.iconButton}>
+          <Pressable accessibilityRole="button" accessibilityLabel="חזרה" onPress={() => {
+            if (navigation.canGoBack?.()) navigation.goBack?.();
+          }} style={styles.iconButton}>
             <LineIcon name="chevronLeft" color={colors.primaryDark} size={18} />
           </Pressable>
           <View style={styles.headerCopy}>

@@ -61,24 +61,24 @@ export function DashboardScreen({ navigation }: Props) {
               <Text style={styles.heroOverline}>מצב הבריכה</Text>
             </View>
 
-            <Text style={styles.heroTitle}>מים מאוזנים בלי לנחש</Text>
-            <Text style={styles.heroSubtitle}>צלם סטיק בדיקה, קבל פענוח ברור והמלצה לפעולה תוך כמה שניות.</Text>
+            <Text style={styles.heroTitle}>הערכת מדדים מצילום</Text>
+            <Text style={styles.heroSubtitle}>השוואת מדדים והיסטוריית בדיקות. יש לאמת לפני טיפול; אין אישור לרחצה.</Text>
 
             <View style={styles.balanceRow}>
               <View style={styles.scoreCircle}>
-                <Text style={styles.scoreValue}>92</Text>
-                <Text style={styles.scoreLabel}>איזון</Text>
+                <Text style={styles.scoreValue}>—</Text>
+                <Text style={styles.scoreLabel}>דוגמה</Text>
               </View>
 
               <View style={styles.balanceCopy}>
-                <Text style={styles.balanceTitle}>הכול נראה תקין</Text>
+                <Text style={styles.balanceTitle}>נתונים להמחשה בלבד</Text>
                 <Text style={styles.balanceText}>הנתונים כרגע לדוגמה עד שתבוצע סריקה אמיתית.</Text>
               </View>
             </View>
           </View>
 
           <View style={styles.metricsRow}>
-            <MetricCard label="pH" value="7.3" status="תקין" tone="ok" />
+            <MetricCard label="pH" value="7.3" status="דוגמה" tone="ok" />
             <MetricCard label="כלור" value="1.5" status="ppm" tone="ok" />
             <MetricCard label="אלקליניות" value="120" status="ppm" tone="ok" />
           </View>

@@ -61,7 +61,12 @@ export function PlanUsageScreen({ navigation, route }: Props) {
     <AppShell activeTab="settings" navigation={navigation}>
       <View style={styles.header}>
         <Text style={styles.title}>מנוי ושימוש</Text>
-        <Text style={styles.subtitle}>מעקב פשוט אחר הבריכות והסריקות בחודש הנוכחי</Text>
+        <Text style={styles.subtitle}>מעקב אחר הבריכות והסריקות בתקופת המכסה הפעילה</Text>
+        <Text style={styles.subtitle}>
+          {usage.periodStart && usage.periodEnd
+            ? `תקופת מכסה: ${usage.periodStart} עד ${usage.periodEnd} (מועד הסיום אינו כלול)`
+            : 'מועד סיום המכסה לא זמין כרגע. יש לאמת אותו לפני רכישת תוספת.'}
+        </Text>
       </View>
 
       {reason ? (
@@ -98,7 +103,7 @@ export function PlanUsageScreen({ navigation, route }: Props) {
           <View style={styles.planCopy}>
             <Text style={styles.planLabel}>התוכנית הנוכחית</Text>
             <Text style={styles.planName}>{usage.planName}</Text>
-            <Text style={styles.planPrice}>30 ₪ לחודש</Text>
+            <Text style={styles.planPrice}>פרטי מחיר והצעה עדכניים במסך הרכישה</Text>
           </View>
         </View>
         {loading ? <ActivityIndicator color={colors.primaryDark} size="small" /> : null}
@@ -117,8 +122,8 @@ export function PlanUsageScreen({ navigation, route }: Props) {
 
       <Card compact style={styles.includedCard}>
         <Text style={styles.sectionTitle}>תוספות זמינות</Text>
-        <AddonRow title={PLAN_ADDONS.extraPool.name} subtitle={`+${PLAN_ADDONS.extraPool.priceIls} ₪ לחודש`} />
-        <AddonRow title={PLAN_ADDONS.extraScans.name} subtitle={`+${PLAN_ADDONS.extraScans.priceIls} ₪ לחודש הנוכחי`} />
+        <AddonRow title={PLAN_ADDONS.extraPool.name} subtitle="מנוי מתחדש · מחיר מהחנות במסך הרכישה" />
+        <AddonRow title={PLAN_ADDONS.extraScans.name} subtitle="רכישה חד־פעמית לתקופת המכסה הפעילה · מחיר מהחנות" />
       </Card>
 
       <Pressable style={styles.backButton} onPress={() => navigation.navigate('Settings')}>

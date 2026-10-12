@@ -60,7 +60,9 @@ interface ImageCropBounds {
   width: number;
 }
 
-const FRAME_PADDING_RATIO = 0.015;
+// Keep the carrier edges and a small neutral margin for orientation/lighting
+// assessment. A tight cut can remove pad edges; avoid trimming to colored pads.
+const FRAME_PADDING_RATIO = 0.08;
 const MIN_STRIP_HEIGHT_PX = 420;
 const MIN_STRIP_WIDTH_PX = 55;
 const MIN_STRIP_ASPECT = 3.4;
@@ -113,7 +115,9 @@ function validateFrame(frame: TestStripFrame, image: ImageSize, crop: ImageCropB
     );
   }
 
-  if (crop.width < MIN_STRIP_WIDTH_PX || crop.height < MIN_STRIP_HEIGHT_PX || crop.height / crop.width < MIN_STRIP_ASPECT) {
+  const shortSide = Math.min(crop.width, crop.height);
+  const longSide = Math.max(crop.width, crop.height);
+  if (shortSide < MIN_STRIP_WIDTH_PX || longSide < MIN_STRIP_HEIGHT_PX || longSide / shortSide < MIN_STRIP_ASPECT) {
     throw new TestStripProcessingError(
       'stripTooSmall',
       'הסטיק קטן מדי בתמונה. קרב את המצלמה כך שהסטיק ימלא את המסגרת.',
@@ -145,7 +149,7 @@ export async function processTestStripImage(input: TestStripImageProcessingInput
       input.uri,
       [{ crop: firstCrop }],
       {
-        compress: 0.98,
+        compress: 1,
         format: ImageManipulator.SaveFormat.JPEG,
       },
     );

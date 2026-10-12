@@ -370,7 +370,7 @@ export function CropScanImageScreen({ navigation, route }: Props) {
       );
 
       const cropped = await ImageManipulator.manipulateAsync(imageUri, [{ crop: imageCrop }], {
-        compress: 0.98,
+        compress: 1,
         format: ImageManipulator.SaveFormat.JPEG,
       });
 
@@ -390,6 +390,7 @@ export function CropScanImageScreen({ navigation, route }: Props) {
       }
 
       setImageUri(cropped.uri, {
+        captureMetadata: { source: 'gallery', timing: 'unknown' },
         originalImageUri: imageUri,
         processingLog,
       });

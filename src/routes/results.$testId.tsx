@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ArrowRight, Camera, ListChecks, AlertTriangle } from "lucide-react";
 import { testStorage, poolStorage, type TestRecord, type Pool } from "@/utils/storage";
+import { calculateDosage } from "@/utils/calculateDosage";
 import { ResultCard } from "@/components/ResultCard";
 import { ParameterArcs } from "@/components/ParameterArcs";
 import { scanSession } from "@/utils/scanSession";
@@ -19,8 +20,7 @@ function ResultsScreen() {
 
   useEffect(() => {
     // testStorage doesn't have a direct getById; load all and find
-    const all = JSON.parse(localStorage.getItem("poolcheck.tests") || "[]") as TestRecord[];
-    const t = all.find((x) => x.id === testId) || null;
+    const t = testStorage.get(testId) || null;
     setTest(t);
     if (t) setPool(poolStorage.get(t.poolId) || null);
   }, [testId]);
@@ -33,6 +33,7 @@ function ResultsScreen() {
     );
   }
 
+  const recommendations = calculateDosage(test.results, pool);
   return (
     <div dir="rtl" className="min-h-screen bg-background">
       <div className="mx-auto max-w-md px-5 pt-6 pb-10">
@@ -87,15 +88,15 @@ function ResultsScreen() {
         )}
 
         {/* Visual overview — concentric arcs */}
-        {test.recommendations.length > 0 && (
+        {recommendations.length > 0 && (
           <div className="mt-5">
-            <ParameterArcs recs={test.recommendations} />
+            <ParameterArcs recs={recommendations} />
           </div>
         )}
 
         {/* Detailed cards with action recommendations */}
         <div className="mt-5 space-y-3">
-          {test.recommendations.map((rec) => (
+          {recommendations.map((rec) => (
             <ResultCard key={rec.paramKey} rec={rec} />
           ))}
         </div>
@@ -104,8 +105,8 @@ function ResultsScreen() {
         <div className="mt-6 flex gap-3 rounded-2xl border border-warning/30 bg-warning/10 p-4">
           <AlertTriangle className="h-5 w-5 shrink-0 text-warning mt-0.5" />
           <p className="text-xs leading-relaxed text-foreground/90">
-            החישוב הוא הערכה לפי הנתונים שהוזנו ותוצאת הסטיק. יש לפעול לפי הוראות יצרן חומרי הבריכה.
-            מומלץ להוסיף חומרים בהדרגה ולבדוק שוב. אין לערבב חומרים שונים יחד.
+            הערכים הם הערכה מצילום וטווחי השוואה בלבד. אין כאן מינון חומרים או אישור לרחצה.
+            יש לאמת מדידה ולפעול לפי תווית המוצר ואיש מקצוע. אין לערבב חומרים.
           </p>
         </div>
 

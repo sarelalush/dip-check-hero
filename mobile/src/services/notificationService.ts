@@ -9,7 +9,9 @@ interface ScheduleReminderInput {
   poolName: string;
 }
 
-export async function schedulePoolReminderTestNotification(poolName: string): Promise<ScheduleReminderResult> {
+export async function schedulePoolReminderTestNotification(
+  poolName: string,
+): Promise<ScheduleReminderResult> {
   try {
     const permission = await ensureNotificationPermission();
     if (!permission.granted) {
@@ -45,6 +47,41 @@ export async function schedulePoolReminderTestNotification(poolName: string): Pr
 export interface ScheduleReminderResult {
   error?: string;
   notificationId?: string;
+}
+
+export async function scheduleRetestNotification({
+  poolId,
+  poolName,
+  retestAt,
+}: {
+  poolId: string;
+  poolName: string;
+  retestAt: number;
+}): Promise<ScheduleReminderResult> {
+  try {
+    const permission = await ensureNotificationPermission();
+    if (!permission.granted) return { error: permission.error };
+    await ensureReminderChannel();
+    const seconds = Math.ceil((retestAt - Date.now()) / 1000);
+    if (seconds < 1) return { error: 'זמן הבדיקה החוזרת כבר הגיע.' };
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'בדיקה חוזרת לאחר הטיפול',
+        body: `בדוק את ${poolName} עם סטיק חדש כדי לראות את השינוי.`,
+        data: { poolId, type: 'pool-treatment-retest' },
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds,
+        repeats: false,
+        channelId: REMINDER_CHANNEL_ID,
+      },
+    });
+    return { notificationId };
+  } catch {
+    return { error: 'לא הצלחנו להפעיל תזכורת. תיעוד הטיפול נשמר ואפשר לבדוק שוב ידנית.' };
+  }
 }
 
 const REMINDER_CHANNEL_ID = 'pool-test-reminders';

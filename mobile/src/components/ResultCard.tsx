@@ -7,14 +7,29 @@ const STATUS_STYLE: Record<
   DosageRecommendation['status'],
   { backgroundColor: string; borderColor: string; color: string; label: string }
 > = {
-  ok: { backgroundColor: colors.successSoft, borderColor: 'rgba(34,185,131,0.3)', color: colors.success, label: 'תקין' },
-  low: { backgroundColor: colors.warningSoft, borderColor: 'rgba(240,165,41,0.34)', color: colors.warning, label: 'נמוך' },
-  high: { backgroundColor: colors.dangerSoft, borderColor: 'rgba(231,92,98,0.3)', color: colors.danger, label: 'גבוה' },
+  ok: {
+    backgroundColor: colors.successSoft,
+    borderColor: 'rgba(34,185,131,0.3)',
+    color: colors.success,
+    label: 'בטווח ההשוואה',
+  },
+  low: {
+    backgroundColor: colors.warningSoft,
+    borderColor: 'rgba(240,165,41,0.34)',
+    color: colors.warning,
+    label: 'נמוך',
+  },
+  high: {
+    backgroundColor: colors.dangerSoft,
+    borderColor: 'rgba(231,92,98,0.3)',
+    color: colors.danger,
+    label: 'גבוה',
+  },
 };
 
 function formatValue(value: number, unit: string) {
   const display = Number.isInteger(value) ? `${value}` : `${value.toFixed(1)}`;
-  return unit ? `${display} ${unit}` : display;
+  return `\u2066${unit ? `${display} ${unit}` : display}\u2069`;
 }
 
 function splitSteps(action: string) {
@@ -26,19 +41,57 @@ function splitSteps(action: string) {
 
 interface ResultCardProps {
   rec: DosageRecommendation;
+  compact?: boolean;
 }
 
-export function ResultCard({ rec }: ResultCardProps) {
+export function ResultCard({ rec, compact = false }: ResultCardProps) {
   const status = STATUS_STYLE[rec.status];
   const steps = splitSteps(rec.actionHe);
   const isActive = Boolean(rec.active);
 
+  if (compact) {
+    return (
+      <View style={[styles.card, styles.compactCard, isActive && styles.compactActive]}>
+        <View style={styles.header}>
+          <Text style={[styles.title, styles.compactTitle]}>{rec.labelHe}</Text>
+          <View
+            style={[
+              styles.statusBadge,
+              { backgroundColor: status.backgroundColor, borderColor: status.borderColor },
+            ]}
+          >
+            <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
+          </View>
+        </View>
+        <View style={styles.compactValues}>
+          <Text style={styles.measured}>{formatValue(rec.measured, rec.unit)}</Text>
+          <Text style={styles.target}>מרכז טווח ההשוואה: {formatValue(rec.target, rec.unit)}</Text>
+        </View>
+        {rec.status !== 'ok' ? (
+          <Text style={styles.compactNote}>
+            {'יש לאמת מדידה לפני טיפול'}
+          </Text>
+        ) : null}
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.card, { backgroundColor: status.backgroundColor, borderColor: status.borderColor }, isActive && styles.activeCard]}>
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: status.backgroundColor, borderColor: status.borderColor },
+        isActive && styles.activeCard,
+      ]}
+    >
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <View style={[styles.iconWrap, { backgroundColor: colors.white }]}>
-            <LineIcon name={rec.status === 'ok' ? 'check' : 'help'} color={status.color} size={15} />
+            <LineIcon
+              name={rec.status === 'ok' ? 'check' : 'help'}
+              color={status.color}
+              size={15}
+            />
           </View>
           <View style={styles.titleCopy}>
             <Text style={styles.title}>{rec.labelHe}</Text>
@@ -56,7 +109,7 @@ export function ResultCard({ rec }: ResultCardProps) {
           <Text style={styles.valueText}>{formatValue(rec.measured, rec.unit)}</Text>
         </View>
         <View style={styles.valueBox}>
-          <Text style={styles.valueLabel}>יעד</Text>
+          <Text style={styles.valueLabel}>מרכז טווח ההשוואה</Text>
           <Text style={styles.valueText}>{formatValue(rec.target, rec.unit)}</Text>
         </View>
       </View>
@@ -80,13 +133,48 @@ export function ResultCard({ rec }: ResultCardProps) {
           )}
         </View>
       ) : rec.status !== 'ok' ? (
-        <Text style={styles.waitingText}>ממתין - נטפל לאחר השלמת הצעד הקודם.</Text>
+        <Text style={styles.waitingText}>יש לאמת מדידה לפני טיפול.</Text>
       ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  compactCard: {
+    backgroundColor: colors.surface,
+    padding: 14,
+    borderColor: colors.borderSoft,
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  compactActive: { borderColor: colors.primaryLight, backgroundColor: colors.backgroundSoft },
+  compactTitle: { flex: 1 },
+  compactValues: {
+    ...rtl.row,
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 8,
+  },
+  measured: {
+    color: colors.text,
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 23,
+    ...rtl.text,
+  },
+  target: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    ...rtl.text,
+  },
+  compactNote: {
+    marginTop: 5,
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 11,
+    ...rtl.text,
+  },
   card: {
     borderRadius: 20,
     borderWidth: 1,

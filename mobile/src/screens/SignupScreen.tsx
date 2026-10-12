@@ -14,12 +14,13 @@ import {
 import { LineIcon } from '../components/LineIcon';
 import { colors, rtl, typography } from '../theme';
 import { useAuth } from '../state/AuthContext';
+import { legalDocuments } from '../services/legalConsentService';
 import type { RootStackParamList } from '../../App';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Signup'>;
 
-const TERMS_VERSION = '2026-08-12';
-const PRIVACY_POLICY_VERSION = '2026-08-12';
+const TERMS_VERSION = legalDocuments.version;
+const PRIVACY_POLICY_VERSION = legalDocuments.version;
 
 export function SignupScreen({ navigation }: Props) {
   const { isGuest, signInWithApple, signInWithGoogle, signUpWithEmail } = useAuth();
@@ -53,10 +54,8 @@ export function SignupScreen({ navigation }: Props) {
     const phoneClean = phone.trim().replace(/\s+/g, '');
 
     if (!requireLegalConsent()) return;
-    if (!name.trim()) return setError('יש להזין שם מלא כדי ליצור חשבון.');
     if (!email.trim()) return setError('יש להזין אימייל כדי ליצור חשבון.');
-    if (!phoneClean) return setError('יש להזין מספר טלפון כדי ליצור חשבון.');
-    if (!/^0\d{1,2}-?\d{7}$|^\+?\d{9,15}$/.test(phoneClean)) return setError('יש להזין מספר טלפון תקין.');
+    if (phoneClean && !/^0\d{1,2}-?\d{7}$|^\+?\d{9,15}$/.test(phoneClean)) return setError('יש להזין מספר טלפון תקין או להשאיר ריק.');
     if (!isGuest && password.length < 6) return setError('הסיסמה חייבת להכיל לפחות 6 תווים.');
 
     setBusy(true);
@@ -123,8 +122,8 @@ export function SignupScreen({ navigation }: Props) {
         </>
       }
     >
-      <AuthField compact icon="user" label="שם מלא" onChangeText={setName} placeholder="הכנס שם מלא" value={name} />
-      <AuthField compact icon="user" keyboardType="phone-pad" label="טלפון" onChangeText={setPhone} placeholder="050..." value={phone} />
+      <AuthField compact icon="user" label="שם תצוגה (לבחירה)" onChangeText={setName} placeholder="איך לפנות אליך" value={name} />
+      <AuthField compact icon="user" keyboardType="phone-pad" label="טלפון (לבחירה)" onChangeText={setPhone} placeholder="050..." value={phone} />
       <AuthField compact icon="mail" keyboardType="email-address" label="אימייל" onChangeText={setEmail} placeholder="הכנס כתובת אימייל" value={email} />
       {!isGuest ? <AuthField compact icon="lock" label="סיסמה" onChangeText={setPassword} onSideIconPress={() => setPasswordVisible((visible) => !visible)} placeholder="בחר סיסמה" secure={!passwordVisible} sideIcon="eye" value={password} /> : null}
 
@@ -143,9 +142,9 @@ export function SignupScreen({ navigation }: Props) {
           {legalAccepted ? <LineIcon color={colors.white} name="check" size={16} /> : null}
         </Pressable>
         <Text style={styles.legalText}>
-          קראתי ואני מסכים/ה ל
+          אני מסכים/ה ל
           <Text onPress={() => navigation.navigate('Terms')} style={styles.legalLink}>תנאי השימוש</Text>
-          {' ול'}
+          {'. מידע על שימוש בנתונים מופיע ב'}
           <Text onPress={() => navigation.navigate('PrivacyPolicy')} style={styles.legalLink}>מדיניות הפרטיות</Text>
         </Text>
       </View>

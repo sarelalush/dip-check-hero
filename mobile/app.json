@@ -2,7 +2,7 @@
   "expo": {
     "name": "AquaSense",
     "slug": "comstickcheckapp",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "scheme": "aquasense",
     "userInterfaceStyle": "light",
@@ -20,9 +20,9 @@
     "android": {
       "package": "com.stickcheck.app",
       "permissions": [
-        "android.permission.RECORD_AUDIO",
         "android.permission.POST_NOTIFICATIONS"
-      ]
+      ],
+      "blockedPermissions": ["android.permission.RECORD_AUDIO"]
     },
     "extra": {
       "eas": {
@@ -36,7 +36,8 @@
         "expo-image-picker",
         {
           "photosPermission": "AquaSense צריכה גישה לגלריה כדי לבחור תמונת סטיק לבדיקה.",
-          "cameraPermission": "AquaSense צריכה גישה למצלמה כדי לצלם סטיק בדיקה."
+          "cameraPermission": "AquaSense צריכה גישה למצלמה כדי לצלם סטיק בדיקה.",
+          "microphonePermission": false
         }
       ],
       "expo-notifications",

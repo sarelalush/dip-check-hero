@@ -258,6 +258,13 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      get_service_consent_status: { Args: Record<PropertyKey, never>; Returns: Json };
+      record_service_consent: {
+        Args: { p_terms_version: string; p_privacy_version: string; p_adult_private_pool_use: boolean };
+        Returns: Json;
+      };
+      record_ai_consent: { Args: { p_version: string; p_allowed: boolean }; Returns: Json };
+      request_account_deletion: { Args: { p_confirmation: string }; Returns: Json };
       can_create_pool: {
         Args: { p_account_id: string };
         Returns: boolean;

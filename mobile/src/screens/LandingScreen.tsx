@@ -45,23 +45,23 @@ const onboardingSlides: OnboardingSlide[] = [
     visual: 'phoneScan',
   },
   {
-    body: 'כל ערך מוצג בצורה פשוטה וברורה כדי שתדע אם מי הבריכה מאוזנים.',
+    body: 'הערכים מוערכים מצילום ומוצגים לצד טווחי השוואה. התוצאה אינה אישור לרחצה.',
     rows: [
       { icon: 'drop', text: 'בדוק את ערכי ה-pH, הכלור והאלקליניות' },
-      { icon: 'results', text: 'ראה אם כל ערך תקין לפי הצבעים' },
+      { icon: 'results', text: 'השווה כל ערך לטווח המוצג' },
       { icon: 'history', text: 'קבל תוצאה מסודרת וברורה בכל בדיקה' },
     ],
-    title: 'רואים אם הבריכה מאוזנת',
+    title: 'משווים את המדדים',
     visual: 'results',
   },
   {
-    body: 'לפי נתוני הבריכה והתוצאה תקבל המלצה כמה חומר להוסיף כדי לאזן את המים.',
+    body: 'יש לאמת את המדדים בבדיקה מתאימה לפני טיפול. אין בגרסה הנוכחית חישוב מינון חומרים.',
     rows: [
-      { icon: 'results', text: 'ראה איזו פעולה מומלץ לבצע קודם' },
-      { icon: 'drop', text: 'קבל המלצה מדויקת לכמות החומר' },
-      { icon: 'shield', text: 'שמור על איזון מים נכון בקלות' },
+      { icon: 'results', text: 'זהה מדדים שדורשים אימות' },
+      { icon: 'drop', text: 'קבל הערכה למדדים והכוונה לאימות לפני טיפול' },
+      { icon: 'shield', text: 'טיפול לפי תווית המוצר ואיש מקצוע' },
     ],
-    title: 'מקבלים המלצה מותאמת',
+    title: 'מאמתים לפני טיפול',
     visual: 'recommendation',
   },
   {
@@ -69,7 +69,7 @@ const onboardingSlides: OnboardingSlide[] = [
     rows: [
       { icon: 'drop', text: '200 סריקות בכל חודש' },
       { icon: 'pools', text: 'בריכה אחת כלולה במנוי' },
-      { icon: 'flash', text: 'תוצאות והמלצות מיידיות' },
+      { icon: 'flash', text: 'הערכת מדדים והיסטוריית בדיקות' },
     ],
     title: 'ממשיכים עם מנוי',
     visual: 'plan',
@@ -156,6 +156,7 @@ export function LandingScreen({ navigation }: Props) {
       <OnboardingHeader compact={compact} index={index} slide={current} />
       <HeroSection compact={compact} type={current.visual} />
       <InstructionCard compact={compact} index={index} isLast={isLast} rows={current.rows}>
+        <Pressable accessibilityRole="button" onPress={() => navigation.navigate('DemoResult')} style={{ minHeight: 44, justifyContent: 'center', marginVertical: 8 }}><Text style={{ fontFamily: typography.fontFamilySemiBold, color: colors.primaryDeep, fontSize: 14, ...rtl.textCenter }}>ראה דוגמה לתוצאה ולהמלצה</Text></Pressable>
         {isLast ? <SubscriptionPaywall compact={compact} /> : null}
         <PrimaryButton compact={compact} label={isLast ? 'המשך למנוי' : 'הבא'} onPress={next} />
         <OnboardingDots activeIndex={index} count={TOTAL_STEPS} />
@@ -399,10 +400,10 @@ function TestStrip({ compact, withFinger }: { compact: boolean; withFinger?: boo
 
 function ResultsVisual({ compact }: { compact: boolean }) {
   const rows = [
-    { label: 'pH', status: 'תקין', value: '7.4', color: colors.success, icon: 'drop' as LineIconName },
-    { label: 'Cl', status: 'תקין', value: '1.5', color: colors.success, icon: 'drop' as LineIconName },
+    { label: 'pH', status: 'בטווח ההשוואה', value: '7.4', color: colors.success, icon: 'drop' as LineIconName },
+    { label: 'Cl', status: 'בטווח ההשוואה', value: '1.5', color: colors.success, icon: 'drop' as LineIconName },
     { label: 'Alk', status: 'גבוה', value: '120', color: colors.warning, icon: 'results' as LineIconName },
-    { label: 'CYA', status: 'תקין', value: '50', color: colors.success, icon: 'shield' as LineIconName },
+    { label: 'CYA', status: 'בטווח ההשוואה', value: '50', color: colors.success, icon: 'shield' as LineIconName },
   ];
 
   return (
@@ -436,14 +437,14 @@ function ResultsVisual({ compact }: { compact: boolean }) {
 
 function RecommendationVisual({ compact }: { compact: boolean }) {
   const rows = [
-    ['pH', '7.2 - 7.6', 'בטווח מומלץ', 'drop' as LineIconName],
-    ['כלור', '150 גרם', 'הוסף', 'flash' as LineIconName],
-    ['מייצב כלור', '300 גרם', 'הוסף', 'shield' as LineIconName],
+    ['pH', '7.4', 'דוגמה למדידה', 'drop' as LineIconName],
+    ['כלור', '1.5 ppm', 'נדרש אימות', 'flash' as LineIconName],
+    ['מייצב כלור', '50 ppm', 'ללא מינון', 'shield' as LineIconName],
   ];
 
   return (
     <View style={[styles.recommendCard, compact && styles.recommendCardCompact]}>
-      <Text style={[styles.recommendTitle, compact && styles.recommendTitleCompact]}>ההמלצה שלך</Text>
+      <Text style={[styles.recommendTitle, compact && styles.recommendTitleCompact]}>מדדים לדוגמה · יש לאמת</Text>
       <View style={[styles.volumeBox, compact && styles.volumeBoxCompact]}>
         <Text style={styles.volumeLabel}>נפח הבריכה</Text>
         <Text style={[styles.volumeValue, compact && styles.volumeValueCompact]}>40,000 ליטר</Text>

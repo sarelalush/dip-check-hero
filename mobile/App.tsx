@@ -25,6 +25,7 @@ import { ScanPlaceholderScreen } from './src/screens/ScanPlaceholderScreen';
 import { SelectPoolScreen } from './src/screens/SelectPoolScreen';
 import { SelectStripScreen } from './src/screens/SelectStripScreen';
 import { LandingScreen } from './src/screens/LandingScreen';
+import { DemoResultScreen } from './src/screens/DemoResultScreen';
 import { LoginScreen } from './src/screens/LoginScreen';
 import { SignupScreen } from './src/screens/SignupScreen';
 import { ForgotPasswordScreen } from './src/screens/ForgotPasswordScreen';
@@ -44,9 +45,15 @@ import { ResultsHistoryProvider, useResultsHistory } from './src/state/ResultsHi
 import { ScanSessionProvider } from './src/state/ScanSessionContext';
 import { ReminderProvider } from './src/state/ReminderContext';
 import { AppPreferencesProvider } from './src/state/AppPreferencesContext';
+import { TreatmentProvider } from './src/state/TreatmentContext';
 import { hasActiveSubscription } from './src/services/usageService';
+import { LegalConsentProvider, useLegalConsent } from './src/state/LegalConsentContext';
+import { ServiceConsentScreen } from './src/screens/ServiceConsentScreen';
+import { SavedMeasurementsScreen } from './src/screens/SavedMeasurementsScreen';
 
 export type RootStackParamList = {
+  ServiceConsent: undefined;
+  SavedMeasurements: undefined;
   Home: undefined;
   Pools: undefined;
   PoolDetails: { poolId: string };
@@ -76,6 +83,7 @@ export type RootStackParamList = {
   ReleaseChecklist: undefined;
 
   Welcome: undefined;
+  DemoResult: undefined;
   Login: undefined;
   Signup: undefined;
   ForgotPassword: undefined;
@@ -116,17 +124,21 @@ export default function App() {
   return (
     <View style={styles.rtlRoot}>
       <AuthProvider>
+        <LegalConsentProvider>
         <PoolsProvider>
           <ReminderProvider>
             <AppPreferencesProvider>
               <ScanSessionProvider>
                 <ResultsHistoryProvider>
-                  <AppNavigator />
+                  <TreatmentProvider>
+                    <AppNavigator />
+                  </TreatmentProvider>
                 </ResultsHistoryProvider>
               </ScanSessionProvider>
             </AppPreferencesProvider>
           </ReminderProvider>
         </PoolsProvider>
+        </LegalConsentProvider>
       </AuthProvider>
     </View>
   );
@@ -146,6 +158,9 @@ function AppNavigator() {
   const { hydrated: poolsHydrated, initialSyncComplete: poolsInitialSyncComplete } = usePools();
   const { initialSyncComplete: historyInitialSyncComplete, isHydrated: historyHydrated } = useResultsHistory();
   const isPasswordRecovery = Boolean(passwordRecoveryExpiresAt);
+  const { status: legalStatus } = useLegalConsent();
+  const legalRequired = isAuthenticated && !isPasswordRecovery &&
+    (!legalStatus?.serviceAccepted || !legalStatus.releaseReady);
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionGateStatus>('idle');
 
   useEffect(() => {
@@ -186,18 +201,18 @@ function AppNavigator() {
     && !subscriptionRequired
     && (!poolsHydrated || !poolsInitialSyncComplete || !historyHydrated || !historyInitialSyncComplete);
 
-  if (loading || subscriptionChecking || accountDataLoading) {
+  if (loading || (!legalRequired && (subscriptionChecking || accountDataLoading))) {
     return <LoadingScreen message="אוספים את נתוני החשבון..." />;
   }
 
   const navigationKey = isPasswordRecovery
     ? 'recovery'
-    : isAuthenticated
+    : legalRequired ? 'consent' : isAuthenticated
       ? `${subscriptionRequired ? 'paywall' : 'app'}:${accountId ?? 'pending'}`
       : 'auth';
   const initialRouteName = isPasswordRecovery
     ? 'ResetPassword'
-    : isAuthenticated
+    : legalRequired ? 'ServiceConsent' : isAuthenticated
       ? (subscriptionRequired ? 'Purchase' : 'Home')
       : 'Welcome';
 
@@ -214,9 +229,20 @@ function AppNavigator() {
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Signup" component={SignupScreen} />
           </>
+        ) : legalRequired ? (
+          <>
+            <Stack.Screen name="ServiceConsent" component={ServiceConsentScreen} />
+            <Stack.Screen name="DemoResult" component={DemoResultScreen} />
+            <Stack.Screen name="SavedMeasurements" component={SavedMeasurementsScreen} />
+            <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+            <Stack.Screen name="Terms" component={TermsScreen} />
+            <Stack.Screen name="Support" component={SupportScreen} />
+            <Stack.Screen name="DeleteAccount" component={DeleteAccountScreen} />
+          </>
         ) : isAuthenticated ? (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="DemoResult" component={DemoResultScreen} />
             <Stack.Screen name="Pools" component={PoolsScreen} />
             <Stack.Screen name="PoolDetails" component={PoolDetailsScreen} />
             <Stack.Screen name="AddPool" component={AddPoolScreen} />
@@ -244,6 +270,7 @@ function AppNavigator() {
         ) : (
           <>
             <Stack.Screen name="Welcome" component={LandingScreen} />
+            <Stack.Screen name="DemoResult" component={DemoResultScreen} />
             <Stack.Screen name="Purchase" component={PurchaseScreen} />
             <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
             <Stack.Screen name="Terms" component={TermsScreen} />

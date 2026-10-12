@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppHeader } from '../components/AppHeader';
 import { AppShell } from '../components/AppShell';
@@ -14,6 +13,9 @@ import { useStartScanFlow } from '../hooks/useStartScanFlow';
 import { usePools } from '../state/PoolsContext';
 import { useResultsHistory } from '../state/ResultsHistoryContext';
 import type { RootStackParamList } from '../../App';
+import { PoolPicker } from '../components/PoolPicker';
+import { formatReading, nextAction, resultStatus } from '../domain/resultPresentation';
+import { useTreatments } from '../state/TreatmentContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -27,7 +29,7 @@ interface HomeMetric {
 
 function formatMetricValue(parameter?: ScanResultParameter) {
   if (!parameter) return '-';
-  return parameter.key === 'ph' ? parameter.value.toFixed(1) : Math.round(parameter.value).toLocaleString('he-IL');
+  return formatReading(parameter);
 }
 
 function metricFromResult(
@@ -41,16 +43,9 @@ function metricFromResult(
     icon,
     label: parameter?.name ?? fallbackLabel,
     status: parameter?.status.label ?? 'אין נתון',
-    tone: parameter?.status.tone ?? 'warning',
+    tone: parameter?.status.tone ?? 'neutral',
     value: formatMetricValue(parameter),
   };
-}
-
-function scoreForTone(tone: StatusTone) {
-  if (tone === 'success') return 92;
-  if (tone === 'danger') return 48;
-  if (tone === 'neutral') return 82;
-  return 72;
 }
 
 function colorForTone(tone: StatusTone) {
@@ -66,28 +61,26 @@ function formatLastTest(record?: { date?: string }) {
 
 export function HomeScreen({ navigation }: Props) {
   const { pools } = usePools();
-  const { historyRecords } = useResultsHistory();
+  const { getPoolHistoryRecords } = useResultsHistory();
   const startScanFlow = useStartScanFlow(navigation);
   const [scanOpening, setScanOpening] = useState(false);
-  const latestRecord = useMemo(
-    () => [...historyRecords].sort((a, b) => b.testedAt - a.testedAt)[0],
-    [historyRecords],
-  );
+  const [selectedPoolId, setSelectedPoolId] = useState<string>();
+  const selectedPool = pools.find((pool) => pool.id === selectedPoolId) ?? pools[0];
+  const latestRecord = selectedPool ? getPoolHistoryRecords(selectedPool.id, 1)[0] : undefined;
   const latestResult = latestRecord?.analysisResult;
-  const latestTone = latestRecord?.tone ?? latestResult?.overallStatus.tone ?? 'warning';
-  const score = latestResult ? scoreForTone(latestTone) : 0;
-  const primaryStatus = latestRecord?.status ?? (pools.length > 0 ? 'מוכן לבדיקה ראשונה' : 'הוסף בריכה ראשונה');
-  const metrics = latestResult
-    ? [
-        metricFromResult(latestResult.parameters, ['ph'], 'pH', 'drop'),
-        metricFromResult(latestResult.parameters, ['freeChlorine', 'totalChlorine'], 'כלור פעיל', 'help'),
-        metricFromResult(latestResult.parameters, ['alkalinity'], 'אלקליניות', 'results'),
-      ]
-    : [
-        { icon: 'drop' as const, label: 'pH', status: 'אין נתון', tone: 'neutral' as const, value: '-' },
-        { icon: 'help' as const, label: 'כלור פעיל', status: 'אין נתון', tone: 'neutral' as const, value: '-' },
-        { icon: 'results' as const, label: 'אלקליניות', status: 'אין נתון', tone: 'neutral' as const, value: '-' },
-      ];
+  const { getTreatment } = useTreatments();
+  const treatment = latestRecord ? getTreatment(latestRecord.testId) : undefined;
+  const status = resultStatus(latestResult);
+  const latestTone = status.tone;
+  const primaryStatus = latestRecord && !latestResult ? 'בדיקה שמורה — פתח לפירוט' : status.label;
+  const metrics =
+    latestResult && status.label !== 'נדרש צילום חוזר'
+      ? [
+          metricFromResult(latestResult.parameters, ['ph'], 'pH', 'drop'),
+          metricFromResult(latestResult.parameters, ['freeChlorine'], 'כלור חופשי', 'help'),
+          metricFromResult(latestResult.parameters, ['alkalinity'], 'אלקליניות', 'results'),
+        ]
+      : [];
 
   function handlePrimaryAction() {
     if (pools.length === 0) {
@@ -98,7 +91,7 @@ export function HomeScreen({ navigation }: Props) {
     if (scanOpening) return;
     setScanOpening(true);
     requestAnimationFrame(() => {
-      startScanFlow();
+      startScanFlow(selectedPool?.id);
       setTimeout(() => setScanOpening(false), 1200);
     });
   }
@@ -117,25 +110,64 @@ export function HomeScreen({ navigation }: Props) {
       </View>
 
       <Card style={styles.statusCard}>
+        {pools.length > 1 ? (
+          <PoolPicker pools={pools} selectedId={selectedPool?.id} onSelect={setSelectedPoolId} />
+        ) : null}
         <View style={styles.cardKickerRow}>
           <LineIcon name="drop" color={colors.primary} size={18} />
-          <Text style={styles.cardKicker}>מצב המים</Text>
+          <Text style={styles.cardKicker}>
+            {selectedPool?.name ?? 'הבריכה שלך'} · הבדיקה האחרונה
+          </Text>
         </View>
 
         <View style={styles.statusTop}>
-          <ScoreRing score={score} tone={latestTone} />
+          <View style={styles.statusIcon}>
+            <LineIcon
+              name={latestTone === 'success' ? 'check' : latestTone === 'warning' ? 'help' : 'drop'}
+              color={colorForTone(latestTone)}
+              size={32}
+            />
+          </View>
           <View style={styles.statusCopy}>
-            <Text style={[styles.statusTitle, { color: latestResult ? colorForTone(latestTone) : colors.text }]}>
+            <Text
+              style={[
+                styles.statusTitle,
+                { color: latestResult ? colorForTone(latestTone) : colors.text },
+              ]}
+            >
               {primaryStatus}
             </Text>
             <Text style={styles.statusSubtitle}>{formatLastTest(latestRecord)}</Text>
           </View>
         </View>
 
-        <View style={styles.metrics}>
-          {metrics.map((metric) => (
-            <MetricTile key={metric.label} metric={metric} />
-          ))}
+        {metrics.length ? (
+          <View style={styles.metrics}>
+            {metrics.map((metric) => (
+              <MetricTile key={metric.label} metric={metric} />
+            ))}
+          </View>
+        ) : null}
+        <View style={styles.nextStep}>
+          <Text style={styles.nextStepTitle}>הצעד הבא</Text>
+          <Text style={styles.nextStepText}>
+            {treatment
+              ? treatment.retestAt
+                ? treatment.retestAt <= Date.now()
+                  ? 'פעולה תועדה והגיע הזמן לבדיקה חוזרת. בצע סריקה חדשה כדי לראות את השינוי.'
+                  : `פעולה תועדה. בדיקה חוזרת מתוכננת ל־${new Date(treatment.retestAt).toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' })}.`
+                : 'פעולה תועדה. פתח את התוצאה להגדרת תזכורת לבדיקה חוזרת.'
+              : nextAction(latestResult)}
+          </Text>
+          {latestRecord ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => navigation.navigate('Results', { testId: latestRecord.testId })}
+              style={styles.resultLink}
+            >
+              <Text style={styles.nextStepTitle}>פתח תוצאה והמלצה</Text>
+            </Pressable>
+          ) : null}
         </View>
       </Card>
 
@@ -166,48 +198,15 @@ export function HomeScreen({ navigation }: Props) {
   );
 }
 
-function ScoreRing({ score, tone }: { score: number; tone: StatusTone }) {
-  const size = 82;
-  const stroke = 7;
-  const radiusValue = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * radiusValue;
-  const progress = Math.max(0, Math.min(100, score));
-  const dashOffset = circumference - (circumference * progress) / 100;
-  const color = colorForTone(tone);
-
-  return (
-    <View style={styles.scoreWrap}>
-      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <Circle cx={size / 2} cy={size / 2} r={radiusValue} stroke="#F4E6D0" strokeWidth={stroke} fill="#FFF8EA" />
-        <Circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radiusValue}
-          stroke={color}
-          strokeWidth={stroke}
-          fill="transparent"
-          strokeDasharray={`${circumference} ${circumference}`}
-          strokeDashoffset={dashOffset}
-          strokeLinecap="round"
-          rotation="-90"
-          origin={`${size / 2}, ${size / 2}`}
-        />
-      </Svg>
-      <View style={styles.scoreCenter}>
-        <Text style={styles.scoreValue}>{score || '-'}</Text>
-        <Text style={styles.scoreLabel}>מכל 100</Text>
-      </View>
-    </View>
-  );
-}
-
 function MetricTile({ metric }: { metric: HomeMetric }) {
   return (
     <View style={styles.metricCard}>
       <LineIcon name={metric.icon} color={colors.primaryDark} size={22} />
       <Text style={styles.metricLabel}>{metric.label}</Text>
       <Text style={styles.metricValue}>{metric.value}</Text>
-      <Text style={[styles.metricStatus, { color: colorForTone(metric.tone) }]}>{metric.status}</Text>
+      <Text style={[styles.metricStatus, { color: colorForTone(metric.tone) }]}>
+        {metric.status}
+      </Text>
     </View>
   );
 }
@@ -224,7 +223,10 @@ function ShortcutCard({
   title: string;
 }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.shortcutCard, pressed && styles.pressed]}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.shortcutCard, pressed && styles.pressed]}
+    >
       <View style={styles.shortcutIcon}>
         <LineIcon name={icon} color={colors.primaryDark} size={24} />
       </View>
@@ -238,6 +240,35 @@ function ShortcutCard({
 }
 
 const styles = StyleSheet.create({
+  statusIcon: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nextStep: {
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: colors.backgroundDeep,
+    gap: 6,
+  },
+  nextStepTitle: {
+    fontFamily: typography.fontFamilyBold,
+    fontSize: 14,
+    color: colors.primaryDeep,
+    ...rtl.text,
+  },
+  nextStepText: {
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 13,
+    lineHeight: 21,
+    color: colors.text,
+    ...rtl.text,
+  },
+  resultLink: { paddingVertical: 10, minHeight: 44 },
   screen: {
     paddingHorizontal: 18,
     paddingBottom: 82,
@@ -317,30 +348,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginTop: 3,
     ...rtl.text,
-  },
-  scoreWrap: {
-    alignItems: 'center',
-    height: 82,
-    justifyContent: 'center',
-    width: 82,
-  },
-  scoreCenter: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'absolute',
-  },
-  scoreValue: {
-    color: colors.text,
-    fontFamily: typography.fontFamilyExtraBold,
-    fontSize: 24,
-    fontWeight: '900',
-    lineHeight: 30,
-  },
-  scoreLabel: {
-    color: colors.textSoft,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 11,
-    fontWeight: '700',
   },
   metrics: {
     flexDirection: 'row-reverse',

@@ -3,13 +3,13 @@ import { CheckCircle2, AlertCircle, AlertTriangle } from "lucide-react";
 
 export function ResultCard({ rec }: { rec: DosageRecommendation }) {
   const statusMap = {
-    ok: { label: "תקין", icon: CheckCircle2, color: "text-success", bg: "bg-success/10", border: "border-success/30" },
+    ok: { label: "בטווח ההשוואה", icon: CheckCircle2, color: "text-success", bg: "bg-success/10", border: "border-success/30" },
     low: { label: "נמוך", icon: AlertCircle, color: "text-warning", bg: "bg-warning/10", border: "border-warning/30" },
     high: { label: "גבוה", icon: AlertTriangle, color: "text-destructive", bg: "bg-destructive/10", border: "border-destructive/30" },
   } as const;
   const s = statusMap[rec.status];
   const Icon = s.icon;
-  const isActive = rec.active;
+  const isActive = false;
 
   return (
     <div
@@ -37,7 +37,7 @@ export function ResultCard({ rec }: { rec: DosageRecommendation }) {
           <div className="font-bold text-foreground">{rec.measured} {rec.unit}</div>
         </div>
         <div className="rounded-xl bg-card/60 p-3">
-          <div className="text-muted-foreground text-xs">יעד</div>
+          <div className="text-muted-foreground text-xs">ערך השוואה</div>
           <div className="font-bold text-foreground">{rec.target} {rec.unit}</div>
         </div>
       </div>
@@ -64,7 +64,7 @@ export function ResultCard({ rec }: { rec: DosageRecommendation }) {
           })()}
         </div>
       ) : rec.status !== "ok" ? (
-        <div className="mt-3 text-xs text-muted-foreground">ממתין — נטפל לאחר השלמת הצעד הקודם.</div>
+        <div className="mt-3 text-xs text-muted-foreground">יש לאמת את המדידה לפני טיפול. אין כאן מינון חומרים.</div>
       ) : null}
     </div>
   );

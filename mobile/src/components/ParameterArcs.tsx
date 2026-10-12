@@ -21,7 +21,7 @@ const STATUS_COLOR: Record<DosageRecommendation['status'], string> = {
 };
 
 const STATUS_LABEL: Record<DosageRecommendation['status'], string> = {
-  ok: 'תקין',
+  ok: 'בטווח ההשוואה',
   low: 'נמוך',
   high: 'גבוה',
 };

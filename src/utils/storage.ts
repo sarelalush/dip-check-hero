@@ -1,5 +1,5 @@
 import type { StripResults } from "./analyzeStripImage";
-import type { DosageRecommendation } from "./calculateDosage";
+import { calculateDosage, type DosageRecommendation } from "./calculateDosage";
 import { pushPool, pushTest, deletePoolCloud } from "@/lib/cloudSync";
 
 export type PoolType = "chlorine" | "salt";
@@ -69,8 +69,17 @@ export const poolStorage = {
 };
 
 export const testStorage = {
+  get: (id: string): TestRecord | undefined => {
+    const record = read<TestRecord>(TESTS_KEY).find((t) => t.id === id);
+    const pool = record ? poolStorage.get(record.poolId) : undefined;
+    return record && pool ? { ...record, recommendations: calculateDosage(record.results, pool) } : undefined;
+  },
   listByPool: (poolId: string): TestRecord[] =>
-    read<TestRecord>(TESTS_KEY).filter((t) => t.poolId === poolId).sort((a, b) => b.date - a.date),
+    read<TestRecord>(TESTS_KEY).filter((t) => t.poolId === poolId)
+      .map((record) => {
+        const pool = poolStorage.get(poolId);
+        return { ...record, recommendations: pool ? calculateDosage(record.results, pool) : [] };
+      }).sort((a, b) => b.date - a.date),
   save: (test: TestRecord) => {
     const all = read<TestRecord>(TESTS_KEY);
     all.push(test);

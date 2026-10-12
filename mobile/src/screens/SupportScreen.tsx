@@ -17,7 +17,7 @@ const FAQ_ITEMS = [
   },
   {
     title: 'למה חשוב להזין נפח בריכה',
-    text: 'נפח הבריכה משפיע על חישובי טיפול ומינון. בלי נפח מדויק האפליקציה תציג הנחיה כללית יותר.',
+    text: 'נפח הבריכה הוא פרט חשוב לטיפול מקצועי. הגרסה הנוכחית מציגה הערכת מדדים ואינה מחשבת מינון חומרים.',
   },
   {
     title: 'מה זה ביטחון נמוך',
@@ -53,7 +53,7 @@ export function SupportScreen({ navigation }: Props) {
       <View style={styles.waterWash} />
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
-          <Pressable onPress={() => navigation.navigate('Settings')} style={styles.iconButton}>
+          <Pressable accessibilityRole="button" accessibilityLabel="חזרה" onPress={() => navigation.goBack()} style={styles.iconButton}>
             <LineIcon name="chevronLeft" color={colors.primaryDark} size={18} />
           </Pressable>
           <View style={styles.headerCopy}>

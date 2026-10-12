@@ -1,6 +1,7 @@
 import type { StatusTone } from '../components/StatusBadge';
 import type { DosageCalculationResult } from './dosage';
 import type { StripParameter } from './strip';
+import type { CaptureMetadata, ImageQualityReport } from './captureQuality';
 
 export type ScanParameterKey = StripParameter;
 
@@ -56,6 +57,8 @@ export interface StripAnalysisResult {
   imageUri?: string;
   imagePath?: string;
   imageUrl?: string;
+  captureMetadata?: CaptureMetadata;
+  imageQuality?: ImageQualityReport;
   poolId?: string;
   source?: 'mock' | 'remote-mock' | 'remote-v1' | 'remote' | 'native' | 'ai' | 'cv';
   provider?: 'gemini';

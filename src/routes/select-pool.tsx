@@ -59,7 +59,7 @@ function SelectPoolScreen() {
             <div className="pointer-events-none absolute -left-8 -bottom-10 h-32 w-32 rounded-full bg-white/15 blur-2xl" />
             <div className="text-[11px] font-semibold tracking-[0.2em] text-white/80">שלב 2 מתוך 3</div>
             <h1 className="mt-1 text-2xl font-extrabold leading-tight">לאיזו בריכה?</h1>
-            <p className="mt-1 text-sm text-white/85">בחר בריכה כדי לחשב את ההמלצה המדויקת</p>
+            <p className="mt-1 text-sm text-white/85">בחר בריכה לשיוך תוצאות המדידה</p>
           </div>
         )}
 
@@ -82,7 +82,7 @@ function SelectPoolScreen() {
         <div className="mt-6 space-y-3">
           {pools.length === 0 ? (
             <p className="text-center text-sm text-muted-foreground py-8">
-              אין בריכות שמורות. הוסף בריכה כדי לקבל חישוב מינון.
+              אין בריכות שמורות. הוסף בריכה לשמירת היסטוריית מדדים.
             </p>
           ) : (
             pools.map((p) =>

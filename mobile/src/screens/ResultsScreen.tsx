@@ -10,11 +10,15 @@ import { PrimaryButton } from '../components/PrimaryButton';
 import { ResultCard } from '../components/ResultCard';
 import { colors, radius, rtl, shadows, typography } from '../theme';
 import type { DosageRecommendation } from '../domain/dosage';
-import { calculateDosage } from '../domain/dosage';
+import { calculateDosage, protectAnalysisResult, MEASUREMENT_SAFETY_NOTE } from '../domain/dosage';
 import type { Pool } from '../domain/pool';
 import type { ScanResultParameter, StripAnalysisResult } from '../domain/scanResults';
 import { useStartScanFlow } from '../hooks/useStartScanFlow';
-import { analyzeStripImage, getStripAnalysisConfig, StripAnalysisServiceError } from '../services/stripAnalysisService';
+import {
+  analyzeStripImage,
+  getStripAnalysisConfig,
+  StripAnalysisServiceError,
+} from '../services/stripAnalysisService';
 import { prepareScanImageForRemoteAnalysis } from '../services/scanImageStorage';
 import { fetchCloudTestById } from '../services/testCloudSync';
 import { useAuth } from '../state/AuthContext';
@@ -22,12 +26,23 @@ import { usePools } from '../state/PoolsContext';
 import { useResultsHistory, type SavedHistoryRecord } from '../state/ResultsHistoryContext';
 import { useScanSession } from '../state/ScanSessionContext';
 import type { RootStackParamList } from '../../App';
+import { resultStatus } from '../domain/resultPresentation';
+import { comparisonKind } from '../domain/readingComparison';
+import { NextActionCard } from '../components/NextActionCard';
+import { DisclosureSection } from '../components/DisclosureSection';
+import { requireCurrentAiConsent } from '../services/legalConsentService';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Results'>;
 const FALLBACK_POOL_NAME = 'הבריכה שלי';
 const autoSavedResultIds = new Set<string>();
-const CORE_RESULT_PARAMETER_ORDER: DosageRecommendation['paramKey'][] = ['alkalinity', 'ph', 'freeChlorine'];
-const CORE_RESULT_PARAMETER_KEYS = new Set<DosageRecommendation['paramKey']>(CORE_RESULT_PARAMETER_ORDER);
+const CORE_RESULT_PARAMETER_ORDER: DosageRecommendation['paramKey'][] = [
+  'alkalinity',
+  'ph',
+  'freeChlorine',
+];
+const CORE_RESULT_PARAMETER_KEYS = new Set<DosageRecommendation['paramKey']>(
+  CORE_RESULT_PARAMETER_ORDER,
+);
 
 function formatAnalysisDate(timestamp: number) {
   return new Intl.DateTimeFormat('he-IL', {
@@ -45,7 +60,11 @@ function formatVolume(volumeLiters?: number) {
 }
 
 function targetForParameter(parameter: ScanResultParameter) {
-  return Number(((parameter.idealRange.min + parameter.idealRange.max) / 2).toFixed(parameter.key === 'ph' ? 1 : 0));
+  return Number(
+    ((parameter.idealRange.min + parameter.idealRange.max) / 2).toFixed(
+      parameter.key === 'ph' ? 1 : 0,
+    ),
+  );
 }
 
 function mapParameterToRecommendation(parameter: ScanResultParameter): DosageRecommendation {
@@ -63,19 +82,20 @@ function mapParameterToRecommendation(parameter: ScanResultParameter): DosageRec
 }
 
 function getResultCards(result: StripAnalysisResult): DosageRecommendation[] {
-  const recommendations = result.dosage?.recommendations?.length
-    ? result.dosage.recommendations
-    : result.parameters.map(mapParameterToRecommendation);
+  const recommendations = result.dosage?.recommendations
+    ?? result.parameters.filter((parameter) => comparisonKind(parameter) !== undefined).map(mapParameterToRecommendation);
 
-  const coreRecommendations = CORE_RESULT_PARAMETER_ORDER
-    .map((paramKey) => recommendations.find((recommendation) => recommendation.paramKey === paramKey))
-    .filter((recommendation): recommendation is DosageRecommendation => Boolean(recommendation));
+  const coreRecommendations = CORE_RESULT_PARAMETER_ORDER.map((paramKey) =>
+    recommendations.find((recommendation) => recommendation.paramKey === paramKey),
+  ).filter((recommendation): recommendation is DosageRecommendation => Boolean(recommendation));
 
   if (coreRecommendations.length) {
     return coreRecommendations;
   }
 
-  return recommendations.filter((recommendation) => CORE_RESULT_PARAMETER_KEYS.has(recommendation.paramKey)).slice(0, 3);
+  return recommendations
+    .filter((recommendation) => CORE_RESULT_PARAMETER_KEYS.has(recommendation.paramKey))
+    .slice(0, 3);
 }
 
 function isInvalidStripResult(result?: StripAnalysisResult | null) {
@@ -88,23 +108,26 @@ function isInvalidStripResult(result?: StripAnalysisResult | null) {
   );
 }
 
-function enrichResultWithDosage(result: StripAnalysisResult, pool?: Pool, savedDosage?: StripAnalysisResult['dosage']): StripAnalysisResult {
-  const dosage = savedDosage ?? result.dosage ?? (isInvalidStripResult(result) ? undefined : calculateDosage(result, pool));
+function enrichResultWithDosage(
+  result: StripAnalysisResult,
+  pool?: Pool,
+  savedDosage?: StripAnalysisResult['dosage'],
+): StripAnalysisResult {
+  void savedDosage;
+  const safeResult = protectAnalysisResult(result, pool);
+  const dosage = isInvalidStripResult(result) ? undefined : safeResult.dosage;
 
   if (!dosage || isInvalidStripResult(result)) {
     return {
-      ...result,
+      ...safeResult,
       dosage,
     };
   }
 
   return {
-    ...result,
+    ...safeResult,
     dosage,
-    overallStatus: {
-      label: dosage.primaryRecommendation ? 'נדרש תיקון קל' : 'המים מאוזנים',
-      tone: dosage.primaryRecommendation ? 'warning' : 'success',
-    },
+    overallStatus: resultStatus({ ...result, dosage }),
     recommendation: dosage.summary ?? result.recommendation,
   };
 }
@@ -134,23 +157,42 @@ function normalizeRepeatedMessage(message?: string) {
 }
 
 function invalidStripMessage(result?: StripAnalysisResult | null) {
-  if (!result) return 'לא הצלחנו לזהות סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.';
+  if (!result)
+    return 'לא הצלחנו לזהות סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.';
   if (result.failureReason === 'unsupported_strip') {
-    return normalizeRepeatedMessage(result.notes) || 'הסטיק שצולם אינו תואם לסוג הסטיק שנבחר או אינו נתמך. יש לבחור סטיק נתמך ולצלם שוב.';
+    return (
+      normalizeRepeatedMessage(result.notes) ||
+      'הסטיק שצולם אינו תואם לסוג הסטיק שנבחר או אינו נתמך. יש לבחור סטיק נתמך ולצלם שוב.'
+    );
   }
   if (result.failureReason === 'blurry') {
-    return normalizeRepeatedMessage(result.notes) || 'התמונה מטושטשת מדי לניתוח. יש לצלם שוב תמונה חדה של הסטיק כולו.';
+    return (
+      normalizeRepeatedMessage(result.notes) ||
+      'התמונה מטושטשת מדי לניתוח. יש לצלם שוב תמונה חדה של הסטיק כולו.'
+    );
   }
   if (result.failureReason === 'lighting') {
-    return normalizeRepeatedMessage(result.notes) || 'התאורה בתמונה לא מתאימה לניתוח אמין. יש לצלם שוב באור ברור ואחיד.';
+    return (
+      normalizeRepeatedMessage(result.notes) ||
+      'התאורה בתמונה לא מתאימה לניתוח אמין. יש לצלם שוב באור ברור ואחיד.'
+    );
   }
   if (result.failureReason === 'framing') {
-    return normalizeRepeatedMessage(result.notes) || 'הסטיק לא הופיע במלואו בתוך המסגרת. יש לצלם שוב כשהסטיק כולו נראה בבירור.';
+    return (
+      normalizeRepeatedMessage(result.notes) ||
+      'הסטיק לא הופיע במלואו בתוך המסגרת. יש לצלם שוב כשהסטיק כולו נראה בבירור.'
+    );
   }
   if (result.failureReason === 'low_confidence') {
-    return normalizeRepeatedMessage(result.notes) || 'לא התקבלה ודאות מספקת שהצילום מציג סטיק נתמך וברור. יש לצלם שוב.';
+    return (
+      normalizeRepeatedMessage(result.notes) ||
+      'לא התקבלה ודאות מספקת שהצילום מציג סטיק נתמך וברור. יש לצלם שוב.'
+    );
   }
-  return normalizeRepeatedMessage(result.notes) || 'לא זוהה סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.';
+  return (
+    normalizeRepeatedMessage(result.notes) ||
+    'לא זוהה סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.'
+  );
 }
 
 function uniqueIds(ids: Array<string | undefined | null>) {
@@ -167,7 +209,8 @@ function fallbackAnalysisResultFromRecord(record: SavedHistoryRecord): StripAnal
     imageUrl: record.imageUrl,
     poolId: record.poolId,
     lowConfidence: true,
-    notes: 'הבדיקה נשמרה, אך פירוט המדדים אינו זמין כרגע. נסו לרענן את ההיסטוריה או לפתוח שוב בעוד רגע.',
+    notes:
+      'הבדיקה נשמרה, אך פירוט המדדים אינו זמין כרגע. נסו לרענן את ההיסטוריה או לפתוח שוב בעוד רגע.',
     overallStatus: {
       label: record.status,
       tone: record.tone,
@@ -186,7 +229,7 @@ function SafetyCard({ text }: { text?: string }) {
       </View>
       <Text style={styles.safetyText}>
         {text ||
-          'החישוב הוא הערכה לפי נתוני הבריכה ותוצאת הסטיק. יש לפעול לפי הוראות יצרן חומרי הבריכה, להוסיף חומרים בהדרגה, לבדוק שוב, ולא לערבב חומרים שונים ישירות.'}
+          MEASUREMENT_SAFETY_NOTE}
       </Text>
     </View>
   );
@@ -194,10 +237,12 @@ function SafetyCard({ text }: { text?: string }) {
 
 export function ResultsScreen({ navigation, route }: Props) {
   const { accountId, loading: authLoading, user } = useAuth();
-  const { getHistoryRecord, isHydrated, saveAnalysisResult } = useResultsHistory();
+  const { getHistoryRecord, getPoolHistoryRecords, isHydrated, saveAnalysisResult } =
+    useResultsHistory();
   const { getPool, pools } = usePools();
   const {
     resetScanSession,
+    startScanSession,
     session,
     setAnalysisResult: setSessionAnalysisResult,
     setCurrentStep,
@@ -215,16 +260,22 @@ export function ResultsScreen({ navigation, route }: Props) {
   const screenMountedRef = useRef(true);
   const savedTestId = route.params?.testId;
   const savedRecord = savedTestId ? getHistoryRecord(savedTestId) : undefined;
-  const inputBrandId = savedTestId ? route.params?.brandId : session.selectedBrandId ?? route.params?.brandId;
-  const inputImageUri = savedTestId ? route.params?.imageUri : session.confirmedImageUri ?? session.imageUri ?? route.params?.imageUri;
-  const inputImagePath = savedTestId ? undefined : session.imagePath ?? route.params?.imagePath;
-  const inputImageUrl = savedTestId ? undefined : session.imageUrl ?? route.params?.imageUrl;
-  const poolId = savedRecord?.poolId ?? (savedTestId ? route.params?.poolId : session.selectedPoolId ?? route.params?.poolId);
+  const inputBrandId = savedTestId
+    ? route.params?.brandId
+    : (session.selectedBrandId ?? route.params?.brandId);
+  const inputImageUri = savedTestId
+    ? route.params?.imageUri
+    : (session.confirmedImageUri ?? session.imageUri ?? route.params?.imageUri);
+  const inputImagePath = savedTestId ? undefined : (session.imagePath ?? route.params?.imagePath);
+  const inputImageUrl = savedTestId ? undefined : (session.imageUrl ?? route.params?.imageUrl);
+  const poolId =
+    savedRecord?.poolId ??
+    (savedTestId ? route.params?.poolId : (session.selectedPoolId ?? route.params?.poolId));
   const pool = poolId ? getPool(poolId) : undefined;
   const poolName = savedRecord?.poolName ?? pool?.name ?? FALLBACK_POOL_NAME;
   const savedRecordAccountId = savedRecord?.accountId;
   const isSavedResult = Boolean(savedTestId);
-  const activeScanTestId = savedTestId ? undefined : route.params?.scanTestId ?? session.testId;
+  const activeScanTestId = savedTestId ? undefined : (route.params?.scanTestId ?? session.testId);
   const visibleAnalysisResult = savedTestId
     ? analysisResult
     : analysisResult && activeScanTestId && analysisResult.id === activeScanTestId
@@ -251,7 +302,9 @@ export function ResultsScreen({ navigation, route }: Props) {
           }
 
           if (savedRecord?.analysisResult) {
-            setAnalysisResult(enrichResultWithDosage(savedRecord.analysisResult, pool, savedRecord.dosageResult));
+            setAnalysisResult(
+              enrichResultWithDosage(savedRecord.analysisResult, pool, savedRecord.dosageResult),
+            );
           } else if (authLoading) {
             setIsAnalyzing(true);
             return;
@@ -264,12 +317,18 @@ export function ResultsScreen({ navigation, route }: Props) {
               if (!lookupAccountId) break;
               const fullRecord = await fetchCloudTestById(candidateId, lookupAccountId, pools);
               if (fullRecord?.analysisResult) {
-                cloudResult = enrichResultWithDosage(fullRecord.analysisResult, pool, fullRecord.dosageResult);
+                cloudResult = enrichResultWithDosage(
+                  fullRecord.analysisResult,
+                  pool,
+                  fullRecord.dosageResult,
+                );
                 break;
               }
             }
 
-            setAnalysisResult(cloudResult ?? (savedRecord ? fallbackAnalysisResultFromRecord(savedRecord) : null));
+            setAnalysisResult(
+              cloudResult ?? (savedRecord ? fallbackAnalysisResultFromRecord(savedRecord) : null),
+            );
           } else {
             setAnalysisResult(savedRecord ? fallbackAnalysisResultFromRecord(savedRecord) : null);
           }
@@ -283,8 +342,14 @@ export function ResultsScreen({ navigation, route }: Props) {
           return;
         }
 
-        if (session.analysisResult && activeScanTestId && session.analysisResult.id === activeScanTestId) {
-          setAnalysisResult(enrichResultWithDosage(session.analysisResult, pool, session.dosageResult));
+        if (
+          session.analysisResult &&
+          activeScanTestId &&
+          session.analysisResult.id === activeScanTestId
+        ) {
+          setAnalysisResult(
+            enrichResultWithDosage(session.analysisResult, pool, session.dosageResult),
+          );
           setIsAnalyzing(false);
           return;
         }
@@ -309,7 +374,18 @@ export function ResultsScreen({ navigation, route }: Props) {
         }
 
         const testId = activeScanTestId;
+        if (
+          session.confirmedImageUri !== inputImageUri ||
+          !session.imageQuality ||
+          session.imageQuality.status === 'blocked'
+        ) {
+          throw new StripAnalysisServiceError(
+            'unavailable',
+            'יש להמתין לבדיקת איכות התמונה בתצוגה המקדימה לפני השליחה.',
+          );
+        }
         analysisRequestKey = `${testId}|${retryKey}`;
+        await requireCurrentAiConsent();
 
         if (activeAnalysisKeyRef.current === analysisRequestKey) {
           return;
@@ -325,7 +401,13 @@ export function ResultsScreen({ navigation, route }: Props) {
         let imageUploadError: string | undefined;
         const analysisMode = getStripAnalysisConfig().mode;
 
-        if ((analysisMode === 'remote' || analysisMode === 'auto') && accountId && user?.id && !imagePath && !imageUrl) {
+        if (
+          (analysisMode === 'remote' || analysisMode === 'auto') &&
+          accountId &&
+          user?.id &&
+          !imagePath &&
+          !imageUrl
+        ) {
           const preparedImage = await prepareScanImageForRemoteAnalysis({
             accountId,
             imageUri: inputImageUri,
@@ -344,7 +426,7 @@ export function ResultsScreen({ navigation, route }: Props) {
           imagePath,
           imageUrl,
           imageUri: inputImageUri,
-          poolId,
+          poolId: pool?.cloudId ?? (/^[0-9a-f-]{36}$/i.test(poolId ?? '') ? poolId : undefined),
           qualityNotes: session.qualityNotes,
           scanSession: session,
           selectedBrand: session.selectedBrand,
@@ -357,15 +439,16 @@ export function ResultsScreen({ navigation, route }: Props) {
           ...result,
           id: testId,
           dosage,
+          captureMetadata: session.captureMetadata,
+          imageQuality: session.imageQuality,
           imagePath: result.imagePath ?? imagePath,
           imageUrl: result.imageUrl ?? imageUrl,
           overallStatus: isInvalidStripResult(result)
             ? result.overallStatus
-            : {
-                label: dosage?.primaryRecommendation ? 'נדרש תיקון קל' : 'המים מאוזנים',
-                tone: dosage?.primaryRecommendation ? 'warning' : 'success',
-              },
-          recommendation: isInvalidStripResult(result) ? result.recommendation : dosage?.summary ?? result.recommendation,
+            : resultStatus({ ...result, dosage }),
+          recommendation: isInvalidStripResult(result)
+            ? result.recommendation
+            : (dosage?.summary ?? result.recommendation),
         };
 
         if (
@@ -424,6 +507,8 @@ export function ResultsScreen({ navigation, route }: Props) {
     session.imageUri,
     session.imageUrl,
     session.qualityNotes,
+    session.imageQuality,
+    session.captureMetadata,
     session.selectedBrand,
     session.selectedBrandId,
     session.selectedPoolId,
@@ -442,7 +527,8 @@ export function ResultsScreen({ navigation, route }: Props) {
   const volumeLabel = formatVolume(pool?.volumeLiters);
 
   useEffect(() => {
-    if (savedTestId || !visibleAnalysisResult || isInvalidStripResult(visibleAnalysisResult)) return;
+    if (savedTestId || !visibleAnalysisResult || isInvalidStripResult(visibleAnalysisResult))
+      return;
     if (autoSavedTestIdRef.current === visibleAnalysisResult.id) return;
     if (autoSavedResultIds.has(visibleAnalysisResult.id)) {
       setAutoSaved(true);
@@ -460,6 +546,11 @@ export function ResultsScreen({ navigation, route }: Props) {
     startScanFlow(poolId);
   }
 
+  function chooseAnotherStrip() {
+    startScanSession({ poolId });
+    navigation.navigate('SelectStrip', poolId ? { poolId } : undefined);
+  }
+
   if (!savedTestId && !inputImageUri && !visibleAnalysisResult) {
     return (
       <AppShell activeTab="scan" navigation={navigation}>
@@ -472,7 +563,11 @@ export function ResultsScreen({ navigation, route }: Props) {
           <Text style={styles.messageText}>חזרו למסך הסריקה ובחרו תמונה ברורה של הסטיק.</Text>
         </Card>
         <View style={styles.primaryAction}>
-          <PrimaryButton label="חזרה לסריקה" icon="scan" onPress={() => navigation.replace('Scan')} />
+          <PrimaryButton
+            label="חזרה לסריקה"
+            icon="scan"
+            onPress={() => navigation.replace('Scan')}
+          />
         </View>
       </AppShell>
     );
@@ -490,8 +585,12 @@ export function ResultsScreen({ navigation, route }: Props) {
           <Text style={styles.messageText}>{analysisError}</Text>
         </Card>
         <View style={styles.actions}>
-          <PrimaryButton label="נסה שוב" icon="scan" onPress={() => setRetryKey((current) => current + 1)} />
-          <Pressable style={styles.secondaryButton} onPress={() => navigation.replace('Scan', poolId ? { poolId, brandId: inputBrandId } : undefined)}>
+          <PrimaryButton
+            label="נסה שוב"
+            icon="scan"
+            onPress={() => setRetryKey((current) => current + 1)}
+          />
+          <Pressable style={styles.secondaryButton} onPress={handleNewScan}>
             <LineIcon name="camera" color={colors.primaryDark} size={16} />
             <Text style={styles.secondaryText}>חזרה לסריקה</Text>
           </Pressable>
@@ -505,16 +604,22 @@ export function ResultsScreen({ navigation, route }: Props) {
       <AppShell activeTab={isSavedResult ? 'history' : 'scan'} navigation={navigation}>
         <View style={styles.emptyHeader}>
           <Text style={styles.title}>תוצאות הבדיקה</Text>
-          <Text style={styles.subtitle}>{isSavedResult ? 'טוען בדיקה שמורה...' : 'מנתח את תמונת הסטיק...'}</Text>
+          <Text style={styles.subtitle}>
+            {isSavedResult ? 'טוען בדיקה שמורה...' : 'מנתח את תמונת הסטיק...'}
+          </Text>
         </View>
         <Card compact style={styles.analyzingCard}>
           <View style={styles.analyzingIcon}>
             <ActivityIndicator color={colors.primaryDark} size="small" />
           </View>
           <View style={styles.analyzingCopy}>
-            <Text style={styles.messageTitle}>{isSavedResult ? 'פותח בדיקה מההיסטוריה' : 'ניתוח בדיקה בפעולה'}</Text>
+            <Text style={styles.messageTitle}>
+              {isSavedResult ? 'פותח בדיקה מההיסטוריה' : 'ניתוח בדיקה בפעולה'}
+            </Text>
             <Text style={styles.messageText}>
-              {isSavedResult ? 'אנחנו טוענים את פרטי הבדיקה השמורה מהענן.' : 'אנחנו מנתחים את תמונת הסטיק ומכינים את תוצאות הבדיקה.'}
+              {isSavedResult
+                ? 'אנחנו טוענים את פרטי הבדיקה השמורה מהענן.'
+                : 'אנחנו מנתחים את תמונת הסטיק ומכינים את תוצאות הבדיקה.'}
             </Text>
           </View>
         </Card>
@@ -534,12 +639,8 @@ export function ResultsScreen({ navigation, route }: Props) {
           <Text style={styles.messageText}>{invalidStripMessage(visibleAnalysisResult)}</Text>
         </Card>
         <View style={styles.actions}>
-          <PrimaryButton
-            label="צלם שוב"
-            icon="camera"
-            onPress={() => navigation.replace('Scan', poolId ? { poolId, brandId: inputBrandId } : undefined)}
-          />
-          <Pressable style={styles.secondaryButton} onPress={() => navigation.navigate('SelectStrip', poolId ? { poolId } : undefined)}>
+          <PrimaryButton label="צלם שוב" icon="camera" onPress={handleNewScan} />
+          <Pressable style={styles.secondaryButton} onPress={chooseAnotherStrip}>
             <LineIcon name="scan" color={colors.primaryDark} size={16} />
             <Text style={styles.secondaryText}>בחר סטיק אחר</Text>
           </Pressable>
@@ -591,8 +692,11 @@ export function ResultsScreen({ navigation, route }: Props) {
         <Text style={styles.heroKicker}>תוצאות הבדיקה</Text>
         <Text style={styles.heroTitle}>{poolName}</Text>
         <Text style={styles.heroMeta}>
-          {[volumeLabel, formatAnalysisDate(visibleAnalysisResult.analyzedAt)].filter(Boolean).join(' · ')}
+          {[volumeLabel, formatAnalysisDate(visibleAnalysisResult.analyzedAt)]
+            .filter(Boolean)
+            .join(' · ')}
         </Text>
+        <Text style={styles.heroMeta}>הערכה מצילום · טווחי השוואה בלבד · אין אישור לרחצה</Text>
       </View>
 
       {visibleAnalysisResult.lowConfidence ? <LowConfidenceWarning /> : null}
@@ -604,23 +708,39 @@ export function ResultsScreen({ navigation, route }: Props) {
         </Card>
       ) : null}
 
-      <View style={styles.section}>
-        <ParameterArcs recs={resultCards} />
-      </View>
+      <NextActionCard
+        key={savedRecord?.testId ?? visibleAnalysisResult.id}
+        result={visibleAnalysisResult}
+        testId={savedRecord?.testId}
+        pool={pool}
+        allowRecord={false}
+        onNewScan={handleNewScan}
+        onEditPool={() => pool && navigation.navigate('EditPool', { poolId: pool.id })}
+      />
 
       <View style={styles.cardsList}>
+        <Text style={styles.sectionTitle}>המדדים שנמדדו</Text>
         {resultCards.map((rec) => (
-          <ResultCard key={rec.paramKey} rec={rec} />
+          <ResultCard key={rec.paramKey} rec={rec} compact />
         ))}
       </View>
 
-      <SafetyCard text={visibleAnalysisResult.dosage?.safetyNote} />
+      <View style={styles.section}>
+        <DisclosureSection title="תצוגה גרפית" summary="השוואת המדדים לערכי היעד">
+          <ParameterArcs recs={resultCards} />
+        </DisclosureSection>
+      </View>
+
+      {!visibleAnalysisResult.dosage?.safetyNote ? <SafetyCard /> : null}
 
       <View style={styles.actions}>
         {isSavedResult ? (
           <>
             <PrimaryButton label="בדיקה חדשה" icon="camera" onPress={handleNewScan} />
-            <Pressable style={styles.secondaryButton} onPress={() => navigation.navigate('History')}>
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={() => navigation.navigate('History')}
+            >
               <LineIcon name="history" color={colors.primaryDark} size={16} />
               <Text style={styles.secondaryText}>חזור להיסטוריה</Text>
             </Pressable>
@@ -631,8 +751,20 @@ export function ResultsScreen({ navigation, route }: Props) {
           </>
         ) : (
           <>
-            <PrimaryButton disabled label={autoSaved ? 'נשמר בהיסטוריה' : 'שומר להיסטוריה'} icon="history" />
-            <Pressable style={styles.secondaryButton} onPress={() => navigation.navigate('History')}>
+            <View style={styles.savedNotice} accessibilityLiveRegion="polite">
+              <LineIcon
+                name={autoSaved ? 'check' : 'history'}
+                color={colors.primaryDeep}
+                size={15}
+              />
+              <Text style={styles.savedText}>
+                {autoSaved ? 'נשמר בהיסטוריה' : 'שומר להיסטוריה'}
+              </Text>
+            </View>
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={() => navigation.navigate('History')}
+            >
               <LineIcon name="history" color={colors.primaryDark} size={16} />
               <Text style={styles.secondaryText}>צפייה בהיסטוריה</Text>
             </Pressable>
@@ -665,7 +797,7 @@ const styles = StyleSheet.create({
   },
   heroCard: {
     marginTop: 14,
-    minHeight: 134,
+    minHeight: 108,
     borderRadius: 26,
     overflow: 'hidden',
     backgroundColor: colors.primary,
@@ -720,7 +852,21 @@ const styles = StyleSheet.create({
   },
   cardsList: {
     marginTop: 14,
-    gap: 11,
+    gap: 8,
+  },
+  sectionTitle: {
+    color: colors.text,
+    fontFamily: typography.fontFamilySemiBold,
+    fontSize: 16,
+    marginBottom: 3,
+    ...rtl.text,
+  },
+  savedNotice: { ...rtl.row, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  savedText: {
+    color: colors.textSoft,
+    fontFamily: typography.fontFamilyRegular,
+    fontSize: 12,
+    ...rtl.text,
   },
   safetyCard: {
     marginTop: 16,

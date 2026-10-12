@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AppShell } from '../components/AppShell';
 import { BillingPurchasePanel } from '../components/BillingPurchasePanel';
+import { SubscriptionManagementLinks } from '../components/SubscriptionManagementLinks';
 import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
 import { fetchPlanUsage, type PlanUsageInfo } from '../services/usageService';
@@ -13,7 +14,6 @@ import type { RootStackParamList } from '../../App';
 type Props = NativeStackScreenProps<RootStackParamList, 'Purchase'>;
 
 const APPLE_EULA_URL = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
-const PRIVACY_POLICY_URL = 'https://sarelalush.github.io/dip-check-hero/privacy-policy/';
 
 const reasonCopy = {
   poolQuota: {
@@ -26,7 +26,7 @@ const reasonCopy = {
   },
   subscriptionRequired: {
     title: 'נדרש מנוי פעיל',
-    subtitle: 'כדי ליצור בריכות, לסרוק סטיק ולקבל המלצות צריך להפעיל מנוי.',
+    subtitle: 'כדי ליצור בריכות ולנתח מדדים מצילום סטיק צריך להפעיל מנוי.',
   },
 };
 
@@ -65,6 +65,9 @@ export function PurchaseScreen({ navigation, route }: Props) {
 
   return (
     <AppShell activeTab="settings" navigation={navigation} contentStyle={styles.content} showBottomTabs={Boolean(accountId)}>
+      {navigation.canGoBack() ? <Pressable accessibilityRole="button" onPress={() => navigation.goBack()} style={styles.backButton}>
+        <Text style={styles.legalLinkText}>חזרה</Text>
+      </Pressable> : null}
       <View style={styles.hero}>
         <View style={styles.heroIcon}>
           <LineIcon name="drop" color={colors.white} size={26} />
@@ -74,6 +77,14 @@ export function PurchaseScreen({ navigation, route }: Props) {
         <Text style={styles.subtitle}>{copy.subtitle}</Text>
       </View>
 
+      <Card compact style={styles.accountCard}>
+        <Text style={styles.accountTitle}>רוצה לראות מה מקבלים?</Text>
+        <Text style={styles.accountText}>פתח דוגמה לתוצאות ולהמלצה לפני בחירת מנוי.</Text>
+        <Pressable accessibilityRole="button" onPress={() => navigation.navigate('DemoResult')} style={styles.accountSecondary}>
+          <Text style={styles.accountSecondaryText}>פתח דוגמה אינטראקטיבית</Text>
+        </Pressable>
+      </Card>
+
       <Card style={styles.planCard}>
         <View style={styles.ribbon}>
           <LineIcon name="check" color={colors.white} size={14} />
@@ -81,16 +92,15 @@ export function PurchaseScreen({ navigation, route }: Props) {
         </View>
         <Text style={styles.planTitle}>מנוי חודשי</Text>
         <View style={styles.priceRow}>
-          <Text style={styles.price}>30</Text>
-          <Text style={styles.priceMeta}>₪ לחודש</Text>
+          <Text style={styles.priceMeta}>המחיר והמטבע מוצגים מהחנות בכפתור הרכישה</Text>
         </View>
         <Text style={styles.renewalText}>
-          מנוי למשך חודש אחד, המתחדש אוטומטית בכל חודש עד לביטול דרך הגדרות חשבון Apple.
+          מנוי חודשי המתחדש אוטומטית עד לביטול דרך {Platform.OS === 'ios' ? 'Apple' : Platform.OS === 'android' ? 'Google Play' : 'חנות המכשיר'}. ההצעה הקובעת מוצגת בחנות לפני אישור.
         </Text>
         <View style={styles.benefits}>
           <Benefit icon="scan" text="200 סריקות סטיק בכל חודש" />
           <Benefit icon="pools" text="בריכה פעילה אחת כלולה" />
-          <Benefit icon="results" text="תוצאות והמלצות מיידיות" />
+          <Benefit icon="results" text="הערכת מדדים והיסטוריית בדיקות · ללא מינון חומרים" />
           <Benefit icon="bell" text="תזכורות בדיקה לבריכה" />
         </View>
       </Card>
@@ -112,7 +122,7 @@ export function PurchaseScreen({ navigation, route }: Props) {
         </Card>
       ) : null}
 
-      {!accountId ? (
+      {!accountId && Platform.OS !== 'web' ? (
         <Card compact style={styles.accountCard}>
           <ActivityIndicator color={colors.primaryDark} />
           <Text style={styles.accountText}>{guestSetupError ?? 'מכינים רכישה מאובטחת...'}</Text>
@@ -126,6 +136,7 @@ export function PurchaseScreen({ navigation, route }: Props) {
         <BillingPurchasePanel
           accountId={accountId}
           hasActiveSubscription={hasActiveSubscription}
+          activeScanPeriodEnd={planUsage?.periodEnd}
           onPurchaseVerified={async () => {
             await Promise.resolve(refreshEntitlements());
             await loadPlanUsage();
@@ -134,17 +145,21 @@ export function PurchaseScreen({ navigation, route }: Props) {
       )}
 
       <View style={styles.legalLinks}>
-        <Pressable accessibilityRole="link" onPress={() => Linking.openURL(APPLE_EULA_URL)} hitSlop={8}>
-          <Text style={styles.legalLinkText}>תנאי שימוש (EULA)</Text>
+        <Pressable accessibilityRole="link" onPress={() => navigation.navigate('Terms')} hitSlop={8}>
+          <Text style={styles.legalLinkText}>תנאי השימוש</Text>
         </Pressable>
         <Text style={styles.legalSeparator}>•</Text>
-        <Pressable accessibilityRole="link" onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} hitSlop={8}>
+        <Pressable accessibilityRole="link" onPress={() => navigation.navigate('PrivacyPolicy')} hitSlop={8}>
           <Text style={styles.legalLinkText}>מדיניות פרטיות</Text>
         </Pressable>
       </View>
       <Text style={styles.billingDisclosure}>
-        התשלום יחויב בחשבון Apple בעת אישור הרכישה. ניתן לנהל או לבטל את המנוי בהגדרות המינויים של חשבון Apple.
+        התשלום מחויב בחנות המכשיר בעת אישור. ניהול וביטול חידוש דרך {Platform.OS === 'ios' ? 'Apple' : Platform.OS === 'android' ? 'Google Play' : 'חנות המכשיר'}. מחיקת חשבון אינה מבטלת מנוי. חבילת סריקות חד־פעמית תקפה לתקופת המכסה המוצגת במסך השימוש. זכויותיך לפי דין נשמרות.
       </Text>
+      <SubscriptionManagementLinks />
+      {Platform.OS === 'ios' ? <Pressable accessibilityRole="link" onPress={() => Linking.openURL(APPLE_EULA_URL)}>
+        <Text style={styles.legalLinkText}>תנאי הרישיון הסטנדרטיים של Apple</Text>
+      </Pressable> : null}
 
       {accountId ? (
         <Pressable style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]} onPress={() => navigation.navigate('PlanUsage', { reason })}>
@@ -216,7 +231,7 @@ const styles = StyleSheet.create({
   },
   ribbon: {
     alignItems: 'center',
-    alignSelf: 'flex-start',
+    alignSelf: 'flex-end',
     backgroundColor: colors.primary,
     borderRadius: radius.round,
     flexDirection: 'row-reverse',
@@ -371,6 +386,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     ...rtl.textCenter,
   },
+  backButton: { alignSelf: 'flex-end', minHeight: 44, justifyContent: 'center' },
   legalLinkText: {
     color: colors.primaryDark,
     fontFamily: typography.fontFamilySemiBold,

@@ -34,6 +34,8 @@ export interface PlanUsageInfo {
   scansLimit: number;
   scansUsed: number;
   status?: string;
+  periodStart?: string;
+  periodEnd?: string;
 }
 
 export function getFallbackPlanUsage(activePoolsUsed = 0): PlanUsageInfo {
@@ -189,6 +191,8 @@ export async function fetchPlanUsage(accountId?: string, localActivePools = 0): 
       scansLimit,
       scansUsed: usage?.scans_used ?? 0,
       status: hasSubscription ? subscription?.status ?? undefined : 'inactive',
+      periodStart: entitlements?.period_start ?? usage?.period_start,
+      periodEnd: entitlements?.period_end ?? usage?.period_end,
     };
   } catch (error) {
     console.warn('Failed to fetch plan usage, using safe fallback', error);

@@ -6,6 +6,7 @@ import { BottomTabBar } from '../components/BottomTabBar';
 import { LineIcon, type LineIconName } from '../components/LineIcon';
 import { WebPhoneFrame } from '../components/WebPhoneFrame';
 import { useAuth } from '../state/AuthContext';
+import { AiConsentPanel } from '../components/AiConsentPanel';
 import { colors, radius, rtl, shadows, spacing, typography } from '../theme';
 import type { RootStackParamList } from '../../App';
 
@@ -98,7 +99,7 @@ export function SettingsScreen({ navigation }: Props) {
             danger
             icon="help"
             label="מחיקת חשבון"
-            value="בקשת מחיקה מאובטחת דרך תמיכה"
+            value="הגשת בקשת מחיקה מתועדת בשרת"
             onPress={() => navigation.navigate('DeleteAccount')}
           />
         </Section>
@@ -128,6 +129,7 @@ export function SettingsScreen({ navigation }: Props) {
         </Section>
 
         <Section title="עזרה ומשפטי">
+          <AiConsentPanel onPrivacy={() => navigation.navigate('PrivacyPolicy')} />
           <SettingsRow icon="help" label="עזרה ותמיכה" value="שאלות נפוצות ויצירת קשר" onPress={() => navigation.navigate('Support')} />
           <SettingsRow icon="results" label="מדיניות פרטיות" value="איזה מידע נשמר ואיך משתמשים בו" onPress={() => navigation.navigate('PrivacyPolicy')} />
           <SettingsRow icon="history" label="תנאי שימוש" value="המלצות, אחריות ושימוש בטוח" onPress={() => navigation.navigate('Terms')} />

@@ -3,6 +3,7 @@ import type { StripBrand } from '../domain/strip';
 import type { ScanSessionState } from '../state/ScanSessionContext';
 import { getSupabaseClient, isSupabaseConfigured } from '../integrations/supabase/client';
 import { isLocalUploadCandidate, readLocalImageAsDataUrl, uploadScanImage } from './scanImageStorage';
+import { requireCurrentAiConsent } from './legalConsentService';
 
 // Parity sources:
 // - src/utils/analyzeStripImage.ts
@@ -37,6 +38,8 @@ export interface StripAnalysisInput {
   scanSession?: Pick<
     ScanSessionState,
     | 'confirmedImageUri'
+    | 'captureMetadata'
+    | 'imageQuality'
     | 'createdAt'
     | 'currentStep'
     | 'imagePath'
@@ -254,6 +257,7 @@ async function analyzeStripImageRemote(
   config: StripAnalysisServiceConfig,
   options: { requireAuthenticatedUser?: boolean; requireImageReference?: boolean } = {},
 ): Promise<StripAnalysisResult | null> {
+  await requireCurrentAiConsent();
   if (!isSupabaseConfigured || !config.remoteFunctionName) {
     throw new StripAnalysisServiceError(
       'unavailable',
@@ -352,8 +356,7 @@ async function analyzeStripImageRemote(
       poolId: input.poolId,
       brandId: input.brandId ?? input.selectedBrand?.id,
       imagePath,
-      imageUrl,
-      imageUri: imageUriForRemote,
+      imageUri: imagePath ? undefined : imageUriForRemote,
       qualityNotes: input.qualityNotes,
       metadata: {
         scanSession: input.scanSession,

@@ -44,7 +44,7 @@ export function SelectPoolScreen({ navigation }: Props) {
           <LineIcon name="pools" color={colors.primaryDark} size={24} />
         </View>
         <Text style={styles.title}>בחר בריכה לבדיקה</Text>
-        <Text style={styles.subtitle}>כדי שההמלצה תהיה מדויקת, צריך לדעת עבור איזו בריכה מתבצעת הסריקה.</Text>
+        <Text style={styles.subtitle}>בחר לאיזו בריכה לשייך את הסריקה והיסטוריית המדדים.</Text>
       </View>
 
       {pools.length === 0 ? (
@@ -53,7 +53,7 @@ export function SelectPoolScreen({ navigation }: Props) {
             <LineIcon name="plus" color={colors.primaryDark} size={26} />
           </View>
           <Text style={styles.emptyTitle}>עדיין אין בריכה</Text>
-          <Text style={styles.emptyText}>הוסף בריכה ראשונה, ואז תוכל לסרוק סטיק ולקבל המלצה לפי נפח וסוג הבריכה.</Text>
+          <Text style={styles.emptyText}>הוסף בריכה ראשונה כדי לנתח מדדים מצילום ולשמור בדיקות.</Text>
           <PrimaryButton label="הוסף בריכה" icon="plus" onPress={() => navigation.navigate('AddPool')} />
         </Card>
       ) : (

@@ -139,7 +139,7 @@ function HomeScreen() {
 
 function StatTile({ label, value, status }: StatRead) {
   const text =
-    status === "ok" ? "תקין" : status === "low" ? "נמוך" : "גבוה";
+    status === "ok" ? "בטווח ההשוואה" : status === "low" ? "נמוך" : "גבוה";
   const textTone =
     status === "ok" ? "text-emerald-600" : status === "low" ? "text-amber-600" : "text-rose-600";
   return (

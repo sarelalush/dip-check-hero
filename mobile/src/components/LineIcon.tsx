@@ -27,6 +27,8 @@ export type LineIconName =
   | 'check'
   | 'drop'
   | 'more'
+  | 'chevronUp'
+  | 'chevronDown'
   | 'chevronLeft';
 
 type IconSource = 'feather' | 'ionicons' | 'material';
@@ -56,6 +58,8 @@ const iconMap: Record<LineIconName, { source: IconSource; name: string }> = {
   check: { source: 'feather', name: 'check' },
   drop: { source: 'ionicons', name: 'water-outline' },
   more: { source: 'feather', name: 'more-horizontal' },
+  chevronUp: { source: 'feather', name: 'chevron-up' },
+  chevronDown: { source: 'feather', name: 'chevron-down' },
   chevronLeft: { source: 'feather', name: 'chevron-left' },
 };
 

@@ -3,6 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { StatusTone } from '../components/StatusBadge';
 import { getBrand } from '../config/stripBrands';
 import type { DosageCalculationResult } from '../domain/dosage';
+import { protectAnalysisResult, MEASUREMENT_ACTION } from '../domain/dosage';
+import { resultStatus } from '../domain/resultPresentation';
 import type { StripAnalysisResult } from '../domain/scanResults';
 import { usePools } from './PoolsContext';
 import { useAuth } from './AuthContext';
@@ -98,6 +100,8 @@ function normalizeHistoryRecord(record: SavedHistoryRecord): SavedHistoryRecord 
   const testId = record.testId ?? record.id ?? `test-${testedAt}`;
   const brandId = record.brandId ?? record.analysisResult?.brandId;
   const brand = record.brandName || !brandId ? undefined : getBrand(brandId);
+  const analysisResult = record.analysisResult ? protectAnalysisResult(record.analysisResult) : undefined;
+  const safeStatus = analysisResult ? resultStatus(analysisResult) : undefined;
 
   return {
     ...record,
@@ -112,7 +116,11 @@ function normalizeHistoryRecord(record: SavedHistoryRecord): SavedHistoryRecord 
     imagePath: record.imagePath ?? record.analysisResult?.imagePath,
     imageUrl: record.imageUrl ?? record.analysisResult?.imageUrl ?? getPublicScanImageUrl(record.imagePath ?? record.analysisResult?.imagePath),
     imageUploadError: record.imageUploadError,
-    dosageResult: record.dosageResult ?? record.analysisResult?.dosage,
+    resultSummary: MEASUREMENT_ACTION,
+    analysisResult,
+    status: safeStatus?.label ?? 'בדיקה שמורה; יש לאמת לפני טיפול',
+    tone: safeStatus?.tone ?? 'neutral',
+    dosageResult: analysisResult?.dosage,
   };
 }
 

@@ -15,8 +15,8 @@ export function usePaddleCheckout() {
   const openCheckout = async (options: OpenCheckoutOptions) => {
     setLoading(true);
     try {
-      await initializePaddle();
       const paddlePriceId = await getPaddlePriceId(options.priceId);
+      await initializePaddle();
 
       window.Paddle.Checkout.open({
         items: [{ priceId: paddlePriceId, quantity: options.quantity ?? 1 }],
