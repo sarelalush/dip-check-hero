@@ -11,8 +11,8 @@
 // Pipeline:
 // 1. Download the uploaded image from Storage or imageUrl.
 // 2. Load the versioned reference and send the image to Gemini exactly once.
-// 3. For Pro, cross-check the localized pad pixels against the same reference.
-//    Return discrete listed readings only when color and model agree.
+// 3. For Pro, read discrete chart levels from ordinary phone photographs.
+//    Pixel comparison is diagnostic: an uncalibrated RGB mismatch is not a veto.
 // 4. If the provider is unavailable, return a service-unavailable response.
 //
 // Required secrets for AI mode:
@@ -27,6 +27,7 @@
 
 import { Image as ImageScript } from 'https://deno.land/x/imagescript@1.2.15/mod.ts';
 import bundledProChart from '../_shared/aquachek-pro-chart.json' with { type: 'json' };
+import bundledProReferenceImage from '../_shared/aquachek-pro-reference-image.json' with { type: 'json' };
 import { parseProColorChart, buildProChartPrompt, PRO_METRICS, type ProColorChart } from '../_shared/strip-color-reference.ts';
 import {
   AQUACHEK_PRO_REFS as PRO_REFS,
@@ -40,6 +41,7 @@ import {
   locateAquachekProStripCenterX,
   evaluateAquachekReadability,
   measureAquachekProSharpness,
+  measureAquachekPadFocus,
   robustRgbFromSamples,
 } from '../_shared/aquachek-pro-reference.js';
 import { readZeroBasedImageScriptRgb } from '../_shared/imagescript-pixel.js';
@@ -123,6 +125,13 @@ interface ParameterAnalysisEvidence {
   colorDistance?: number;
   colorMargin?: number;
   referenceRgb?: Rgb;
+  confidenceBasis?: 'model-reported';
+  colorComparisonValue?: number;
+  colorAgrees?: boolean;
+  needsVerification?: boolean;
+  modelCertainty?: 'clear' | 'adjacent' | 'unreadable';
+  alternativeValue?: number;
+  observedColor?: string;
 }
 
 interface ColorAnalysisEvidence {
@@ -142,6 +151,7 @@ interface ColorAnalysisEvidence {
   }>;
   whiteReference?: Rgb;
   sharpnessVariance?: number;
+  padFocus?: ReturnType<typeof measureAquachekPadFocus>;
   minimumSharpnessVariance?: number;
   hardMinimumSharpnessVariance?: number;
   structure?: ReturnType<typeof analyzeAquachekProStructure>;
@@ -150,6 +160,7 @@ interface ColorAnalysisEvidence {
 }
 
 interface AnalysisEvidence {
+  padReadings?: ModelPadReading[];
   referenceRevision?: string;
   calibrationStatus?: ProColorChart['calibrationStatus'];
   method:
@@ -157,7 +168,8 @@ interface AnalysisEvidence {
     | 'repeated-model-chart-consensus'
     | 'gemini-quality-deterministic-color'
     | 'gemini-pad-boxes-deterministic-color'
-    | 'model-and-reference-color-consensus';
+    | 'model-and-reference-color-consensus'
+    | 'model-chart-with-color-diagnostics';
   requiredRuns: number;
   successfulRuns: number;
   qualityPassedRuns: number;
@@ -174,6 +186,8 @@ interface AnalysisEvidence {
   requiredParameters: StripParameter[];
   parameters: Partial<Record<StripParameter, ParameterAnalysisEvidence>>;
   colorAnalysis?: ColorAnalysisEvidence;
+  referenceImageIncluded?: boolean;
+  diagnosticWarnings?: string[];
 }
 
 interface StripAnalysisResult {
@@ -239,11 +253,22 @@ interface AiRunData {
   padIntegrity: boolean[];
   stripBodyEvidence: 'clear_shared_body' | 'ambiguous' | 'none';
   values: Partial<Record<StripParameter, number>>;
+  padReadings?: ModelPadReading[];
   confidence: number;
   notes: string;
   provider: AiProviderName;
   model: string;
 }
+
+interface ModelPadReading {
+  parameter: 'totalChlorine' | 'freeChlorine' | 'ph' | 'alkalinity';
+  selectedIndex: number;
+  alternativeIndex: number;
+  certainty: 'clear' | 'adjacent' | 'unreadable';
+  focus: 'clear' | 'soft' | 'blurred';
+  observedColor: string;
+}
+const PRO_PAD_METRICS: ModelPadReading['parameter'][] = ['totalChlorine', 'freeChlorine', 'ph', 'alkalinity'];
 
 interface GeminiTokenUsage {
   promptTokenCount: number;
@@ -297,7 +322,7 @@ interface NormalizedPadBox {
 
 const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash';
-const ANALYSIS_VERSION = 'aquachek-pro-v24-color-reference';
+const ANALYSIS_VERSION = 'aquachek-pro-v27-phone-photo-readability';
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.32;
 // Retained focus thresholds are heuristics; they do not establish accuracy
 // across phone models, lighting conditions or strip lots.
@@ -823,6 +848,7 @@ function analyzeAquachekCvCandidate(
       }],
       whiteReference,
       sharpnessVariance: sharpness.variance,
+      padFocus: measureAquachekPadFocus(image.width, image.height, getRgb, normalizedPadBoxes),
       minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
       hardMinimumSharpnessVariance: HARD_MIN_AQUACHEK_SHARPNESS_VARIANCE,
       structure,
@@ -969,25 +995,65 @@ function consensusPadBoxes(runs: AiRunResponse[], padCount: number): NormalizedP
   }));
 }
 
+function getProReferenceImage(chart?: ProColorChart) {
+  // Never attach a stale image when an operator has changed the DB reference.
+  if (!chart || chart.revision !== bundledProReferenceImage.revision ||
+    bundledProReferenceImage.sha256 !== bundledProChart.source.imageSha256 ||
+    JSON.stringify(chart.parameters) !== JSON.stringify(BUNDLED_PRO_CHART.parameters)) return undefined;
+  return { mimeType: bundledProReferenceImage.mimeType, data: bundledProReferenceImage.data };
+}
+
 function buildSystemPrompt(brand: StripBrand, chart: ProColorChart = BUNDLED_PRO_CHART) {
   const isPro = isAquachekPro(brand);
   if (isPro) {
-    return `You locate and read an AquaChek Pro 5-in-1 strip from the photograph.
-A downstream sampler cross-checks each reading against the same reference.
+    return `You are the primary visual reader of an AquaChek Pro 5-in-1 strip.
+Assess ONLY the first image, which is the user's ordinary phone photograph.
+${getProReferenceImage(chart) ? 'The second image is the supplied color-reference chart, not another strip. Use its corresponding rows to compare the first image.' : 'Use the versioned text reference below.'}
+The pixel sampler is diagnostic and is not calibrated for phone exposure or pad-box error.
 A valid image has one continuous neutral strip carrier with four complete reagent pads.
 Return isStrip=false for unrelated scenes, wrong strip models, missing/covered/torn pads,
 or blur/glare/lighting that prevents representative pad color from being read.
-Normal hands, backgrounds and tilt are allowed when every pad is clearly readable.
+Accept ordinary phone-photo conditions: a hand, background, tilt, JPEG compression,
+wet texture, mild softness, shadows or exposure variation when representative pad colors
+and all four pads remain readable. Do not demand studio lighting or exact reference RGBs.
 Never infer a hidden pad or fill an uncertain reading with a normal value.
 
 Identify wet tip and handle from physical geometry. The long blank carrier is the handle.
-Return four separate tight visiblePadBoxes around reagent material in wet-tip-to-handle
+Provide best-effort visiblePadBoxes around reagent material in wet-tip-to-handle
 order (TC/bromine, FC, pH, alkalinity), normalized to the image. Preserve this physical
-order even if the strip is upside down. Do not include white gaps or background. physicalPadCount
-must equal visiblePadBoxes.length. Structural flags and padIntegrity are required for acceptance.
-If geometry or adjacent color levels are uncertain, report low_confidence instead of guessing.
+order even if the strip is upside down. Avoid white gaps and background. Pad boxes are
+diagnostic; uncertainty about their exact coordinates alone must not reject a readable strip.
+Report physicalPadCount from directly visible pads, independent of the boxes.
+Structural flags and padIntegrity are required. If the pad identity, physical continuity
+or a listed color level is actually unclear, report low_confidence instead of guessing.
 Read representative pad colors. Return a listed level without interpolation.
 Total chlorine and bromine share one pad and the same color-level index.
+
+Read each physical pad independently BEFORE choosing numerical values:
+- In padReadings, describe its dominant visible color in observedColor, ignoring
+  white wet highlights, carrier edges, background and deep edge shadows.
+- Compare that observation directly with the corresponding ROW of the supplied
+  chart. Compare hue first, then saturation and lightness. Do not substitute a
+  remembered generic chart, expected healthy chemistry or a familiar normal value.
+- selectedIndex is the ZERO-BASED column of the closest swatch in that row.
+  Set values from that exact chart column. TC and bromine use the same column.
+- Compare the closest swatch with its nearest plausible neighbor. If both remain
+  plausible, use certainty="adjacent" and give that neighbor in alternativeIndex.
+  If the closest swatch is distinguishable, use certainty="clear" and set
+  alternativeIndex=selectedIndex. A global confidence score cannot erase a
+  per-pad ambiguity. Adjacent-level ambiguity alone does not invalidate a readable
+  strip; retain its closest estimate and report the uncertainty for that pad.
+- focus describes image softness; it does not decide acceptance on its own.
+  An ordinary phone photo may be soft or blurred yet show representative reagent
+  colors clearly enough for a chart comparison. Accept it when all four complete
+  pads can be identified and their closest chart levels can reasonably be read.
+  Do not require sharp pad texture, crisp edges or a high-quality camera.
+  Use adjacent alternatives for uncertain neighbouring levels. Only report
+  failureReason="blurry" when defocus actually prevents representative color
+  from being read, not merely because pad details or edges are soft.
+- If representative color cannot be read at all, use certainty="unreadable" and
+  failureReason="low_confidence" (or lighting/blurry when that is the cause).
+  Never hide uncertainty by outputting zero or a healthy value.
 
 ${buildProChartPrompt(chart)}
 Return the JSON schema with a short Hebrew note. Confidence is an uncertainty score,
@@ -1104,6 +1170,27 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
     }
   }
 
+  const padReadings: ModelPadReading[] = [];
+  if (isAquachekPro(brand) && Array.isArray(args.padReadings)) {
+    for (const item of args.padReadings) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+      const reading = item as Record<string, unknown>;
+      if (!PRO_PAD_METRICS.includes(reading.parameter as ModelPadReading['parameter']) ||
+        !Number.isInteger(reading.selectedIndex) || !Number.isInteger(reading.alternativeIndex) ||
+        !['clear', 'adjacent', 'unreadable'].includes(String(reading.certainty)) ||
+        !['clear', 'soft', 'blurred'].includes(String(reading.focus)) ||
+        typeof reading.observedColor !== 'string' || !reading.observedColor.trim()) continue;
+      padReadings.push({ parameter: reading.parameter as ModelPadReading['parameter'],
+        selectedIndex: reading.selectedIndex as number, alternativeIndex: reading.alternativeIndex as number,
+        // A named neighbouring alternative is uncertainty even if the model
+        // also says "clear". Downgrade that claim instead of rejecting a usable
+        // photograph over inconsistent wording; invalid indexes still fail.
+        certainty: reading.certainty === 'clear' && reading.alternativeIndex !== reading.selectedIndex
+          ? 'adjacent' : reading.certainty as ModelPadReading['certainty'], focus: reading.focus as ModelPadReading['focus'],
+        observedColor: reading.observedColor.replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, 160) });
+    }
+  }
+
   const reportedPadCount = args.physicalPadCount;
   const physicalPadCount = typeof reportedPadCount === 'number' && Number.isInteger(reportedPadCount)
     ? Math.max(0, reportedPadCount) : 0;
@@ -1146,7 +1233,9 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
   }
   const visiblePadBoxes = visiblePadEntries.map((entry) => entry.box);
   const visiblePadCenterYs = visiblePadBoxes.map((box) => box.centerY);
-  const padIntegrity = visiblePadEntries.map((entry) => entry.intact);
+  const padIntegrity = isAquachekPro(brand)
+    ? rawPadIntegrity.map(value => value === true)
+    : visiblePadEntries.map((entry) => entry.intact);
   const stripBodyEvidence = ['clear_shared_body', 'ambiguous', 'none'].includes(String(args.stripBodyEvidence))
     ? (args.stripBodyEvidence as AiRunData['stripBodyEvidence'])
     : 'none';
@@ -1175,6 +1264,7 @@ function normalizeAiArgs(args: Record<string, unknown>, brand: StripBrand, provi
       padIntegrity,
       stripBodyEvidence,
       values,
+      padReadings: isAquachekPro(brand) ? padReadings : undefined,
       confidence: typeof args.confidence === 'number' && Number.isFinite(args.confidence) ? args.confidence : 0,
       notes: String(args.notes ?? ''),
       provider: provider.name,
@@ -1195,11 +1285,11 @@ function dataUrlToGeminiInlineData(dataUrl: string) {
   };
 }
 
-function buildGeminiResponseSchema() {
+function buildGeminiResponseSchema(brand: StripBrand) {
   const valueProperties: Record<string, { type: 'NUMBER' }> = {};
   for (const key of PARAM_KEYS) valueProperties[key] = { type: 'NUMBER' };
 
-  return {
+  const schema = {
     type: 'OBJECT',
     properties: {
       isStrip: { type: 'BOOLEAN' },
@@ -1261,6 +1351,16 @@ function buildGeminiResponseSchema() {
       'values',
     ],
   };
+  if (!isAquachekPro(brand)) return schema;
+  return { ...schema, properties: { ...schema.properties, padReadings: {
+    type: 'ARRAY', items: { type: 'OBJECT', properties: {
+      parameter: { type: 'STRING', enum: PRO_PAD_METRICS },
+      selectedIndex: { type: 'INTEGER' }, alternativeIndex: { type: 'INTEGER' },
+      certainty: { type: 'STRING', enum: ['clear', 'adjacent', 'unreadable'] },
+      focus: { type: 'STRING', enum: ['clear', 'soft', 'blurred'] },
+      observedColor: { type: 'STRING' },
+    }, required: ['parameter', 'selectedIndex', 'alternativeIndex', 'certainty', 'focus', 'observedColor'] },
+  } }, required: [...schema.required, 'padReadings'] };
 }
 
 function extractGeminiJson(json: Record<string, unknown>) {
@@ -1343,6 +1443,7 @@ function captureContext(body: AnalyzeStripRequest): string {
 async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: AiProviderConfig, context = '', chart?: ProColorChart): Promise<AiRunResponse> {
   try {
     const inlineData = dataUrlToGeminiInlineData(dataUrl);
+    const referenceImage = isAquachekPro(brand) ? getProReferenceImage(chart) : undefined;
     const modelPath = provider.model.startsWith('models/') ? provider.model.slice('models/'.length) : provider.model;
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelPath)}:generateContent`,
@@ -1367,6 +1468,10 @@ async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: A
                     'Return only the required JSON object matching the schema. Use 0 for values not present on this strip.' + context,
                 },
                 { inlineData },
+                ...(referenceImage ? [
+                  { text: 'Color-reference image only. It is not a second user photograph. Compare its labelled swatches with the first image.' },
+                  { inlineData: referenceImage },
+                ] : []),
               ],
             },
           ],
@@ -1374,7 +1479,7 @@ async function analyzeWithGemini(dataUrl: string, brand: StripBrand, provider: A
             temperature: 0.1,
             topP: 0.1,
             responseMimeType: 'application/json',
-            responseSchema: buildGeminiResponseSchema(),
+            responseSchema: buildGeminiResponseSchema(brand),
           },
         }),
       },
@@ -1510,14 +1615,15 @@ async function loadProColorChart(request: Request): Promise<ProColorChart> {
   return chart;
 }
 
-function buildColorCheckedResult(
+function buildPhonePhotoResult(
   run: Extract<AiRunResponse, { ok: true }>, body: AnalyzeStripRequest,
-  brand: StripBrand, image: DecodedImage, chart: ProColorChart,
+  brand: StripBrand, image: DecodedImage | undefined, chart: ProColorChart,
 ): StripAnalysisResult {
   const base = buildSingleAiResult(run, body, brand);
   const { data } = run;
   const auditEvidence: AnalysisEvidence = {
-    method: 'model-and-reference-color-consensus', referenceRevision: chart.revision,
+    method: 'model-chart-with-color-diagnostics', referenceRevision: chart.revision,
+    referenceImageIncluded: Boolean(getProReferenceImage(chart)),
     calibrationStatus: chart.calibrationStatus, requiredRuns: 1, successfulRuns: 1,
     qualityPassedRuns: 0, confidencePassedRuns: base.accepted === true ? 1 : 0,
     runConfidences: [Number.isFinite(data.confidence) ? data.confidence : 0],
@@ -1529,6 +1635,7 @@ function buildColorCheckedResult(
     correctPadOrderRuns: data.padOrderMatchesSelectedBrand ? 1 : 0,
     noExtraPadRuns: data.hasExtraPadLikeRegions ? 0 : 1,
     requiredParameters: brand.parameters, parameters: {},
+    padReadings: data.padReadings,
   };
   if (base.accepted !== true || base.lowConfidence) return { ...base, evidence: auditEvidence };
   const reject = (reason: FailureReason, note: string) => buildInvalidStripResult(body, brand, 'ai', reason, note, {
@@ -1537,19 +1644,29 @@ function buildColorCheckedResult(
     analysisVersion: ANALYSIS_VERSION, acceptanceReasons: [note], evidence: auditEvidence,
   });
   const boxes = data.visiblePadBoxes;
-  if (data.physicalPadCount !== 4 || boxes.length !== 4 || !data.allPadsFullyVisible ||
+  if (data.physicalPadCount !== 4 || !data.allPadsFullyVisible ||
     !data.allPadsIntact || !data.hasExactlyOneStrip || !data.hasSingleContinuousStripBody ||
     data.stripBodyEvidence !== 'clear_shared_body' ||
     !data.padOrderMatchesSelectedBrand || data.hasExtraPadLikeRegions ||
-    data.padIntegrity.length !== 4 || data.padIntegrity.some(intact => !intact) ||
-    boxes.some(box => box.centerX - box.width / 2 < 0 || box.centerX + box.width / 2 > 1 ||
-      box.centerY - box.height / 2 < 0 || box.centerY + box.height / 2 > 1 ||
-      box.width * image.width < 12 || box.height * image.height < 12) ||
-    boxes.some((box, i) => boxes.slice(i + 1).some(other =>
-      Math.abs(box.centerX - other.centerX) < (box.width + other.width) / 2 &&
-      Math.abs(box.centerY - other.centerY) < (box.height + other.height) / 2))) {
+    data.padIntegrity.length !== 4 || data.padIntegrity.some(intact => !intact)) {
     return reject('framing', 'לא ניתן לקרוא בבירור ארבעה פדים שלמים. צלם מקרוב בלי להסתיר או לחתוך פד.');
   }
+  const padReadings = data.padReadings ?? [];
+  if (padReadings.length !== 4 || PRO_PAD_METRICS.some(key =>
+    padReadings.filter(reading => reading.parameter === key).length !== 1)) {
+    return reject('low_confidence', 'לא התקבלה השוואת צבע מלאה לכל הפדים. נסה צילום נוסף.');
+  }
+  if (padReadings.some(reading => reading.certainty === 'unreadable')) {
+    return reject('low_confidence', 'צבע של אחד הפדים אינו קריא מספיק. צלם שוב בתאורה אחידה.');
+  }
+  if (padReadings.some(reading => {
+    const levels = chart.parameters[reading.parameter];
+    return reading.selectedIndex < 0 || reading.selectedIndex >= levels.length ||
+      reading.alternativeIndex < 0 || reading.alternativeIndex >= levels.length ||
+      levels[reading.selectedIndex]?.value !== data.values[reading.parameter] ||
+      (reading.certainty === 'clear' && reading.alternativeIndex !== reading.selectedIndex) ||
+      (reading.certainty === 'adjacent' && Math.abs(reading.alternativeIndex - reading.selectedIndex) !== 1);
+  })) return reject('low_confidence', 'הקריאה אינה עקבית עם דרגות מקרא הצבעים. נסה צילום נוסף.');
   const indexes = PRO_METRICS.map(key => chart.parameters[key].findIndex(level => level.value === data.values[key]));
   for (const key of PRO_METRICS) {
     auditEvidence.parameters[key] = {
@@ -1561,48 +1678,75 @@ function buildColorCheckedResult(
   if (indexes.some(index => index < 0) || indexes[0] !== indexes[1]) {
     return reject('low_confidence', 'הקריאה אינה תואמת למקרא של סוג הסטיק. צלם שוב בתאורה אחידה.');
   }
-  let candidate: CvResult;
-  try { candidate = analyzeAquachekCvCandidate(image, boxes, chart); }
-  catch { return reject('low_confidence', 'צבעי הפדים אינם ברורים. צלם שוב ללא צל או השתקפות.'); }
-  const evidence = candidate.evidence;
+  const diagnosticWarnings: string[] = [];
+  // Model boxes and reference JPEG colors are approximate phone-photo aids.
+  // Their failure is not independent proof that a visually readable pad is bad.
+  const boxesUsable = Boolean(image) && boxes.length === 4 && boxes.every(box =>
+    box.centerX - box.width / 2 >= 0 && box.centerX + box.width / 2 <= 1 &&
+    box.centerY - box.height / 2 >= 0 && box.centerY + box.height / 2 <= 1 &&
+    box.width * (image?.width ?? 0) >= 4 && box.height * (image?.height ?? 0) >= 4) &&
+    !boxes.some((box, i) => boxes.slice(i + 1).some(other =>
+      Math.abs(box.centerX - other.centerX) < (box.width + other.width) / 2 &&
+      Math.abs(box.centerY - other.centerY) < (box.height + other.height) / 2));
+  let candidate: CvResult | undefined;
+  if (boxesUsable && image) {
+    try { candidate = analyzeAquachekCvCandidate(image, boxes, chart); }
+    catch { diagnosticWarnings.push('pixel_comparison_unavailable'); }
+  } else diagnosticWarnings.push(image ? 'approximate_pad_boxes' : 'pixel_sampling_not_run');
+  const evidence = candidate?.evidence;
   auditEvidence.colorAnalysis = evidence;
-  const focus = evidence?.sharpnessVariance ?? 0;
-  if (!Number.isFinite(focus) || focus < MIN_AQUACHEK_SHARPNESS_VARIANCE) {
-    return reject('blurry', 'התמונה אינה חדה מספיק לקריאת הצבעים. התמקד בסטיק וצלם שוב.');
+  if (evidence?.padFocus?.severeDefocus) {
+    // Ordinary phone softness must not override an otherwise readable model
+    // result. Keep this uncalibrated focus heuristic as a diagnostic warning.
+    diagnosticWarnings.push('low_pad_detail');
   }
-  if (!evidence?.structure?.hasNeutralCarrier) {
-    return reject('framing', 'לא זוהה סטיק שלם עם פדים מחוברים. צלם את כל הפדים על הסטיק.');
+  for (const reading of padReadings) {
+    if (reading.focus === 'blurred') diagnosticWarnings.push(`soft_model_focus:${reading.parameter}`);
   }
-  // Ambiguity gates are conservative heuristics, not calibrated chemical accuracy.
-  const uncertain = PRO_METRICS.filter(key => {
-    const colorKey = key === 'bromine' ? 'totalChlorine' : key;
-    const distance = evidence.distances[colorKey];
-    const margin = evidence.margins[colorKey];
-    return !Number.isFinite(distance) || !Number.isFinite(margin) || distance! > 25 || margin! < 3 ||
-      candidate.values[key] !== data.values[key];
-  });
-  if (uncertain.length) {
-    return reject('low_confidence', 'צבע אחד או יותר אינו חד־משמעי. צלם באור אחיד, ללא שמש ישירה או השתקפות.');
+  if (evidence) {
+    if (!Number.isFinite(evidence.sharpnessVariance) ||
+      evidence.sharpnessVariance! < MIN_AQUACHEK_SHARPNESS_VARIANCE)
+      diagnosticWarnings.push('low_local_focus_score');
+    if (!evidence.structure?.hasNeutralCarrier)
+      diagnosticWarnings.push('local_carrier_uncertain');
   }
   const parameterEvidence: AnalysisEvidence['parameters'] = {};
   const parameters = base.parameters.map(parameter => {
     const key = parameter.key as typeof PRO_METRICS[number];
     const colorKey = key === 'bromine' ? 'totalChlorine' : key;
+    const colorComparisonValue = candidate?.values[key];
+    const distance = evidence?.distances[colorKey];
+    const margin = evidence?.margins[colorKey];
+    const modelReading = padReadings.find(reading => reading.parameter === colorKey)!;
+    const padIndex = PRO_PAD_METRICS.indexOf(colorKey as ModelPadReading['parameter']);
+    const localFocus = evidence?.padFocus?.pads[padIndex];
+    const lowPadDetail = Boolean(localFocus && localFocus.gradientEnergy >=
+      (evidence?.padFocus?.minimumGradientEnergy ?? 25) && localFocus.highFrequencyRatio <
+      (evidence?.padFocus?.minimumHighFrequencyRatio ?? 0.35));
+    const needsVerification = modelReading.certainty !== 'clear' || modelReading.focus === 'blurred' ||
+      lowPadDetail || Boolean(evidence &&
+      (!Number.isFinite(distance) || !Number.isFinite(margin) || distance! > 25 || margin! < 3 ||
+        colorComparisonValue !== data.values[key]));
+    if (needsVerification) diagnosticWarnings.push(`review_color:${key}`);
     parameterEvidence[key] = {
       chartValues: chart.parameters[key].map(level => level.value),
-      rawValues: [data.values[key]!], snappedValues: [candidate.values[key]!],
-      selectedValue: candidate.values[key], agreementCount: 1, requiredAgreement: 1,
-      colorDistance: evidence.distances[colorKey], colorMargin: evidence.margins[colorKey],
-      referenceRgb: chart.parameters[key].find(level => level.value === candidate.values[key])?.rgb,
+      rawValues: [data.values[key]!], snappedValues: [data.values[key]!],
+      selectedValue: data.values[key], agreementCount: 1, requiredAgreement: 1,
+      confidenceBasis: 'model-reported', colorComparisonValue,
+      colorAgrees: colorComparisonValue === undefined ? undefined : colorComparisonValue === data.values[key],
+      needsVerification, colorDistance: distance, colorMargin: margin,
+      modelCertainty: modelReading.certainty,
+      alternativeValue: chart.parameters[key][modelReading.alternativeIndex]?.value,
+      observedColor: modelReading.observedColor,
+      referenceRgb: chart.parameters[key].find(level => level.value === data.values[key])?.rgb,
     };
-    return { ...parameter, value: candidate.values[key]!,
-      confidence: Math.min(data.confidence, confidenceFromDistances([evidence.distances[colorKey]!])),
+    return { ...parameter, value: data.values[key]!, confidence: data.confidence,
       evidence: parameterEvidence[key] };
   });
-  return { ...base, parameters, confidence: Math.min(...parameters.map(parameter => parameter.confidence)),
-    acceptanceReasons: ['All four localized pad colors and the model readings agree with discrete reference levels.'],
-    evidence: { ...auditEvidence, qualityPassedRuns: 1, parameters: parameterEvidence },
-    notes: 'הערכים נבחרו ממקרא הצבעים באמצעות השוואת צבע וקריאת מודל תואמות. זו הערכה מצילום, לא בדיקת מעבדה.',
+  return { ...base, parameters,
+    acceptanceReasons: ['The model identified four complete pads and returned only listed chart levels; pixel sampling is diagnostic.'],
+    evidence: { ...auditEvidence, qualityPassedRuns: 1, parameters: parameterEvidence, diagnosticWarnings },
+    notes: 'הערכה מצילום לפי מקרא הצבעים. יש לאמת מדדים חריגים לפני טיפול.',
   };
 }
 
@@ -1699,6 +1843,7 @@ async function createStripAnalysisContentKey(body: AnalyzeStripRequest, imageByt
       poolId: body.poolId ?? null,
       referenceRevision: chart?.revision ?? null,
       referenceParameters: chart?.parameters ?? null,
+      referenceImageSha256: getProReferenceImage(chart) ? bundledProReferenceImage.sha256 : null,
     }),
   );
 }
@@ -2156,18 +2301,20 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
 
     dataUrl = imageBytesToDataUrl(imageBytes, mimeType);
 
-    // Load one catalog snapshot for the prompt, validation and pixel comparison.
-    // Fail before reserving a paid call if the reference or image is unusable.
+    // Input has already passed the bounded 24MP/byte/header validation.
+    // Decode only safe smaller images for optional diagnostics, not as a camera requirement.
     let decodedImage: DecodedImage | undefined;
     if (colorChart) {
-      try {
-        validateImage(imageBytes, 4_000_000);
-        decodedImage = await ImageScript.decode(imageBytes);
-      }
-      catch { throw new EdgeAnalysisError('invalid_strip', 'התמונה אינה ניתנת לקריאה. צלם שוב.'); }
-      if (!decodedImage || decodedImage.width < 24 || decodedImage.height < 48 ||
-        decodedImage.width * decodedImage.height > 4_000_000) {
-        throw new EdgeAnalysisError('invalid_strip', 'גודל התמונה אינו מתאים לקריאת הסטיק. צלם מחדש באפליקציה.');
+      let samplingSizeAllowed = true;
+      try { validateImage(imageBytes, 4_000_000); }
+      catch { samplingSizeAllowed = false; }
+      if (samplingSizeAllowed) {
+        try { decodedImage = await ImageScript.decode(imageBytes); }
+        catch { throw new EdgeAnalysisError('invalid_strip', 'התמונה אינה ניתנת לקריאה. צלם שוב.'); }
+        if (!decodedImage || decodedImage.width < 24 || decodedImage.height < 48 ||
+          decodedImage.width * decodedImage.height > 4_000_000) {
+          throw new EdgeAnalysisError('invalid_strip', 'גודל התמונה אינו מתאים לקריאת הסטיק. צלם מחדש באפליקציה.');
+        }
       }
     }
 
@@ -2203,8 +2350,8 @@ async function analyzeRemoteWebParity(body: AnalyzeStripRequest, request: Reques
       ...tokenUsage,
     });
     if (aiRun.ok) {
-      const aiResult = colorChart && decodedImage
-        ? buildColorCheckedResult(aiRun, body, brand, decodedImage, colorChart)
+      const aiResult = colorChart
+        ? buildPhonePhotoResult(aiRun, body, brand, decodedImage, colorChart)
         : buildSingleAiResult(aiRun, body, brand);
       const result = protectAnalysisResponse({ ...aiResult, tokenUsage });
       console.log('Gemini strip analysis selected', {

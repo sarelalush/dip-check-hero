@@ -6,11 +6,12 @@ import type { RootStackParamList } from '../../App';
 import { Card } from '../components/Card';
 import { ResultCard } from '../components/ResultCard';
 import { PrimaryButton } from '../components/PrimaryButton';
-import { SHORT_TREATMENT_NOTE, type DosageRecommendation } from '../domain/dosage';
+import { calculateDosage, type DosageRecommendation } from '../domain/dosage';
 import { colors, rtl, typography } from '../theme';
 import { useAuth } from '../state/AuthContext';
-import { buildMetricGuidance } from '../domain/metricGuidance';
 import { GuidanceSources } from '../components/GuidanceSources';
+import { TreatmentSteps } from '../components/TreatmentSteps';
+import { DisclosureSection } from '../components/DisclosureSection';
 
 export function DemoResultScreen({
   navigation,
@@ -21,7 +22,7 @@ export function DemoResultScreen({
     {
       paramKey: 'ph',
       labelHe: 'pH',
-      measured: needsCare ? 7.9 : 7.4,
+      measured: needsCare ? 7.8 : 7.2,
       target: 7.4,
       unit: '',
       status: needsCare ? 'high' : 'ok',
@@ -34,28 +35,37 @@ export function DemoResultScreen({
     {
       paramKey: 'freeChlorine',
       labelHe: 'כלור חופשי',
-      measured: 2,
+      measured: needsCare ? 0.5 : 3,
       target: 2,
       unit: 'ppm',
-      status: 'ok',
+      status: needsCare ? 'low' : 'ok',
       exactAmountAvailable: false,
       actionHe: 'הערך בטווח.',
     },
     {
       paramKey: 'alkalinity',
       labelHe: 'אלקליניות',
-      measured: 100,
+      measured: needsCare ? 40 : 80,
       target: 100,
       unit: 'ppm',
-      status: 'ok',
+      status: needsCare ? 'low' : 'ok',
       exactAmountAvailable: false,
       actionHe: 'הערך בטווח.',
     },
   ];
-  const demoPhGuidance = buildMetricGuidance({
-    key: 'ph', value: needsCare ? 7.9 : 7.4,
-    idealRange: { min: 7.2, max: 7.6, label: 'טווח ההשוואה בדוגמה' },
+  // Product demo only: shared presentation policy, no scan or provider request.
+  const demoDosage = calculateDosage({
+    id: 'demo', analyzedAt: Date.now(), accepted: true, isValidStrip: true,
+    overallStatus: { label: 'דוגמה', tone: 'neutral' }, recommendation: '',
+    parameters: cards.map(rec => ({
+      key: rec.paramKey, name: rec.labelHe, value: rec.measured, unit: rec.unit,
+      idealRange: rec.paramKey === 'ph' ? { min: 7.2, max: 7.6, label: 'טווח ההשוואה בדוגמה' }
+        : rec.paramKey === 'freeChlorine' ? { min: 1, max: 3, label: 'טווח ההשוואה בדוגמה' }
+          : { min: 80, max: 120, label: 'טווח ההשוואה בדוגמה' },
+      status: { kind: rec.status, label: '', tone: 'neutral' }, recommendation: '', progress: 0,
+    })),
   });
+  const demoPrimary = demoDosage.primaryRecommendation;
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -72,7 +82,7 @@ export function DemoResultScreen({
         </Text>
         <View style={styles.tabs}>
           {[
-            { value: true, label: 'pH גבוה' },
+            { value: true, label: 'דרוש טיפול' },
             { value: false, label: 'בטווח ההשוואה' },
           ].map((option) => (
             <Pressable
@@ -89,26 +99,19 @@ export function DemoResultScreen({
           ))}
         </View>
         <Card style={styles.action}>
-          <Text style={styles.actionTitle}>מה עושים עכשיו</Text>
-          <Text style={styles.body}>
-            {demoPhGuidance?.action}
-          </Text>
-          {needsCare ? <Text style={styles.body}>{demoPhGuidance?.followUp}</Text> : null}
-          <Text style={styles.note}>{SHORT_TREATMENT_NOTE}</Text>
+          <Text style={styles.actionTitle}>{demoPrimary ? `מתחילים ב${demoPrimary.labelHe}` : 'המדדים בטווח'}</Text>
+          {demoPrimary ? <TreatmentSteps steps={demoPrimary.actionHe.split('\n')} />
+            : <Text style={styles.body}>המשך מעקב רגיל.</Text>}
+          {demoPrimary ? <Text style={styles.note}>מדד אחד בכל פעם. אחרי הבדיקה החדשה נבחר את הצעד הבא.</Text> : null}
+          <Text style={styles.note}>אמת חריגה לפני הוספת חומר. פעל לפי התווית ואל תערבב חומרים.</Text>
         </Card>
-        {cards.map((rec) => (
-          <ResultCard key={rec.paramKey} rec={{ ...rec, guidance: buildMetricGuidance({
-            key: rec.paramKey,
-            value: rec.measured,
-            idealRange: rec.paramKey === 'ph' ? { min: 7.2, max: 7.6, label: 'טווח ההשוואה בדוגמה' }
-              : rec.paramKey === 'freeChlorine' ? { min: 1, max: 3, label: 'טווח ההשוואה בדוגמה' }
-                : { min: 80, max: 120, label: 'טווח ההשוואה בדוגמה' },
-          }) }} />
+        {demoDosage.recommendations.map((rec) => (
+          <ResultCard key={rec.paramKey} rec={rec} compact />
         ))}
-        <GuidanceSources />
-        <Text style={styles.body}>
-          אפשר לראות היסטוריית מדדים ולהגדיר תזכורות בדיקה. תזכורת אינה אישור לטיפול או לרחצה.
-        </Text>
+        <DisclosureSection title="מידע נוסף">
+          <Text style={styles.note}>{demoDosage.safetyNote}</Text>
+          <GuidanceSources />
+        </DisclosureSection>
         <PrimaryButton
           label={isAuthenticated ? 'חזרה' : 'המשך להרשמה'}
           icon="user"

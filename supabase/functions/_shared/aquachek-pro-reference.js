@@ -964,3 +964,43 @@ export function measureAquachekProSharpness(
     },
   };
 }
+
+/**
+ * Conservative focus heuristic around each model-localized pad, independent of
+ * colour matching. Compare curvature with gradient energy at a step relative
+ * to pad width, so brightness and upload resolution alone do not set the score.
+ * Three contrast-bearing pads must all lack fine detail before flagging severe
+ * defocus. This threshold is a heuristic reviewed on ten real photographs,
+ * not a validated accuracy measure across phones, lighting or strip lots.
+ * @param {number} imageWidth
+ * @param {number} imageHeight
+ * @param {(x: number, y: number) => Rgb} getRgb
+ * @param {Array<{centerX:number,centerY:number,width:number,height:number}>} boxes
+ */
+export function measureAquachekPadFocus(imageWidth, imageHeight, getRgb, boxes) {
+  const luminance = (x, y) => {
+    const rgb = getRgb(Math.max(0, Math.min(imageWidth - 1, Math.round(x))),
+      Math.max(0, Math.min(imageHeight - 1, Math.round(y))));
+    return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+  };
+  const pads = boxes.map(box => {
+    const step = Math.max(1, box.width * imageWidth / 32);
+    let highFrequency = 0;
+    let gradient = 0;
+    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) {
+      const px = (box.centerX + (x / 31 - 0.5) * box.width * 1.25) * imageWidth;
+      const py = (box.centerY + (y / 31 - 0.5) * box.height * 1.25) * imageHeight;
+      const center = luminance(px, py);
+      const left = luminance(px - step, py), right = luminance(px + step, py);
+      const top = luminance(px, py - step), bottom = luminance(px, py + step);
+      highFrequency += (4 * center - left - right - top - bottom) ** 2;
+      gradient += (right - left) ** 2 + (bottom - top) ** 2;
+    }
+    return { highFrequencyRatio: gradient > 0 ? highFrequency / gradient : 0,
+      gradientEnergy: gradient / 1024 };
+  });
+  const lowDetailPadCount = pads.filter(pad => pad.gradientEnergy >= 25 &&
+    pad.highFrequencyRatio < 0.35).length;
+  return { pads, lowDetailPadCount, severeDefocus: boxes.length === 4 && lowDetailPadCount >= 3,
+    minimumGradientEnergy: 25, minimumHighFrequencyRatio: 0.35 };
+}

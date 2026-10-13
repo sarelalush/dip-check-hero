@@ -105,7 +105,7 @@ export async function inspectCaptureImage(uri: string): Promise<ImageQualityRepo
     else if (clippedFraction > 0.45)
       warnings.push('יש אזורים לבנים מאוד. ודא שאין השתקפות שמסתירה צבע על אחד הריבועים.');
     if (edgeEnergy < 10)
-      warnings.push('ייתכן שהצילום רך או מטושטש. הגדל את התצוגה וודא שקצוות הריבועים חדים.');
+      warnings.push('הצילום מעט רך. ודא שניתן להבחין בצבעי כל הריבועים.');
     if (Math.max(width, height) / Math.min(width, height) < 2.5)
       warnings.push('החיתוך כולל רקע רב. ודא שנראה סטיק אחד שלם ושכל ריבועי הצבע גדולים וברורים.');
     return {
@@ -128,7 +128,7 @@ export async function inspectCaptureImage(uri: string): Promise<ImageQualityRepo
       height,
       blockers: [],
       warnings: [
-        'הבדיקה המקומית לא זמינה לתמונה הזו. בדוק ידנית חדות, תאורה ושלמות הסטיק לפני ההמשך.',
+        'הבדיקה המקומית לא זמינה לתמונה הזו. ודא שהריבועים שלמים וצבעיהם נראים לפני ההמשך.',
       ],
     };
   }

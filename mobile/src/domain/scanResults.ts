@@ -42,10 +42,19 @@ export interface ParameterAnalysisEvidence {
   colorDistance?: number;
   colorMargin?: number;
   referenceRgb?: [number, number, number];
+  confidenceBasis?: 'model-reported';
+  colorComparisonValue?: number;
+  colorAgrees?: boolean;
+  needsVerification?: boolean;
+  modelCertainty?: 'clear' | 'adjacent' | 'unreadable';
+  alternativeValue?: number;
+  observedColor?: string;
 }
 
 export interface AnalysisEvidence {
-  method: 'repeated-model-discrete-consensus' | 'model-and-reference-color-consensus';
+  method: 'repeated-model-discrete-consensus' | 'model-and-reference-color-consensus' | 'model-chart-with-color-diagnostics';
+  referenceImageIncluded?: boolean;
+  diagnosticWarnings?: string[];
   referenceRevision?: string;
   calibrationStatus?: 'unverified' | 'user_supplied_label' | 'label_verified' | 'validated';
   requiredRuns: number;

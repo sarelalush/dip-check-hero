@@ -73,6 +73,9 @@ function mapParameterToRecommendation(parameter: ScanResultParameter): DosageRec
   return {
     actionHe: parameter.recommendation,
     guidance: buildMetricGuidance(parameter),
+    verificationSuggested: parameter.evidence?.needsVerification === true,
+    alternativeMeasured: parameter.evidence?.modelCertainty === 'adjacent'
+      ? parameter.evidence.alternativeValue : undefined,
     blocked: parameter.status.kind !== 'ok',
     exactAmountAvailable: false,
     labelHe: parameter.name,
@@ -161,6 +164,17 @@ function normalizeRepeatedMessage(message?: string) {
   return uniqueParts.join(' ');
 }
 
+function invalidStripTitle(result: StripAnalysisResult) {
+  switch (result.failureReason) {
+    case 'low_confidence': return 'לא התקבלה קריאה אמינה';
+    case 'blurry': return 'התמונה אינה חדה מספיק';
+    case 'lighting': return 'התאורה מקשה על קריאת הצבעים';
+    case 'framing': return 'לא ניתן לקרוא את כל הפדים';
+    case 'unsupported_strip': return 'סוג הסטיק אינו תואם';
+    default: return 'לא זוהה סטיק מתאים';
+  }
+}
+
 function invalidStripMessage(result?: StripAnalysisResult | null) {
   if (!result)
     return 'לא הצלחנו לזהות סטיק בדיקה תקין בתמונה. יש לצלם שוב סטיק ברור ומלא בתוך המסגרת.';
@@ -191,7 +205,7 @@ function invalidStripMessage(result?: StripAnalysisResult | null) {
   if (result.failureReason === 'low_confidence') {
     return (
       normalizeRepeatedMessage(result.notes) ||
-      'לא התקבלה ודאות מספקת שהצילום מציג סטיק נתמך וברור. יש לצלם שוב.'
+      'לא ניתן לקרוא את המדדים בוודאות מהצילום הזה. נדרשת תמונה חדשה לקריאה נוספת.'
     );
   }
   return (
@@ -637,18 +651,18 @@ export function ResultsScreen({ navigation, route }: Props) {
       <AppShell activeTab="scan" navigation={navigation}>
         <View style={styles.emptyHeader}>
           <Text style={styles.title}>תוצאות הבדיקה</Text>
-          <Text style={styles.subtitle}>הסטיק אינו תקין</Text>
+          <Text style={styles.subtitle}>הקריאה לא הושלמה</Text>
         </View>
         <Card compact style={styles.messageCard}>
-          <Text style={styles.messageTitle}>לא זוהה סטיק מתאים</Text>
+          <Text style={styles.messageTitle}>{invalidStripTitle(visibleAnalysisResult)}</Text>
           <Text style={styles.messageText}>{invalidStripMessage(visibleAnalysisResult)}</Text>
         </Card>
         <View style={styles.actions}>
           <PrimaryButton label="צלם שוב" icon="camera" onPress={handleNewScan} />
-          <Pressable style={styles.secondaryButton} onPress={chooseAnotherStrip}>
+          {(!visibleAnalysisResult.failureReason || ['not_strip', 'unsupported_strip'].includes(visibleAnalysisResult.failureReason)) ? <Pressable style={styles.secondaryButton} onPress={chooseAnotherStrip}>
             <LineIcon name="scan" color={colors.primaryDark} size={16} />
             <Text style={styles.secondaryText}>בחר סטיק אחר</Text>
-          </Pressable>
+          </Pressable> : null}
         </View>
       </AppShell>
     );
@@ -701,7 +715,7 @@ export function ResultsScreen({ navigation, route }: Props) {
             .filter(Boolean)
             .join(' · ')}
         </Text>
-        <Text style={styles.heroMeta}>הערכה מצילום · טווחי השוואה בלבד · אין אישור לרחצה</Text>
+        <Text style={styles.heroMeta}>הערכה מצילום</Text>
       </View>
 
       {visibleAnalysisResult.lowConfidence ? <LowConfidenceWarning /> : null}
@@ -746,7 +760,9 @@ export function ResultsScreen({ navigation, route }: Props) {
         </DisclosureSection>
       </View>
 
-      <GuidanceSources />
+      <DisclosureSection title="מידע נוסף">
+        <GuidanceSources />
+      </DisclosureSection>
 
       {!visibleAnalysisResult.dosage?.safetyNote ? <SafetyCard /> : null}
 

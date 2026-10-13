@@ -50,6 +50,6 @@ export function buildProChartPrompt(chart: ProColorChart): string {
   return `Application color reference ${chart.revision}. RGB values are reference swatches, not guaranteed camera colors.
 There are exactly four physical pads, wet tip to handle: totalChlorine/bromine, freeChlorine, ph, alkalinity.
 Read only the discrete values listed below. TC and bromine share a pad and must use the same color-level index.
-If adjacent levels are ambiguous, report low_confidence. Do not force a value solely from a color name such as turquoise.
+Column indexes start at zero separately for each row. An adjacent-level ambiguity belongs in that pad's assessment; an unreadable color must never be guessed. Do not force a value solely from a color name such as turquoise.
 ${rows}`;
 }

@@ -2,7 +2,6 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { DosageRecommendation } from '../domain/dosage';
 import { colors, radius, rtl, shadows, typography } from '../theme';
 import { LineIcon } from './LineIcon';
-import { DisclosureSection } from './DisclosureSection';
 
 const STATUS_STYLE: Record<
   DosageRecommendation['status'],
@@ -28,16 +27,9 @@ const STATUS_STYLE: Record<
   },
 };
 
-function formatValue(value: number, unit: string) {
+function formatValue(value: number, unit: string, estimated = false) {
   const display = Number.isInteger(value) ? `${value}` : `${value.toFixed(1)}`;
-  return `\u2066${unit ? `${display} ${unit}` : display}\u2069`;
-}
-
-function splitSteps(action: string) {
-  return action
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
+  return `${estimated ? 'כ־' : ''}\u2066${unit ? `${display} ${unit}` : display}\u2069`;
 }
 
 interface ResultCardProps {
@@ -45,27 +37,16 @@ interface ResultCardProps {
   compact?: boolean;
 }
 
-function Guidance({ rec }: { rec: DosageRecommendation }) {
-  if (!rec.guidance) return null;
-  return <View style={styles.guidance}>
-    <DisclosureSection title="למה ואיך מתקנים">
-      <Text style={styles.guidanceHeading}>משמעות הקריאה</Text>
-      <Text style={styles.guidanceText}>{rec.guidance.meaning}</Text>
-      <Text style={styles.guidanceHeading}>אימות המדידה</Text>
-      <Text style={styles.guidanceText}>{rec.guidance.verification}</Text>
-      <Text style={styles.guidanceHeading}>הצעדים הבאים</Text>
-      {rec.guidance.steps.map((step,index)=><View key={step} style={styles.stepRow}>
-        <View style={styles.stepNumber}><Text style={styles.stepNumberText}>{index+1}</Text></View>
-        <Text style={styles.stepText}>{step}</Text>
-      </View>)}
-    </DisclosureSection>
-  </View>;
-}
-
 export function ResultCard({ rec, compact = false }: ResultCardProps) {
   const status = STATUS_STYLE[rec.status];
-  const steps = splitSteps(rec.actionHe);
   const isActive = Boolean(rec.active);
+  const verificationNote = rec.alternativeMeasured !== undefined && Number.isFinite(rec.alternativeMeasured) &&
+    rec.alternativeMeasured !== rec.measured
+    ? `הצבע קרוב גם ל־${formatValue(rec.alternativeMeasured, rec.unit)}. מומלץ אימות.`
+    : 'מומלץ אימות נוסף למדד.';
+  const waitingText = rec.paramKey === 'freeChlorine' && rec.status === 'high'
+    ? 'אין להוסיף עוד כלור. בדוק שוב לפני טיפול נוסף.'
+    : 'בהמשך, אחרי בדיקה חוזרת.';
 
   if (compact) {
     return (
@@ -82,16 +63,12 @@ export function ResultCard({ rec, compact = false }: ResultCardProps) {
           </View>
         </View>
         <View style={styles.compactValues}>
-          <Text style={styles.measured}>{formatValue(rec.measured, rec.unit)}</Text>
+          <Text style={styles.measured}>{formatValue(rec.measured, rec.unit, rec.verificationSuggested)}</Text>
           <Text style={styles.target}>מרכז טווח ההשוואה: {formatValue(rec.target, rec.unit)}</Text>
         </View>
-        {rec.guidance ? (
-          <View style={styles.recommendationBox}>
-            <Text style={styles.recommendationLabel}>{rec.status === 'ok' ? 'מעקב' : 'מה עושים'}</Text>
-            <Text style={styles.recommendationText}>{rec.guidance.action}</Text>
-          </View>
-        ) : rec.status !== 'ok' ? <Text style={styles.compactNote}>נתוני המדד אינם מספיקים להנחיה.</Text> : null}
-        <Guidance rec={rec} />
+        {rec.verificationSuggested ? <Text style={styles.compactNote}>{verificationNote}</Text> : null}
+        {rec.status !== 'ok' && !isActive
+          ? <Text style={styles.compactNote}>{waitingText}</Text> : null}
       </View>
     );
   }
@@ -115,7 +92,7 @@ export function ResultCard({ rec, compact = false }: ResultCardProps) {
           </View>
           <View style={styles.titleCopy}>
             <Text style={styles.title}>{rec.labelHe}</Text>
-            {isActive ? <Text style={styles.activeBadge}>לטיפול עכשיו</Text> : null}
+            {isActive ? <Text style={styles.activeBadge}>{rec.verificationSuggested ? 'לאימות עכשיו' : 'לטיפול עכשיו'}</Text> : null}
           </View>
         </View>
         <View style={[styles.statusBadge, { borderColor: status.borderColor }]}>
@@ -125,8 +102,8 @@ export function ResultCard({ rec, compact = false }: ResultCardProps) {
 
       <View style={styles.valuesRow}>
         <View style={styles.valueBox}>
-          <Text style={styles.valueLabel}>נמדד</Text>
-          <Text style={styles.valueText}>{formatValue(rec.measured, rec.unit)}</Text>
+          <Text style={styles.valueLabel}>{rec.verificationSuggested ? 'קריאה משוערת' : 'נמדד'}</Text>
+          <Text style={styles.valueText}>{formatValue(rec.measured, rec.unit, rec.verificationSuggested)}</Text>
         </View>
         <View style={styles.valueBox}>
           <Text style={styles.valueLabel}>מרכז טווח ההשוואה</Text>
@@ -134,41 +111,14 @@ export function ResultCard({ rec, compact = false }: ResultCardProps) {
         </View>
       </View>
 
-      {rec.guidance ? (
-        <View style={styles.recommendationBox}>
-          <Text style={styles.recommendationLabel}>{rec.status === 'ok' ? 'מעקב' : 'מה עושים'}</Text>
-          <Text style={styles.recommendationText}>{rec.guidance.action}</Text>
-        </View>
-      ) : isActive ? (
-        <View style={styles.recommendationBox}>
-          <Text style={styles.recommendationLabel}>המלצה</Text>
-          {steps.length <= 1 ? (
-            <Text style={styles.recommendationText}>{rec.actionHe}</Text>
-          ) : (
-            <View style={styles.steps}>
-              {steps.map((step, index) => (
-                <View key={`${rec.paramKey}-step-${index}`} style={styles.stepRow}>
-                  <View style={styles.stepNumber}>
-                    <Text style={styles.stepNumberText}>{index + 1}</Text>
-                  </View>
-                  <Text style={styles.stepText}>{step}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-      ) : rec.status !== 'ok' ? (
-        <Text style={styles.waitingText}>יש לאמת מדידה לפני טיפול.</Text>
-      ) : null}
-      <Guidance rec={rec} />
+      {rec.verificationSuggested ? <Text style={styles.waitingText}>{verificationNote}</Text> : null}
+      {rec.status !== 'ok' && !isActive
+        ? <Text style={styles.waitingText}>{waitingText}</Text> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  guidance: { marginTop: 12 },
-  guidanceHeading: { fontFamily: typography.fontFamilySemiBold, fontSize: 13, color: colors.primaryDeep, ...rtl.text },
-  guidanceText: { fontFamily: typography.fontFamilyRegular, fontSize: 13, lineHeight: 21, color: colors.text, ...rtl.text },
   compactCard: {
     backgroundColor: colors.surface,
     padding: 14,
@@ -298,59 +248,6 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamilyBold,
     fontSize: 14,
     fontWeight: '900',
-    ...rtl.text,
-  },
-  recommendationBox: {
-    marginTop: 12,
-    borderRadius: 15,
-    backgroundColor: colors.white,
-    padding: 12,
-  },
-  recommendationLabel: {
-    color: colors.muted,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 10,
-    fontWeight: '800',
-    marginBottom: 8,
-    ...rtl.text,
-  },
-  recommendationText: {
-    color: colors.text,
-    fontFamily: typography.fontFamilySemiBold,
-    fontSize: 13,
-    fontWeight: '900',
-    lineHeight: 20,
-    ...rtl.text,
-  },
-  steps: {
-    gap: 8,
-  },
-  stepRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  stepNumber: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepNumberText: {
-    color: colors.white,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 11,
-    fontWeight: '900',
-  },
-  stepText: {
-    flex: 1,
-    color: colors.text,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 12,
-    fontWeight: '800',
-    lineHeight: 18,
     ...rtl.text,
   },
   waitingText: {

@@ -14,6 +14,7 @@ import { Card } from './Card';
 import { PrimaryButton } from './PrimaryButton';
 import { DisclosureSection } from './DisclosureSection';
 import { LineIcon } from './LineIcon';
+import { TreatmentSteps } from './TreatmentSteps';
 
 export function NextActionCard({
   result,
@@ -116,18 +117,20 @@ export function NextActionCard({
     <Card style={styles.card}>
       {treatmentBlocked ? (
         <>
-          <Text style={styles.kicker}>מה עושים עכשיו</Text>
+          <Text style={styles.kicker}>{primary ? `מתחילים ב${primary.labelHe === 'pH' ? '־' : ''}${primary.labelHe}` : 'מה עושים עכשיו'}</Text>
           {primary?.guidance ? <>
             <Text style={styles.amount}>{primary.labelHe} {primary.status === 'high' ? 'גבוה' : 'נמוך'}</Text>
-            <Text style={styles.action}>{primary.guidance.action}</Text>
-            <Text style={styles.followUp}>{primary.guidance.followUp}</Text>
+            {isHistorical ? <Text style={styles.note}>זו בדיקה קודמת. בצע בדיקה עדכנית לפני טיפול.</Text> : null}
+            <TreatmentSteps steps={primary.actionHe.split('\n').filter(Boolean)} />
           </> : <Text style={styles.action}>{nextAction(result)}</Text>}
-          {isHistorical ? <Text style={styles.note}>זו בדיקה קודמת. בצע בדיקה עדכנית לפני טיפול.</Text> : null}
-          <Text style={styles.note}>{SHORT_TREATMENT_NOTE}</Text>
-          <DisclosureSection title="פרטים לפני הטיפול">
+          {primary ? <Text style={styles.note}>מדד אחד בכל פעם. אחרי הבדיקה החדשה נבחר את הצעד הבא.</Text> : null}
+          {primary ? <Text style={styles.note}>אמת חריגה לפני הוספת חומר. פעל לפי התווית ואל תערבב חומרים.</Text> : null}
+          <DisclosureSection title="מידע חשוב">
             <Text style={styles.note}>{MEASUREMENT_SAFETY_NOTE}</Text>
-            {primary?.guidance ? <Text style={styles.note}>{primary.guidance.verification}</Text> : null}
-            <Text style={styles.note}>כמות החומר וזמן הסחרור תלויים במוצר ובריכוזו, בנפח הבריכה ובמדדים הנלווים. התאם אותם להוראות היצרן; אל תבחר מינון מתוך טווח ההשוואה בלבד.</Text>
+            {result.evidence?.diagnosticWarnings?.length ? <Text style={styles.note}>
+              בחלק מהמדדים זוהתה אי־ודאות בקריאה. הפרטים מופיעים ליד המדד.
+            </Text> : null}
+            <Text style={styles.note}>{SHORT_TREATMENT_NOTE}</Text>
           </DisclosureSection>
           <PrimaryButton label={isHistorical ? 'בדיקה עדכנית' : 'בדיקה חוזרת'} icon="scan" onPress={onNewScan} />
         </>
