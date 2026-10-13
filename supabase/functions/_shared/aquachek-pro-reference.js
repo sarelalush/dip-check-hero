@@ -1,5 +1,7 @@
+import PRO_CHART from './aquachek-pro-chart.json' with { type: 'json' };
+
 /**
- * AquaChek Pro 5-in-1 manufacturer chart and deterministic color matcher.
+ * AquaChek Pro 5-in-1 versioned reference and deterministic color matcher.
  *
  * This file is plain ESM so the Supabase Edge Function and the local Node test
  * harness execute the exact same reference data and matching implementation.
@@ -16,44 +18,15 @@ export const AQUACHEK_PRO_PAD_ORDER = Object.freeze([
 ]);
 
 /** @type {ReadonlyArray<{ tc: number, bromine: number, rgb: Rgb }>} */
-export const AQUACHEK_PRO_COMBINED_PAD_COLORS = Object.freeze([
-  { tc: 0, bromine: 0, rgb: [254, 254, 168] },
-  { tc: 0.5, bromine: 1, rgb: [242, 254, 170] },
-  { tc: 1, bromine: 2, rgb: [231, 245, 160] },
-  { tc: 3, bromine: 5, rgb: [184, 216, 140] },
-  { tc: 5, bromine: 10, rgb: [100, 180, 105] },
-  { tc: 10, bromine: 20, rgb: [55, 140, 80] },
-]);
+export const AQUACHEK_PRO_COMBINED_PAD_COLORS = Object.freeze(
+  PRO_CHART.parameters.totalChlorine.map((ref, index) => ({
+    tc: ref.value, bromine: PRO_CHART.parameters.bromine[index].value,
+    rgb: /** @type {Rgb} */ (ref.rgb),
+  })),
+);
 
 /** @type {Readonly<Record<string, ReadonlyArray<ColorRef>>>} */
-export const AQUACHEK_PRO_REFS = Object.freeze({
-  totalChlorine: AQUACHEK_PRO_COMBINED_PAD_COLORS.map((ref) => ({ value: ref.tc, rgb: ref.rgb })),
-  bromine: AQUACHEK_PRO_COMBINED_PAD_COLORS.map((ref) => ({ value: ref.bromine, rgb: ref.rgb })),
-  freeChlorine: Object.freeze([
-    { value: 0, rgb: [254, 254, 204] },
-    { value: 0.5, rgb: [247, 235, 228] },
-    { value: 1, rgb: [235, 215, 225] },
-    { value: 3, rgb: [220, 180, 210] },
-    { value: 5, rgb: [190, 125, 192] },
-    { value: 10, rgb: [130, 55, 160] },
-    { value: 20, rgb: [70, 15, 100] },
-  ]),
-  ph: Object.freeze([
-    { value: 6.2, rgb: [242, 200, 90] },
-    { value: 6.8, rgb: [240, 170, 130] },
-    { value: 7.2, rgb: [235, 150, 150] },
-    { value: 7.8, rgb: [220, 130, 165] },
-    { value: 8.4, rgb: [195, 110, 170] },
-  ]),
-  alkalinity: Object.freeze([
-    { value: 0, rgb: [227, 192, 64] },
-    { value: 40, rgb: [164, 169, 51] },
-    { value: 80, rgb: [137, 159, 58] },
-    { value: 120, rgb: [85, 130, 90] },
-    { value: 180, rgb: [55, 105, 100] },
-    { value: 240, rgb: [40, 90, 120] },
-  ]),
-});
+export const AQUACHEK_PRO_REFS = Object.freeze(PRO_CHART.parameters);
 
 /** @param {number} value @param {number} min @param {number} max */
 export function clampColorValue(value, min, max) {
@@ -202,9 +175,8 @@ export function confidenceFromDistances(distances) {
 }
 
 /**
- * Remove a neutral lighting cast by using the unreacted white strip body as a
- * reference. The mean luminance is preserved, so this does not manufacture a
- * brighter/darker reagent result.
+ * Apply a bounded lighting correction using the unreacted white strip body.
+ * Camera exposure and reagent colors are not chemically calibrated by this step.
  *
  * @param {Rgb[]} pads
  * @param {Rgb | undefined} whiteReference
@@ -227,7 +199,7 @@ export function normalizePadsWithWhiteReference(pads, whiteReference) {
 /**
  * Analyze four already-localized physical pads in wet-tip-to-handle order.
  * @param {Rgb[]} pads
- * @param {{ whiteReference?: Rgb }} [options]
+ * @param {{ whiteReference?: Rgb, refs?: Readonly<Record<string, ReadonlyArray<ColorRef>>> }} [options]
  */
 export function analyzeAquachekProPadRgbs(pads, options = {}) {
   if (pads.length !== 4) {
@@ -235,6 +207,7 @@ export function analyzeAquachekProPadRgbs(pads, options = {}) {
   }
 
   const normalizedPads = normalizePadsWithWhiteReference(pads, options.whiteReference);
+  const references = options.refs ?? AQUACHEK_PRO_REFS;
   const calibratedMatch = (padIndex, refs) => {
     const rawMatch = bestMatch(pads[padIndex], refs);
     const normalizedMatch = bestMatch(normalizedPads[padIndex], refs);
@@ -247,11 +220,11 @@ export function analyzeAquachekProPadRgbs(pads, options = {}) {
       rawMatch.margin < 1 && normalizedMatch.margin >= rawMatch.margin + 2;
     return materiallyCloser || resolvesAmbiguity ? normalizedMatch : rawMatch;
   };
-  const totalChlorine = calibratedMatch(0, AQUACHEK_PRO_REFS.totalChlorine);
-  const bromine = calibratedMatch(0, AQUACHEK_PRO_REFS.bromine);
-  const freeChlorine = calibratedMatch(1, AQUACHEK_PRO_REFS.freeChlorine);
-  const ph = calibratedMatch(2, AQUACHEK_PRO_REFS.ph);
-  const alkalinity = calibratedMatch(3, AQUACHEK_PRO_REFS.alkalinity);
+  const totalChlorine = calibratedMatch(0, references.totalChlorine);
+  const bromine = calibratedMatch(0, references.bromine);
+  const freeChlorine = calibratedMatch(1, references.freeChlorine);
+  const ph = calibratedMatch(2, references.ph);
+  const alkalinity = calibratedMatch(3, references.alkalinity);
 
   return {
     values: {
@@ -290,10 +263,10 @@ export function analyzeAquachekProPadRgbs(pads, options = {}) {
 }
 
 /**
- * Production-safe AquaChek result. Readings are always discrete levels that
- * exist on the manufacturer chart; interpolated values remain diagnostics.
+ * Readings are discrete levels from the supplied reference. This guarantees
+ * consistent lookup, not chemical accuracy or calibration of camera colors.
  * @param {Rgb[]} pads
- * @param {{ whiteReference?: Rgb }} [options]
+ * @param {{ whiteReference?: Rgb, refs?: Readonly<Record<string, ReadonlyArray<ColorRef>>> }} [options]
  */
 export function analyzeAquachekProDiscretePadRgbs(pads, options = {}) {
   const analysis = analyzeAquachekProPadRgbs(pads, options);

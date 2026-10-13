@@ -2,16 +2,14 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G, Line, Path } from 'react-native-svg';
 import type { DosageRecommendation } from '../domain/dosage';
 import { colors, radius, rtl, shadows, typography } from '../theme';
+import PRO_CHART from '../../../supabase/functions/_shared/aquachek-pro-chart.json';
 
 const DISPLAY_RANGE: Record<string, { min: number; max: number }> = {
-  freeChlorine: { min: 0, max: 6 },
-  ph: { min: 6.2, max: 8.4 },
-  alkalinity: { min: 0, max: 240 },
   cyanuricAcid: { min: 0, max: 150 },
   salt: { min: 0, max: 6000 },
-  totalChlorine: { min: 0, max: 10 },
-  bromine: { min: 0, max: 20 },
   hardness: { min: 0, max: 1000 },
+  ...Object.fromEntries(Object.entries(PRO_CHART.parameters).map(([key, levels]) =>
+    [key, { min: levels[0].value, max: levels[levels.length - 1].value }])),
 };
 
 const STATUS_COLOR: Record<DosageRecommendation['status'], string> = {

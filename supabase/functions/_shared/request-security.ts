@@ -62,7 +62,7 @@ export async function requireAnalysisConsent(request: Request) {
 }
 
 // Reject compressed image dimensions before an image decoder allocates pixels.
-export function validateImage(bytes: Uint8Array) {
+export function validateImage(bytes: Uint8Array, maxPixels = 24000000) {
   if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw new Error('Invalid image size');
   let width = 0, height = 0, mimeType = '';
   if (bytes.length >= 24 && bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 &&
@@ -90,7 +90,7 @@ export function validateImage(bytes: Uint8Array) {
       position += length;
     }
   }
-  if (!mimeType || width < 1 || height < 1 || width * height > 24000000 || width > 12000 || height > 12000)
+  if (!mimeType || width < 1 || height < 1 || width * height > maxPixels || width > 12000 || height > 12000)
     throw new Error('Unsupported image or dimensions');
   return mimeType;
 }

@@ -1,5 +1,5 @@
 // Client-side fallback: sample pixel colors from a strip image and match to
-// the OFFICIAL AquaChek reference charts.
+// the application's brand reference charts.
 //
 // Two brands are supported here:
 //
@@ -15,49 +15,16 @@
 //   3. pH                             (orange → red)
 //   4. Total Alkalinity               (yellow-green → dark teal/blue)
 
+import PRO_CHART from '../../supabase/functions/_shared/aquachek-pro-chart.json';
+
 interface ColorRef { value: number; rgb: [number, number, number] }
 
 // ---------- Pro 5-in-1 references ----------
-const PRO_COMBINED_PAD_COLORS: Array<{ tc: number; tb: number; rgb: [number, number, number] }> = [
-  { tc: 0,   tb: 0,  rgb: [254, 254, 168] },
-  { tc: 0.5, tb: 1,  rgb: [242, 254, 170] },
-  { tc: 1,   tb: 2,  rgb: [231, 245, 160] },
-  { tc: 3,   tb: 5,  rgb: [184, 216, 140] },
-  { tc: 5,   tb: 10, rgb: [100, 180, 105] },
-  { tc: 10,  tb: 20, rgb: [55,  140, 80]  },
-];
-const PRO_TC_REFS: ColorRef[] = PRO_COMBINED_PAD_COLORS.map((r) => ({ value: r.tc, rgb: r.rgb }));
-const PRO_TB_REFS: ColorRef[] = PRO_COMBINED_PAD_COLORS.map((r) => ({ value: r.tb, rgb: r.rgb }));
-
-const PRO_REFS = {
-  totalChlorine: PRO_TC_REFS,
-  bromine: PRO_TB_REFS,
-  freeChlorine: [
-    { value: 0,   rgb: [254, 254, 204] },
-    { value: 0.5, rgb: [247, 235, 228] },
-    { value: 1,   rgb: [235, 215, 225] },
-    { value: 2,   rgb: [220, 180, 210] },
-    { value: 4,   rgb: [200, 140, 195] },
-    { value: 6,   rgb: [175, 110, 190] },
-    { value: 10,  rgb: [130, 55,  160] },
-    { value: 20,  rgb: [70,  15,  100] },
-  ] as ColorRef[],
-  ph: [
-    { value: 6.2, rgb: [242, 200, 90]  },
-    { value: 6.8, rgb: [240, 170, 130] },
-    { value: 7.2, rgb: [235, 150, 150] },
-    { value: 7.8, rgb: [220, 130, 165] },
-    { value: 8.4, rgb: [195, 110, 170] },
-  ] as ColorRef[],
-  alkalinity: [
-    { value: 0,   rgb: [227, 192, 64] },
-    { value: 40,  rgb: [164, 169, 51] },
-    { value: 80,  rgb: [137, 159, 58] },
-    { value: 120, rgb: [85,  130, 90]  },
-    { value: 180, rgb: [55,  105, 100] },
-    { value: 240, rgb: [40,  90,  120] },
-  ] as ColorRef[],
-};
+const PRO_REFS = Object.fromEntries(
+  Object.entries(PRO_CHART.parameters).map(([key, rows]) => [
+    key, rows.map(row => ({ value: row.value, rgb: [...row.rgb] as [number, number, number] })),
+  ]),
+) as Record<keyof typeof PRO_CHART.parameters, ColorRef[]>;
 
 // ---------- Yellow 4-in-1 references ----------
 const YELLOW_REFS = {
@@ -122,7 +89,7 @@ function bestMatch(rgb: [number, number, number], refs: ColorRef[]) {
   const total = bestD + secondD;
   const w = total > 0 ? secondD / total : 1;
   const value = best.value * w + second.value * (1 - w);
-  return { value, distance: bestD };
+  return { value, nearestValue: best.value, distance: bestD, margin: secondD - bestD };
 }
 
 function sampleRegion(
@@ -174,7 +141,8 @@ export interface ClientCvResult {
   confidence: number;
 }
 
-/** AquaChek Pro 5-in-1: 4 pads (combined TC+TB, FC, pH, TA). */
+/** Legacy helper for an already aligned/cropped image, not general pad detection.
+ * Production Pro readings require server localization and reference agreement. */
 export async function analyzeStripPixels(imageDataUrl: string): Promise<ClientCvResult> {
   const { canvas, ctx } = await loadCanvas(imageDataUrl);
   const pads = samplePads(ctx, canvas.width, canvas.height, 4);
@@ -183,13 +151,17 @@ export async function analyzeStripPixels(imageDataUrl: string): Promise<ClientCv
   const fc  = bestMatch(pads[1], PRO_REFS.freeChlorine);
   const ph  = bestMatch(pads[2], PRO_REFS.ph);
   const alk = bestMatch(pads[3], PRO_REFS.alkalinity);
-  const avgD = (tc.distance + fc.distance + ph.distance + alk.distance) / 4;
+  const matches = [tc, fc, ph, alk];
+  if (matches.some(match => match.distance > 25 || match.margin < 3)) {
+    return { confidence: 0 };
+  }
+  const avgD = matches.reduce((sum, match) => sum + match.distance, 0) / matches.length;
   return {
-    totalChlorine: +tc.value.toFixed(1),
-    bromine: +br.value.toFixed(1),
-    freeChlorine: +fc.value.toFixed(1),
-    ph: +ph.value.toFixed(1),
-    alkalinity: Math.round(alk.value),
+    totalChlorine: tc.nearestValue,
+    bromine: br.nearestValue,
+    freeChlorine: fc.nearestValue,
+    ph: ph.nearestValue,
+    alkalinity: alk.nearestValue,
     confidence: Math.max(0, Math.min(1, 1 - avgD / 50)),
   };
 }

@@ -1,3 +1,5 @@
+import PRO_CHART from '../../../supabase/functions/_shared/aquachek-pro-chart.json';
+
 // Parity source: src/config/brandSwatches.ts.
 
 import { PARAM_LABEL_HE, type ParamSwatches, type StripBrand, type StripParameter } from '../domain/strip';
@@ -7,48 +9,10 @@ type SwatchRef = [number, RgbTuple][];
 
 const rgb = (r: number, g: number, b: number) => `rgb(${r}, ${g}, ${b})`;
 
-const PRO: Partial<Record<StripParameter, SwatchRef>> = {
-  totalChlorine: [
-    [0, [254, 254, 168]],
-    [0.5, [242, 254, 170]],
-    [1, [231, 245, 160]],
-    [3, [184, 216, 140]],
-    [5, [100, 180, 105]],
-    [10, [55, 140, 80]],
-  ],
-  bromine: [
-    [0, [254, 254, 168]],
-    [1, [242, 254, 170]],
-    [2, [231, 245, 160]],
-    [5, [184, 216, 140]],
-    [10, [100, 180, 105]],
-    [20, [55, 140, 80]],
-  ],
-  freeChlorine: [
-    [0, [254, 254, 204]],
-    [0.5, [247, 235, 228]],
-    [1, [235, 215, 225]],
-    [3, [220, 180, 210]],
-    [5, [190, 125, 192]],
-    [10, [130, 55, 160]],
-    [20, [70, 15, 100]],
-  ],
-  ph: [
-    [6.2, [242, 200, 90]],
-    [6.8, [240, 170, 130]],
-    [7.2, [235, 150, 150]],
-    [7.8, [220, 130, 165]],
-    [8.4, [195, 110, 170]],
-  ],
-  alkalinity: [
-    [0, [227, 192, 64]],
-    [40, [164, 169, 51]],
-    [80, [137, 159, 58]],
-    [120, [85, 130, 90]],
-    [180, [55, 105, 100]],
-    [240, [40, 90, 120]],
-  ],
-};
+const PRO: Partial<Record<StripParameter, SwatchRef>> = Object.fromEntries(
+  Object.entries(PRO_CHART.parameters).map(([key, levels]) =>
+    [key, levels.map(level => [level.value, level.rgb as RgbTuple] as [number, RgbTuple])]),
+);
 
 const YELLOW: Partial<Record<StripParameter, SwatchRef>> = {
   freeChlorine: [

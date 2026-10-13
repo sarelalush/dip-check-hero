@@ -1,17 +1,15 @@
 import type { DosageRecommendation } from "@/utils/calculateDosage";
 import { AlertCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
+import PRO_CHART from '../../supabase/functions/_shared/aquachek-pro-chart.json';
 
 // Display range per parameter — wider than the "ok" target band so the
 // fill animates meaningfully even when values are extreme.
 const DISPLAY_RANGE: Record<string, { min: number; max: number }> = {
-  freeChlorine: { min: 0, max: 6 },
-  ph: { min: 6.2, max: 8.4 },
-  alkalinity: { min: 0, max: 240 },
   cyanuricAcid: { min: 0, max: 150 },
   salt: { min: 0, max: 6000 },
-  totalChlorine: { min: 0, max: 10 },
-  bromine: { min: 0, max: 20 },
   hardness: { min: 0, max: 1000 },
+  ...Object.fromEntries(Object.entries(PRO_CHART.parameters).map(([key, levels]) =>
+    [key, { min: levels[0].value, max: levels[levels.length - 1].value }])),
 };
 
 const STATUS_COLOR: Record<DosageRecommendation["status"], string> = {

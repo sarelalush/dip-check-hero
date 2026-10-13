@@ -39,10 +39,15 @@ export interface ParameterAnalysisEvidence {
   selectedValue?: number;
   agreementCount: number;
   requiredAgreement: number;
+  colorDistance?: number;
+  colorMargin?: number;
+  referenceRgb?: [number, number, number];
 }
 
 export interface AnalysisEvidence {
-  method: 'repeated-model-discrete-consensus';
+  method: 'repeated-model-discrete-consensus' | 'model-and-reference-color-consensus';
+  referenceRevision?: string;
+  calibrationStatus?: 'unverified' | 'user_supplied_label' | 'label_verified' | 'validated';
   requiredRuns: number;
   successfulRuns: number;
   runConfidences: number[];
