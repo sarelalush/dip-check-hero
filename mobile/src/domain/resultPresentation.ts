@@ -1,6 +1,6 @@
 import type { StripAnalysisResult, ScanResultParameter } from './scanResults';
-import { calculateDosage } from './dosage';
-import { comparisonKind } from './readingComparison';
+import { calculateDosage, TREATMENT_POLICY_VERSION } from './dosage';
+import { getChlorineReview, comparisonKind, readingNeedsClarification } from './readingComparison';
 
 export function formatReading(parameter?: ScanResultParameter) {
   if (!parameter || !Number.isFinite(parameter.value)) return '—';
@@ -21,7 +21,11 @@ export function resultStatus(result?: StripAnalysisResult) {
     return { label: 'נדרש צילום חוזר', tone: 'warning' as const };
   }
   if (!result.parameters.length) return { label: 'פירוט הבדיקה לא זמין', tone: 'neutral' as const };
-  const required = ['ph', 'freeChlorine', 'alkalinity'];
+  const chlorineReview = getChlorineReview(result.parameters);
+  if (chlorineReview)
+    return { label: chlorineReview.reason === 'gap' ? 'חשד לכלור קשור' : 'קריאות הכלור אינן תואמות', tone: 'warning' as const };
+  const required = result.brandId === 'aquachek-pro-5in1'
+    ? ['ph', 'freeChlorine', 'alkalinity', 'totalChlorine'] : ['ph', 'freeChlorine', 'alkalinity'];
   const treatmentParameters = [
     'ph',
     'freeChlorine',
@@ -38,12 +42,15 @@ export function resultStatus(result?: StripAnalysisResult) {
     ) ||
     result.dosage?.primaryRecommendation
   ) {
-    return { label: 'נדרש אימות לפני טיפול', tone: 'warning' as const };
+    return { label: 'מוצע סדר טיפול במדדים', tone: 'warning' as const };
   }
   if (required.some((key) => !result.parameters.some((item) => item.key === key))) {
     return { label: 'הבדיקה חלקית', tone: 'neutral' as const };
   }
-  return { label: 'הערכים בטווח ההשוואה', tone: 'success' as const };
+  if (result.parameters.some(item =>
+    treatmentParameters.includes(item.key) && readingNeedsClarification(item)))
+    return { label: 'קריאה בין טווחים', tone: 'warning' as const };
+  return { label: 'הערכים בטווח לפי ההערכה', tone: 'success' as const };
 }
 
 export function nextAction(result?: StripAnalysisResult) {
@@ -51,5 +58,5 @@ export function nextAction(result?: StripAnalysisResult) {
   if (resultStatus(result).tone === 'neutral') return 'הבדיקה חלקית. השלם את המדדים החסרים לפני טיפול.';
   if (resultStatus(result).label === 'נדרש צילום חוזר')
     return 'צלם סטיק חדש וברור לפני קבלת המלצת טיפול.';
-  return (result.dosage ?? calculateDosage(result)).summary;
+  return (result.dosage?.policyVersion === TREATMENT_POLICY_VERSION ? result.dosage : calculateDosage(result)).summary;
 }

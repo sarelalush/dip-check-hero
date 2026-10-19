@@ -2,6 +2,8 @@ import { StyleSheet, Text, View } from 'react-native';
 import type { DosageRecommendation } from '../domain/dosage';
 import { colors, radius, rtl, shadows, typography } from '../theme';
 import { LineIcon } from './LineIcon';
+import type { PadColor } from '../domain/padColor';
+import { MeasurementCard, type MeasurementTone } from './MeasurementCard';
 
 const STATUS_STYLE: Record<
   DosageRecommendation['status'],
@@ -11,7 +13,7 @@ const STATUS_STYLE: Record<
     backgroundColor: colors.successSoft,
     borderColor: 'rgba(34,185,131,0.3)',
     color: colors.success,
-    label: 'בטווח ההשוואה',
+    label: 'בטווח לפי ההערכה',
   },
   low: {
     backgroundColor: colors.warningSoft,
@@ -35,41 +37,42 @@ function formatValue(value: number, unit: string, estimated = false) {
 interface ResultCardProps {
   rec: DosageRecommendation;
   compact?: boolean;
+  padColor?: PadColor;
+  showPadColor?: boolean;
 }
 
-export function ResultCard({ rec, compact = false }: ResultCardProps) {
+export function ResultCard({ rec, compact = false, padColor, showPadColor = false }: ResultCardProps) {
   const status = STATUS_STYLE[rec.status];
+  const reviewLabel = rec.actionUncertain ? 'קריאה בין טווחים' : status.label;
+  const tone: MeasurementTone = rec.actionUncertain ? 'warning'
+    : rec.status === 'ok' ? 'success' : rec.status === 'high' ? 'danger' : 'warning';
+  const displayStyle = rec.actionUncertain ? {
+    backgroundColor: colors.warningSoft, borderColor: '#E8D4A5', color: '#8A5600',
+  } : status;
   const isActive = Boolean(rec.active);
   const verificationNote = rec.alternativeMeasured !== undefined && Number.isFinite(rec.alternativeMeasured) &&
     rec.alternativeMeasured !== rec.measured
-    ? `הצבע קרוב גם ל־${formatValue(rec.alternativeMeasured, rec.unit)}. מומלץ אימות.`
-    : 'מומלץ אימות נוסף למדד.';
+    ? `הצבע קרוב גם ל־${formatValue(rec.alternativeMeasured, rec.unit)}.`
+    : 'הערכה מצילום. פרטי הקריאה מופיעים במידע הנוסף.';
   const waitingText = rec.paramKey === 'freeChlorine' && rec.status === 'high'
     ? 'אין להוסיף עוד כלור. בדוק שוב לפני טיפול נוסף.'
     : 'בהמשך, אחרי בדיקה חוזרת.';
 
   if (compact) {
+    const range = rec.comparisonRange;
+    const comparisonText = range && Number.isFinite(range.min) && Number.isFinite(range.max) && range.min <= range.max
+      ? `טווח השוואה: \u2066${range.min}–${range.max}${rec.unit ? ` ${rec.unit}` : ''}\u2069` : undefined;
+    const alternativeNote = rec.verificationSuggested && rec.alternativeMeasured !== undefined &&
+      Number.isFinite(rec.alternativeMeasured) && rec.alternativeMeasured !== rec.measured
+      ? `הצבע קרוב גם ל־${formatValue(rec.alternativeMeasured, rec.unit)}.` : undefined;
+    const actionNote = rec.actionUncertain
+      ? 'בדוק שוב את המדד לפני בחירת חומר; שתי דרגות הצבע מצביעות על כיווני טיפול שונים.'
+      : rec.active || rec.status === 'ok' ? rec.actionHe.split('\n')[0] : waitingText;
     return (
-      <View style={[styles.card, styles.compactCard, isActive && styles.compactActive]}>
-        <View style={styles.header}>
-          <Text style={[styles.title, styles.compactTitle]}>{rec.labelHe}</Text>
-          <View
-            style={[
-              styles.statusBadge,
-              { backgroundColor: status.backgroundColor, borderColor: status.borderColor },
-            ]}
-          >
-            <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
-          </View>
-        </View>
-        <View style={styles.compactValues}>
-          <Text style={styles.measured}>{formatValue(rec.measured, rec.unit, rec.verificationSuggested)}</Text>
-          <Text style={styles.target}>מרכז טווח ההשוואה: {formatValue(rec.target, rec.unit)}</Text>
-        </View>
-        {rec.verificationSuggested ? <Text style={styles.compactNote}>{verificationNote}</Text> : null}
-        {rec.status !== 'ok' && !isActive
-          ? <Text style={styles.compactNote}>{waitingText}</Text> : null}
-      </View>
+      <MeasurementCard label={rec.labelHe} value={formatValue(rec.measured, rec.unit, true)}
+        status={reviewLabel} tone={tone} detail={comparisonText}
+        note={[actionNote, alternativeNote].filter(Boolean).join(' ')}
+        showPadColor={showPadColor} padColor={padColor} />
     );
   }
 
@@ -77,7 +80,7 @@ export function ResultCard({ rec, compact = false }: ResultCardProps) {
     <View
       style={[
         styles.card,
-        { backgroundColor: status.backgroundColor, borderColor: status.borderColor },
+        { backgroundColor: displayStyle.backgroundColor, borderColor: displayStyle.borderColor },
         isActive && styles.activeCard,
       ]}
     >
@@ -85,25 +88,25 @@ export function ResultCard({ rec, compact = false }: ResultCardProps) {
         <View style={styles.titleRow}>
           <View style={[styles.iconWrap, { backgroundColor: colors.white }]}>
             <LineIcon
-              name={rec.status === 'ok' ? 'check' : 'help'}
-              color={status.color}
+              name={rec.status === 'ok' && !rec.actionUncertain ? 'check' : 'help'}
+              color={displayStyle.color}
               size={15}
             />
           </View>
           <View style={styles.titleCopy}>
             <Text style={styles.title}>{rec.labelHe}</Text>
-            {isActive ? <Text style={styles.activeBadge}>{rec.verificationSuggested ? 'לאימות עכשיו' : 'לטיפול עכשיו'}</Text> : null}
+            {isActive ? <Text style={styles.activeBadge}>הצעד הבא</Text> : null}
           </View>
         </View>
-        <View style={[styles.statusBadge, { borderColor: status.borderColor }]}>
-          <Text style={[styles.statusText, { color: status.color }]}>{status.label}</Text>
+        <View style={[styles.statusBadge, { borderColor: displayStyle.borderColor }]}>
+          <Text style={[styles.statusText, { color: displayStyle.color }]}>{reviewLabel}</Text>
         </View>
       </View>
 
       <View style={styles.valuesRow}>
         <View style={styles.valueBox}>
-          <Text style={styles.valueLabel}>{rec.verificationSuggested ? 'קריאה משוערת' : 'נמדד'}</Text>
-          <Text style={styles.valueText}>{formatValue(rec.measured, rec.unit, rec.verificationSuggested)}</Text>
+          <Text style={styles.valueLabel}>הערכה מצילום</Text>
+          <Text style={styles.valueText}>{formatValue(rec.measured, rec.unit, true)}</Text>
         </View>
         <View style={styles.valueBox}>
           <Text style={styles.valueLabel}>מרכז טווח ההשוואה</Text>
@@ -119,41 +122,6 @@ export function ResultCard({ rec, compact = false }: ResultCardProps) {
 }
 
 const styles = StyleSheet.create({
-  compactCard: {
-    backgroundColor: colors.surface,
-    padding: 14,
-    borderColor: colors.borderSoft,
-    elevation: 0,
-    shadowOpacity: 0,
-  },
-  compactActive: { borderColor: colors.primaryLight, backgroundColor: colors.backgroundSoft },
-  compactTitle: { flex: 1 },
-  compactValues: {
-    ...rtl.row,
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginTop: 8,
-  },
-  measured: {
-    color: colors.text,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 23,
-    ...rtl.text,
-  },
-  target: {
-    color: colors.textSoft,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 12,
-    ...rtl.text,
-  },
-  compactNote: {
-    marginTop: 5,
-    color: colors.textSoft,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 11,
-    ...rtl.text,
-  },
   card: {
     borderRadius: 20,
     borderWidth: 1,

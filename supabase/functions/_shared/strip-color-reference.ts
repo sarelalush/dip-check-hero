@@ -49,6 +49,14 @@ export function buildProChartPrompt(chart: ProColorChart): string {
     .map(level => `${level.value} => RGB(${level.rgb.join(',')})`).join('; ')}`).join('\n');
   return `Application color reference ${chart.revision}. RGB values are reference swatches, not guaranteed camera colors.
 There are exactly four physical pads, wet tip to handle: totalChlorine/bromine, freeChlorine, ph, alkalinity.
+The supplied reference has FIVE measurement rows, not five physical pads. Its footer lists measurement rows; it does not change the physical pad count.
+Use this explicit physical-pad-to-reference-row mapping:
+- Physical pad 1 at the wet tip: reference row 1 totalChlorine and row 2 bromine. These rows share identical swatches and are alternative sanitizer scales of this ONE pad.
+- Physical pad 2: reference row 3 freeChlorine. It is NOT the third physical pad.
+- Physical pad 3: reference row 4 ph, NOT freeChlorine.
+- Physical pad 4 nearest the long blank handle: reference row 5 alkalinity.
+The reference's total-chlorine/bromine swatches are yellow-green to green, free-chlorine swatches cream to purple, pH swatches orange to red, and alkalinity swatches yellow/olive/green to blue-green. These describe reference families, not required camera RGBs. Position and strip orientation identify each pad; a green color alone cannot distinguish total chlorine from alkalinity.
+Read totalChlorine and freeChlorine independently from their own physical pads. Never add the TC and bromine scales, infer TC from FC, or copy a numerical level between different pad rows. White carrier gaps and the blank handle are not reagent pads.
 Read only the discrete values listed below. TC and bromine share a pad and must use the same color-level index.
 Column indexes start at zero separately for each row. An adjacent-level ambiguity belongs in that pad's assessment; an unreadable color must never be guessed. Do not force a value solely from a color name such as turquoise.
 ${rows}`;

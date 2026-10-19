@@ -15,6 +15,8 @@ import { PrimaryButton } from './PrimaryButton';
 import { DisclosureSection } from './DisclosureSection';
 import { LineIcon } from './LineIcon';
 import { TreatmentSteps } from './TreatmentSteps';
+import { getChlorineReview } from '../domain/readingComparison';
+import { buildChlorineActionPlan } from '../domain/metricGuidance';
 
 export function NextActionCard({
   result,
@@ -35,8 +37,11 @@ export function NextActionCard({
 }) {
   const { getTreatment, saveTreatment, hydrated, error: storageError } = useTreatments();
   const treatment = getTreatment(testId);
-  const treatmentBlocked = result.dosage?.treatmentBlocked !== false;
+  const chlorineReview = getChlorineReview(result.parameters);
+  const chlorinePlan = chlorineReview ? buildChlorineActionPlan(chlorineReview) : undefined;
+  const treatmentBlocked = Boolean(chlorineReview) || result.dosage?.treatmentBlocked !== false;
   const primary = result.dosage?.primaryRecommendation;
+  const showChlorinePlan = Boolean(chlorinePlan && !primary);
   const followUpSteps =
     primary?.actionHe
       .split('\n')
@@ -114,11 +119,17 @@ export function NextActionCard({
   }
 
   return (
-    <Card style={styles.card}>
+    <Card style={[styles.card, showChlorinePlan && styles.reviewCard]}>
       {treatmentBlocked ? (
         <>
-          <Text style={styles.kicker}>{primary ? `מתחילים ב${primary.labelHe === 'pH' ? '־' : ''}${primary.labelHe}` : 'מה עושים עכשיו'}</Text>
-          {primary?.guidance ? <>
+          <Text style={[styles.kicker, showChlorinePlan && styles.reviewTitle]}>{showChlorinePlan
+            ? chlorinePlan!.title
+            : primary ? `מתחילים ב${primary.labelHe === 'pH' ? '־' : ''}${primary.labelHe}` : 'מה עושים עכשיו'}</Text>
+          {showChlorinePlan ? <>
+            <Text style={styles.reviewText}>{chlorinePlan!.explanation}</Text>
+            <TreatmentSteps steps={chlorinePlan!.steps} />
+            {chlorinePlan!.treatmentNote ? <Text style={styles.note}>{chlorinePlan!.treatmentNote}</Text> : null}
+          </> : primary?.guidance ? <>
             <Text style={styles.amount}>{primary.labelHe} {primary.status === 'high' ? 'גבוה' : 'נמוך'}</Text>
             {isHistorical ? <Text style={styles.note}>זו בדיקה קודמת. בצע בדיקה עדכנית לפני טיפול.</Text> : null}
             <TreatmentSteps steps={primary.actionHe.split('\n').filter(Boolean)} />
@@ -128,11 +139,15 @@ export function NextActionCard({
           <DisclosureSection title="מידע חשוב">
             <Text style={styles.note}>{MEASUREMENT_SAFETY_NOTE}</Text>
             {result.evidence?.diagnosticWarnings?.length ? <Text style={styles.note}>
-              בחלק מהמדדים זוהתה אי־ודאות בקריאה. הפרטים מופיעים ליד המדד.
+              הצילום והתאורה יכולים להשפיע על הקריאה. ערכים חלופיים מופיעים ליד המדד כשקיימים.
             </Text> : null}
             <Text style={styles.note}>{SHORT_TREATMENT_NOTE}</Text>
           </DisclosureSection>
-          <PrimaryButton label={isHistorical ? 'בדיקה עדכנית' : 'בדיקה חוזרת'} icon="scan" onPress={onNewScan} />
+          {chlorineReview ? (
+            <Pressable accessibilityRole="button" style={styles.linkButton} onPress={onNewScan}>
+              <Text style={styles.link}>סריקת סטיק נוספת</Text>
+            </Pressable>
+          ) : <PrimaryButton label={isHistorical ? 'בדיקה עדכנית' : 'בדיקה חוזרת'} icon="scan" onPress={onNewScan} />}
         </>
       ) : <>
       <Text style={styles.kicker}>{treatment ? 'הפעולה תועדה' : 'מה עושים עכשיו'}</Text>
@@ -238,6 +253,9 @@ export function NextActionCard({
   );
 }
 const styles = StyleSheet.create({
+  reviewCard: { backgroundColor: '#FFFCF5', borderColor: '#E8D4A5' },
+  reviewTitle: { color: '#8A5600', fontSize: 18 },
+  reviewText: { color: colors.textSoft, fontFamily: typography.fontFamilyRegular, fontSize: 13, lineHeight: 21, ...rtl.text },
   card: { marginTop: 14, gap: 14, borderWidth: 1, borderColor: colors.borderStrong },
   steps: { gap: 8 },
   stepRow: { ...rtl.row, alignItems: 'flex-start', gap: 9 },

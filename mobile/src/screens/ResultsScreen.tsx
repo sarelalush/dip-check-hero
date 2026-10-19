@@ -5,9 +5,10 @@ import { AppShell } from '../components/AppShell';
 import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
 import { LowConfidenceWarning } from '../components/LowConfidenceWarning';
-import { ParameterArcs } from '../components/ParameterArcs';
+import { ParameterArcs, type ParameterArcReading } from '../components/ParameterArcs';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ResultCard } from '../components/ResultCard';
+import { TotalChlorineReadingCard } from '../components/TotalChlorineReadingCard';
 import { colors, radius, rtl, shadows, typography } from '../theme';
 import type { DosageRecommendation } from '../domain/dosage';
 import { calculateDosage, protectAnalysisResult, MEASUREMENT_SAFETY_NOTE } from '../domain/dosage';
@@ -27,20 +28,22 @@ import { useResultsHistory, type SavedHistoryRecord } from '../state/ResultsHist
 import { useScanSession } from '../state/ScanSessionContext';
 import type { RootStackParamList } from '../../App';
 import { resultStatus } from '../domain/resultPresentation';
-import { comparisonKind } from '../domain/readingComparison';
+import { getChlorineReview, comparisonKind, needsReadingVerification, readingNeedsClarification } from '../domain/readingComparison';
+import { PARAM_LABEL_HE } from '../domain/strip';
 import { NextActionCard } from '../components/NextActionCard';
 import { DisclosureSection } from '../components/DisclosureSection';
 import { requireCurrentAiConsent } from '../services/legalConsentService';
 import { GuidanceSources } from '../components/GuidanceSources';
 import { buildMetricGuidance } from '../domain/metricGuidance';
+import { usePadPhotoColors } from '../hooks/usePadPhotoColors';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Results'>;
 const FALLBACK_POOL_NAME = 'הבריכה שלי';
 const autoSavedResultIds = new Set<string>();
 const CORE_RESULT_PARAMETER_ORDER: DosageRecommendation['paramKey'][] = [
-  'alkalinity',
-  'ph',
   'freeChlorine',
+  'ph',
+  'alkalinity',
 ];
 const CORE_RESULT_PARAMETER_KEYS = new Set<DosageRecommendation['paramKey']>(
   CORE_RESULT_PARAMETER_ORDER,
@@ -73,16 +76,18 @@ function mapParameterToRecommendation(parameter: ScanResultParameter): DosageRec
   return {
     actionHe: parameter.recommendation,
     guidance: buildMetricGuidance(parameter),
-    verificationSuggested: parameter.evidence?.needsVerification === true,
+    verificationSuggested: needsReadingVerification(parameter),
+    actionUncertain: readingNeedsClarification(parameter),
     alternativeMeasured: parameter.evidence?.modelCertainty === 'adjacent'
       ? parameter.evidence.alternativeValue : undefined,
-    blocked: parameter.status.kind !== 'ok',
+    blocked: comparisonKind(parameter) !== 'ok',
     exactAmountAvailable: false,
-    labelHe: parameter.name,
+    labelHe: PARAM_LABEL_HE[parameter.key].labelHe,
     measured: parameter.value,
     paramKey: parameter.key,
-    status: parameter.status.kind,
+    status: comparisonKind(parameter)!,
     target: targetForParameter(parameter),
+    comparisonRange: { min: parameter.idealRange.min, max: parameter.idealRange.max },
     unit: parameter.unit,
   };
 }
@@ -543,6 +548,23 @@ export function ResultsScreen({ navigation, route }: Props) {
     () => (visibleAnalysisResult ? getResultCards(visibleAnalysisResult) : []),
     [visibleAnalysisResult],
   );
+  const padColors = usePadPhotoColors(visibleAnalysisResult);
+  const totalChlorineReading = visibleAnalysisResult?.parameters.find(parameter => parameter.key === 'totalChlorine');
+  const showTotalChlorine = visibleAnalysisResult?.brandId === 'aquachek-pro-5in1' || Boolean(totalChlorineReading);
+  const chlorineReview = getChlorineReview(visibleAnalysisResult?.parameters ?? []);
+  const graphReadings: ParameterArcReading[] = visibleAnalysisResult ? [
+    ...(totalChlorineReading && Number.isFinite(totalChlorineReading.value) && totalChlorineReading.value >= 0 ? [{
+      paramKey: 'totalChlorine' as const,
+      labelHe: PARAM_LABEL_HE.totalChlorine.labelHe,
+      measured: totalChlorineReading.value,
+      unit: totalChlorineReading.unit,
+      estimated: true,
+      requiresReview: Boolean(chlorineReview),
+      reviewLabel: chlorineReview?.reason === 'gap' ? 'חשד לכלור קשור' : 'קריאות סותרות',
+    }] : []),
+    ...resultCards.filter(rec => rec.paramKey === 'ph' || rec.paramKey === 'alkalinity')
+      .map(rec => ({ ...rec, estimated: true, requiresReview: rec.actionUncertain })),
+  ] : [];
   const volumeLabel = formatVolume(pool?.volumeLiters);
 
   useEffect(() => {
@@ -739,9 +761,15 @@ export function ResultsScreen({ navigation, route }: Props) {
       />
 
       <View style={styles.cardsList}>
-        <Text style={styles.sectionTitle}>המדדים שנמדדו</Text>
+        <Text style={styles.sectionTitle}>הערכות המדדים</Text>
+        <Text style={styles.sectionCaption}>לפי סדר הפדים, מקצה הסטיק לידית</Text>
+        {showTotalChlorine ? (
+          <TotalChlorineReadingCard parameter={totalChlorineReading} chlorineReview={chlorineReview}
+            padColor={padColors.totalChlorine} />
+        ) : null}
         {resultCards.map((rec) => (
-          <ResultCard key={rec.paramKey} rec={rec} compact />
+          <ResultCard key={rec.paramKey} rec={rec} compact showPadColor
+            padColor={padColors[rec.paramKey]} />
         ))}
       </View>
 
@@ -750,13 +778,14 @@ export function ResultsScreen({ navigation, route }: Props) {
       ) ? (
         <DisclosureSection title="מדדים נוספים" summary="מייצב, קשיות ומלח — לפי סוג הסטיק">
           {visibleAnalysisResult.dosage.recommendations.filter((rec) => !CORE_RESULT_PARAMETER_KEYS.has(rec.paramKey))
-            .map((rec) => <ResultCard key={rec.paramKey} rec={rec} compact />)}
+            .map((rec) => <ResultCard key={rec.paramKey} rec={rec} compact showPadColor
+              padColor={padColors[rec.paramKey]} />)}
         </DisclosureSection>
       ) : null}
 
       <View style={styles.section}>
         <DisclosureSection title="תצוגה גרפית" summary="השוואת המדדים לטווחי ההשוואה">
-          <ParameterArcs recs={resultCards} />
+          <ParameterArcs recs={graphReadings} />
         </DisclosureSection>
       </View>
 
@@ -894,6 +923,7 @@ const styles = StyleSheet.create({
     marginBottom: 3,
     ...rtl.text,
   },
+  sectionCaption: { color: colors.textSoft, fontFamily: typography.fontFamilyRegular, fontSize: 12, marginBottom: 4, ...rtl.text },
   savedNotice: { ...rtl.row, alignItems: 'center', justifyContent: 'center', gap: 5 },
   savedText: {
     color: colors.textSoft,

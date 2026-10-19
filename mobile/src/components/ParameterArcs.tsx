@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G, Line, Path } from 'react-native-svg';
-import type { DosageRecommendation } from '../domain/dosage';
+import type { ScanParameterStatusKind } from '../domain/scanResults';
+import type { StripParameter } from '../domain/strip';
 import { colors, radius, rtl, shadows, typography } from '../theme';
 import PRO_CHART from '../../../supabase/functions/_shared/aquachek-pro-chart.json';
 
@@ -12,14 +13,14 @@ const DISPLAY_RANGE: Record<string, { min: number; max: number }> = {
     [key, { min: levels[0].value, max: levels[levels.length - 1].value }])),
 };
 
-const STATUS_COLOR: Record<DosageRecommendation['status'], string> = {
+const STATUS_COLOR: Record<ScanParameterStatusKind, string> = {
   ok: colors.success,
   low: colors.warning,
   high: colors.danger,
 };
 
-const STATUS_LABEL: Record<DosageRecommendation['status'], string> = {
-  ok: 'בטווח ההשוואה',
+const STATUS_LABEL: Record<ScanParameterStatusKind, string> = {
+  ok: 'בטווח לפי ההערכה',
   low: 'נמוך',
   high: 'גבוה',
 };
@@ -55,17 +56,36 @@ function arcPath(cx: number, cy: number, radius: number, startDeg: number, endDe
   return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} ${sweep} ${end.x} ${end.y}`;
 }
 
-function rangeFor(rec: DosageRecommendation) {
-  return DISPLAY_RANGE[rec.paramKey] ?? { min: 0, max: Math.max(rec.target * 2, rec.measured * 1.2, 1) };
+function rangeFor(rec: ParameterArcReading) {
+  return DISPLAY_RANGE[rec.paramKey] ?? { min: 0, max: Math.max((rec.target ?? 0) * 2, rec.measured * 1.2, 1) };
 }
 
-function formatValue(value: number, unit: string) {
+function formatValue(value: number, unit: string, estimated = false) {
   const display = Number.isInteger(value) ? `${value}` : `${value.toFixed(1)}`;
-  return unit ? `${display} ${unit}` : display;
+  return `${estimated ? 'כ־' : ''}\u2066${unit ? `${display} ${unit}` : display}\u2069`;
+}
+
+// Measurement-only entries (such as total chlorine) have no borrowed
+// free-chlorine target or low/ok/high classification.
+export interface ParameterArcReading {
+  paramKey: StripParameter;
+  labelHe: string;
+  measured: number;
+  unit: string;
+  target?: number;
+  status?: ScanParameterStatusKind;
+  estimated?: boolean;
+  requiresReview?: boolean;
+  reviewLabel?: string;
+}
+
+function readingColor(rec: ParameterArcReading) {
+  if (rec.requiresReview) return '#8A5600';
+  return rec.status ? STATUS_COLOR[rec.status] : colors.primaryDeep;
 }
 
 interface ParameterArcsProps {
-  recs: DosageRecommendation[];
+  recs: ParameterArcReading[];
 }
 
 export function ParameterArcs({ recs }: ParameterArcsProps) {
@@ -78,12 +98,13 @@ export function ParameterArcs({ recs }: ParameterArcsProps) {
       <View style={styles.topRow}>
         <View style={styles.statusColumn}>
           {ordered.map((rec) => {
-            const color = STATUS_COLOR[rec.status];
+            const color = readingColor(rec);
             return (
               <View key={`label-${rec.paramKey}`} style={styles.statusItem}>
                 <View style={[styles.statusDot, { backgroundColor: color }]} />
                 <View style={styles.statusCopy}>
-                  <Text style={styles.statusLabel}>{STATUS_LABEL[rec.status]}</Text>
+                  <Text style={styles.statusLabel}>{rec.requiresReview ? rec.reviewLabel ?? 'קריאה בין טווחים' : rec.status ? STATUS_LABEL[rec.status]
+                    : rec.estimated ? 'קריאה משוערת' : 'הערכה מצילום'}</Text>
                   <Text style={styles.statusName} numberOfLines={1}>
                     {rec.labelHe}
                   </Text>
@@ -98,12 +119,13 @@ export function ParameterArcs({ recs }: ParameterArcsProps) {
             const radius = BASE_RADIUS + (ordered.length - 1 - index) * RING_GAP;
             const range = rangeFor(rec);
             const valuePct = clamp01((rec.measured - range.min) / (range.max - range.min));
-            const targetPct = clamp01((rec.target - range.min) / (range.max - range.min));
+            const targetPct = typeof rec.target === 'number' && Number.isFinite(rec.target)
+              ? clamp01((rec.target - range.min) / (range.max - range.min)) : undefined;
             const valueAngle = START_ANGLE + (END_ANGLE - START_ANGLE) * valuePct;
-            const targetAngle = START_ANGLE + (END_ANGLE - START_ANGLE) * targetPct;
-            const targetMark = polar(CX, CY, radius, targetAngle);
+            const targetMark = targetPct === undefined ? undefined
+              : polar(CX, CY, radius, START_ANGLE + (END_ANGLE - START_ANGLE) * targetPct);
             const valueMark = polar(CX, CY, radius, valueAngle);
-            const statusColor = STATUS_COLOR[rec.status];
+            const statusColor = readingColor(rec);
 
             return (
               <G key={`ring-${rec.paramKey}`}>
@@ -125,7 +147,7 @@ export function ParameterArcs({ recs }: ParameterArcsProps) {
                   />
                 ) : null}
                 {valuePct > 0.01 ? <Circle cx={valueMark.x} cy={valueMark.y} fill={statusColor} r={RING_THICK * 0.46} /> : null}
-                <Line
+                {targetMark ? <Line
                   x1={targetMark.x}
                   x2={targetMark.x}
                   y1={targetMark.y - RING_THICK / 2 - 2}
@@ -134,7 +156,7 @@ export function ParameterArcs({ recs }: ParameterArcsProps) {
                   strokeLinecap="round"
                   strokeOpacity={0.52}
                   strokeWidth={2}
-                />
+                /> : null}
               </G>
             );
           })}
@@ -143,21 +165,22 @@ export function ParameterArcs({ recs }: ParameterArcsProps) {
 
       <View style={styles.legend}>
         <View style={styles.legendHeader}>
-          <Text style={styles.legendMeta}>נקודת יעד</Text>
-          <Text style={styles.legendMeta}>ערך נוכחי</Text>
+          <Text style={styles.legendMeta}>מדד</Text>
+          <Text style={styles.legendMeta}>הערכה מצילום</Text>
         </View>
         {ordered.map((rec) => {
-          const range = rangeFor(rec);
-          const pct = Math.round(clamp01((rec.measured - range.min) / (range.max - range.min)) * 100);
           return (
             <View key={`row-${rec.paramKey}`} style={styles.legendRow}>
-              <View style={styles.legendLeft}>
-                <Text style={[styles.valuePill, { backgroundColor: STATUS_COLOR[rec.status] }]}>{formatValue(rec.measured, rec.unit)}</Text>
-                <Text style={styles.percent}>{pct}%</Text>
-              </View>
               <View style={styles.legendRight}>
                 <Text style={styles.paramName}>{rec.labelHe}</Text>
-                <Text style={styles.target}>יעד {formatValue(rec.target, rec.unit)}</Text>
+                {typeof rec.target === 'number' && Number.isFinite(rec.target) ? (
+                  <Text style={styles.target}>מרכז טווח ההשוואה: {formatValue(rec.target, rec.unit)}</Text>
+                ) : null}
+              </View>
+              <View style={styles.legendLeft}>
+                <Text style={[styles.valuePill, { backgroundColor: readingColor(rec) }]}>
+                  {formatValue(rec.measured, rec.unit, rec.estimated)}
+                </Text>
               </View>
             </View>
           );
@@ -263,12 +286,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
     ...rtl.textCenter,
-  },
-  percent: {
-    color: colors.muted,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 10,
-    fontWeight: '800',
   },
   paramName: {
     color: colors.text,

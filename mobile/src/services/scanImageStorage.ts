@@ -65,6 +65,14 @@ export function getPublicScanImageUrl(path?: string | null) {
   return undefined;
 }
 
+// Resolve only an existing private image under the signed-in user's Storage
+// permissions. Keep the short-lived URL in memory, never in saved scan data.
+export async function getSignedScanImagePreviewUrl(path?: string) {
+  if (!path || !isSupabaseConfigured) return undefined;
+  const { data, error } = await getSupabaseClient().storage.from(SCAN_IMAGES_BUCKET).createSignedUrl(path, 300);
+  return error ? undefined : data?.signedUrl;
+}
+
 export function isLocalUploadCandidate(uri?: string) {
   if (!uri) return false;
   if (isRemoteOrStorageValue(uri)) return false;

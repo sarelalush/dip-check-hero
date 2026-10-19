@@ -2,8 +2,9 @@ import type { ProductKey } from '../config/productConfig';
 import type { Pool } from './pool';
 import type { ScanParameterStatusKind, ScanResultParameter, StripAnalysisResult } from './scanResults';
 import type { StripParameter } from './strip';
-import { comparisonKind } from './readingComparison';
-import { buildMetricGuidance, type MetricGuidance } from './metricGuidance';
+import { PARAM_LABEL_HE } from './strip';
+import { getChlorineReview, comparisonKind, needsReadingVerification, readingNeedsClarification } from './readingComparison';
+import { buildChlorineActionPlan, buildMetricGuidance, type MetricGuidance } from './metricGuidance';
 
 export interface DosageProduct {
   key: ProductKey;
@@ -16,6 +17,7 @@ export interface DosageRecommendation {
   labelHe: string;
   measured: number;
   target: number;
+  comparisonRange?: { min: number; max: number };
   unit: string;
   status: ScanParameterStatusKind;
   actionHe: string;
@@ -25,6 +27,7 @@ export interface DosageRecommendation {
   exactAmountAvailable: boolean;
   guidance?: MetricGuidance;
   verificationSuggested?: boolean;
+  actionUncertain?: boolean;
   alternativeMeasured?: number;
 }
 export interface DosageCalculationResult {
@@ -37,7 +40,7 @@ export interface DosageCalculationResult {
   policyVersion?: string;
   treatmentBlocked?: boolean;
 }
-export const TREATMENT_POLICY_VERSION = 'ordered-steps-2026-10-13';
+export const TREATMENT_POLICY_VERSION = 'action-first-chlorine-guidance-2026-10-18';
 export const MEASUREMENT_SAFETY_NOTE = 'הערכים הם הערכה מצילום בזמן הבדיקה. ייתכנו טעויות. אין להסתמך עליהם לבדם להוספת חומרים או לאישור רחצה. יש לאמת מדידה ולפעול לפי תווית המוצר. במצב חריג או לא ברור, פנה לאיש מקצוע. אין לערבב חומרים.';
 export const MEASUREMENT_ACTION = 'בחר מדד כדי לראות איך מתקנים אותו.';
 export const SHORT_TREATMENT_NOTE = 'לפני הוספת חומר, אמת את החריגה מול בדיקה אמינה והוראות הציוד. אין לערבב חומרים; צילום אינו אישור רחצה.';
@@ -45,18 +48,20 @@ export const TREATMENT_ORDER: StripParameter[] = ['alkalinity', 'ph', 'freeChlor
 
 function orderedSteps(parameter: ScanResultParameter, guidance: MetricGuidance): string {
   const kind = comparisonKind(parameter);
-  if (kind === 'ok') return 'בטווח. המשך מעקב רגיל.';
+  if (kind === 'ok') return readingNeedsClarification(parameter)
+    ? 'הצבע בין דרגות שמשנות את כיוון הטיפול. בדוק שוב לפני הוספת חומר.'
+    : 'לפי ההערכה, אין צורך בתיקון מדד זה.';
   const action = guidance.action.replace(/^אם החריגה אומתה, /, '');
   if (parameter.key === 'freeChlorine' && kind === 'high') {
     return [
-      'אל תוסיף עוד כלור.',
-      'בדוק את הגדרות מערכת החיטוי.',
-      'אמת את רמת הכלור בערכת DPD לפי הוראותיה.',
-      'בצע בדיקה חדשה לפני מעבר למדד הבא.',
+      'אל תוסיף כלור נוסף; הפחת או השהה הזנת כלור לפי הוראות המערכת.',
+      'המשך סחרור לפי הוראות המערכת.',
+      'בדוק שוב כלור חופשי ו־pH כדי לעקוב אחרי ירידת הרמה.',
+      'חזור לרחצה רק כשהמדדים עומדים בדרישות המוצר ומערכת החיטוי.',
     ].join('\n');
   }
   return [
-    action,
+    readingNeedsClarification(parameter) ? `אם בדיקה נוספת אישרה את החריגה: ${action}` : action,
     'הפעל סחרור לפי הוראות המוצר והמערכת.',
     'המתן למשך הזמן שמופיע בהוראות המוצר.',
     'בצע בדיקה חדשה לפני מעבר למדד הבא.',
@@ -67,14 +72,16 @@ function statusCard(parameter: ScanResultParameter): DosageRecommendation {
   const guidance = buildMetricGuidance(parameter);
   return {
     paramKey: parameter.key,
-    labelHe: parameter.name,
+    labelHe: PARAM_LABEL_HE[parameter.key].labelHe,
     measured: parameter.value,
     target: (parameter.idealRange.min + parameter.idealRange.max) / 2,
+    comparisonRange: { min: parameter.idealRange.min, max: parameter.idealRange.max },
     unit: parameter.unit,
     status: comparisonKind(parameter)!,
     actionHe: guidance ? orderedSteps(parameter, guidance) : 'נתוני המדד אינם מספיקים להנחיה.',
     guidance,
-    verificationSuggested: parameter.evidence?.needsVerification === true,
+    verificationSuggested: needsReadingVerification(parameter),
+    actionUncertain: readingNeedsClarification(parameter),
     alternativeMeasured: parameter.evidence?.modelCertainty === 'adjacent'
       ? parameter.evidence.alternativeValue : undefined,
     blocked: true,
@@ -88,19 +95,30 @@ export function calculateDosage(result: StripAnalysisResult, pool?: Pool): Dosag
   const volumeMissing = !pool || !Number.isFinite(pool.volumeLiters) || pool.volumeLiters <= 0;
   const invalidReading = result.accepted === false || result.isValidStrip === false || result.lowConfidence ||
     Boolean(result.failureReason && result.failureReason !== 'none');
+  const chlorineReview = getChlorineReview(result.parameters);
+  const chlorinePlan = chlorineReview ? buildChlorineActionPlan(chlorineReview) : undefined;
   let recommendations = result.parameters
     .filter((parameter) => TREATMENT_ORDER.includes(parameter.key) && buildMetricGuidance(parameter) !== undefined)
     .filter((parameter) => parameter.key !== 'salt' || pool?.type === 'salt')
     .map(statusCard)
     .sort((a, b) => TREATMENT_ORDER.indexOf(a.paramKey) - TREATMENT_ORDER.indexOf(b.paramKey))
     .map((rec) => invalidReading ? { ...rec, guidance: undefined, actionHe: 'צלם סטיק חדש וברור לפני קבלת הנחיות.' } : rec);
-  // Restore one current action in the original order. Low pH retains priority;
-  // numerical quantities remain unavailable without product protocols.
+  // One current action in the original order. Low pH retains priority; the
+  // chlorine plan follows alkalinity/pH correction, without numerical doses.
   const requiredReadingsPresent = ['ph', 'freeChlorine', 'alkalinity'].every((key) =>
-    recommendations.some((rec) => rec.paramKey === key));
+    recommendations.some((rec) => rec.paramKey === key)) &&
+    (result.brandId !== 'aquachek-pro-5in1' || result.parameters.some(parameter =>
+      parameter.key === 'totalChlorine' && Number.isFinite(parameter.value) && parameter.value >= 0));
   let primaryRecommendation = invalidReading || !requiredReadingsPresent ? undefined :
     recommendations.find((rec) => rec.paramKey === 'ph' && rec.status === 'low') ??
     recommendations.find((rec) => rec.status !== 'ok');
+  // Keep alkalinity/pH correction first, and address excessive free chlorine
+  // before any chlorine shock plan. A pair problem overrides a separate
+  // free-chlorine addition and later optional metrics.
+  if (chlorineReview && primaryRecommendation &&
+      !['alkalinity', 'ph'].includes(primaryRecommendation.paramKey) &&
+      !(primaryRecommendation.paramKey === 'freeChlorine' && primaryRecommendation.status === 'high'))
+    primaryRecommendation = undefined;
   if (primaryRecommendation) {
     // Avoid suggesting an alkalinity-lowering acid when pH is already low.
     if (primaryRecommendation.paramKey === 'ph' && primaryRecommendation.status === 'low' &&
@@ -119,8 +137,11 @@ export function calculateDosage(result: StripAnalysisResult, pool?: Pool): Dosag
   return {
     recommendations,
     primaryRecommendation,
-    summary: invalidReading ? 'צלם סטיק חדש וברור לפני קבלת הנחיות.' : primaryRecommendation?.actionHe.split('\n')[0] ??
-      (requiredReadingsPresent ? 'המדדים שנקראו בטווח ההשוואה. המשך מעקב רגיל.' : 'הבדיקה חלקית. השלם את המדדים החסרים לפני טיפול.'),
+    summary: invalidReading ? 'צלם סטיק חדש וברור לפני קבלת הנחיות.' : primaryRecommendation?.actionHe.split('\n')[0] ?? chlorinePlan?.summary ??
+      (!requiredReadingsPresent ? 'הבדיקה חלקית. השלם את המדדים החסרים לפני טיפול.'
+        : recommendations.some(rec => rec.actionUncertain)
+          ? 'בחלק מהמדדים הצבע בין טווחים. בדוק אותם שוב לפני בחירת חומר.'
+          : 'לפי ההערכה, המדדים בטווח ההשוואה. אין צורך בתיקון כדי להגיע למרכז הטווח.'),
     safetyNote: MEASUREMENT_SAFETY_NOTE,
     retestNote: 'בדוק שוב במועד שמופיע בהוראות המוצר. זמן המתנה או צילום לבדם אינם אישור רחצה.',
     volumeMissing,
@@ -131,20 +152,27 @@ export function calculateDosage(result: StripAnalysisResult, pool?: Pool): Dosag
 // Cached/cloud recommendations cannot bypass the current treatment policy.
 export function protectAnalysisResult(result: StripAnalysisResult, pool?: Pool): StripAnalysisResult {
   const dosage = calculateDosage(result, pool);
+  const chlorineReview = getChlorineReview(result.parameters);
+  const chlorinePlan = chlorineReview ? buildChlorineActionPlan(chlorineReview) : undefined;
   return {
     ...result,
     recommendation: dosage.summary,
     parameters: result.parameters.map((parameter) => {
       const kind = comparisonKind(parameter);
+      const actionUncertain = readingNeedsClarification(parameter);
+      const chlorineIssue = parameter.key === 'totalChlorine' ? chlorineReview : undefined;
       return {
         ...parameter,
+        name: PARAM_LABEL_HE[parameter.key].labelHe,
         status: {
           kind: kind ?? parameter.status.kind,
-          label: kind === undefined ? 'נתוני ההשוואה אינם זמינים' : kind === 'ok' ? 'בטווח ההשוואה'
+          label: chlorineIssue ? chlorineIssue.reason === 'gap' ? 'חשד לכלור קשור' : 'קריאות סותרות'
+            : actionUncertain ? 'קריאה בין טווחים' : kind === undefined ? 'נתוני ההשוואה אינם זמינים' : kind === 'ok' ? 'בטווח לפי ההערכה'
             : kind === 'low' ? 'מתחת לטווח ההשוואה' : 'מעל לטווח ההשוואה',
-          tone: kind === undefined ? 'neutral' as const : kind === 'ok' ? 'success' as const : 'warning' as const,
+          tone: actionUncertain || chlorineIssue ? 'warning' as const : kind === undefined ? 'neutral' as const : kind === 'ok' ? 'success' as const : 'warning' as const,
         },
-        recommendation: dosage.recommendations.find((rec) => rec.paramKey === parameter.key)?.actionHe ??
+        recommendation: chlorineReview && (parameter.key === 'freeChlorine' || parameter.key === 'totalChlorine')
+          ? chlorinePlan!.summary : dosage.recommendations.find((rec) => rec.paramKey === parameter.key)?.actionHe ??
           'נתוני המדד אינם מספיקים להנחיה.',
       };
     }),

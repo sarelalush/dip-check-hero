@@ -84,6 +84,91 @@ percentage. Physical readings compared with a separate measurement method are
 still needed to quantify accuracy.
 
 No historical user results are overwritten or automatically reanalyzed.
+
+## Pad identity and chlorine presentation (2026-10-18)
+
+Version 28 explicitly maps four physical pads to the five reference rows:
+pad 1 -> TC row 1 / alternative bromine row 2; pad 2 -> FC row 3;
+pad 3 -> pH row 4; pad 4 -> alkalinity row 5. The supplied image footer's
+five-item list must not be interpreted as five physical reagent pads. TC/FC
+are independently read; neither the two sanitizer scales nor different pad
+values are added or copied to obtain a chlorine estimate. The chart, levels,
+phone-photo acceptance rules, and diagnostic-only pixel behavior are unchanged.
+
+The mobile results show total chlorine separately without assigning it the
+free-chlorine target, treatment order or dose. Canonical parameter labels also
+disambiguate saved results that previously called FC simply "chlorine". When
+reported TC is below FC, both displayed readings request verification; no
+reported number is altered, and no combined-chlorine quantity is inferred.
+Pro results missing TC remain partial and display "not read", without filling
+in a value or offering a treatment step from an incomplete Pro result.
+This presentation/identity change is not field calibration or a demonstrated
+improvement in numerical reading accuracy. No new scans/provider evaluations
+were run for it, in accordance with AGENTS.md.
+
+The owner's subsequent visual request orders result cards by physical pad:
+TC, FC, pH, alkalinity; this is separate from the treatment-step order.
+Each card has a source-labelled color sample. For Pro, four stored diagnostic
+padRgbs supply image-region averages only when their identity has been aligned
+to a unique four-band physical sequence (v29 padColorIdentity=structure-aligned).
+These samples can include localization or exposure error and are not calibrated
+pad colors. If no such sample exists, an available referenceRgb is explicitly
+labelled as a chart color; without either, the UI shows that no color was saved.
+No color is reconstructed from a value or guessed from a model color name.
+
+The graphic now displays TC, pH and alkalinity. TC is a measurement-only arc:
+it has no free-chlorine target, target marker or health/status classification.
+The graph preserves approximate-value notation and omits scale percentages,
+which were not confidence or water-safety scores. Treatment still uses its
+existing independently read free-chlorine parameter and treatment order.
+
+## Diagnostic sample alignment (v29)
+
+The user's actual v28 result on 2026-10-18 exposed model boxes centered at
+0.08/0.18/0.28/0.38 of image height. These sampled background / TC / FC / pH,
+omitting the real alkalinity pad. The local structure evidence already contained
+the four reagent bands, but the fourth had been discarded from the model-based
+envelope. Model color descriptions and numeric readings were separate from
+these mistaken coordinates; swatch errors do not validate or invalidate those
+numerical estimates by themselves.
+
+V29 considers both selected and previously ignored image bands. Only a unique
+sequence of four distinct, regularly spaced bands, geometrically compatible
+with a common model-coordinate offset, refines diagnostic sampling boxes.
+Original model boxes are retained alongside sampled boxes for audit. Ambiguous
+or incomplete geometry remains unverified and cannot supply photo swatches.
+Older untagged samples also fall back to explicitly labelled reference colors;
+historical numeric results and model confidence are not rewritten.
+
+These new geometric thresholds are display/diagnostic heuristics, not validated
+chemical calibration or scan rejection rules. No image-only replay, test scan
+or extra paid model evaluation was run; code review and static checks only.
+
+## Source-photo swatches (v30)
+
+The UI now shows a clipped square from the original source image instead of
+turning a diagnostic RGB average into a flat color. The central 58% of the
+smaller aligned pad dimension defines the square, avoiding carrier edges.
+There is no tint, white-balance correction, saturation boost, JPEG re-encoding,
+or chart-color substitution inside a photo preview. Image loading completes
+before the swatch is labelled as a photo; load failures use an explicitly
+labelled reference fallback or missing-color state.
+
+The four-band geometry helper is shared by the Edge Function and mobile.
+Saved scans can use their stored model boxes and visible/ignored bands to
+realign the display locally, without sending the image to Gemini or rewriting
+historical values. Preview dimensions come from the source image; server image
+dimensions (stored starting v30) or existing capture-quality dimensions anchor
+the stored band coordinates. An aspect-ratio mismatch, ambiguous geometry or
+unavailable source image prevents a photo crop from being presented.
+If the local source has expired but the private scan still exists, the client
+resolves a five-minute signed preview URL under the user's existing Storage
+permissions. The URL stays in memory and no image access is made public.
+
+The change improves fidelity to the photographed pixels, not proof that those
+pixels or AI estimates equal water chemistry. Static checks only; no trial
+scans, new provider requests, image-processing replays or test suites were run.
+
 Normally `AGENTS.md` forbids tests and paid validation. On 2026-10-13 the owner
 explicitly requested grading the ten previously selected photos, sending them
 to the model, comparing answers and fixing failures. That request authorized

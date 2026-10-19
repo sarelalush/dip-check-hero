@@ -2,6 +2,7 @@ import type { StatusTone } from '../components/StatusBadge';
 import type { DosageCalculationResult } from './dosage';
 import type { StripParameter } from './strip';
 import type { CaptureMetadata, ImageQualityReport } from './captureQuality';
+import type { PadColorBand, PadColorBox } from '../../../supabase/functions/_shared/pad-color-geometry';
 
 export type ScanParameterKey = StripParameter;
 
@@ -62,6 +63,15 @@ export interface AnalysisEvidence {
   runConfidences: number[];
   requiredParameters: ScanParameterKey[];
   parameters: Partial<Record<ScanParameterKey, ParameterAnalysisEvidence>>;
+  colorAnalysis?: {
+    padRgbs?: [number, number, number][];
+    padColorIdentity?: 'structure-aligned' | 'unverified';
+    imageWidth?: number;
+    imageHeight?: number;
+    sampledPadBoxes?: PadColorBox[];
+    modelPadBoxes?: PadColorBox[];
+    structure?: { colorBands?: PadColorBand[]; ignoredColorBands?: PadColorBand[] };
+  };
 }
 
 export interface StripAnalysisResult {

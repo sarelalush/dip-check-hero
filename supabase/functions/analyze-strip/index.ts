@@ -29,6 +29,7 @@ import { Image as ImageScript } from 'https://deno.land/x/imagescript@1.2.15/mod
 import bundledProChart from '../_shared/aquachek-pro-chart.json' with { type: 'json' };
 import bundledProReferenceImage from '../_shared/aquachek-pro-reference-image.json' with { type: 'json' };
 import { parseProColorChart, buildProChartPrompt, PRO_METRICS, type ProColorChart } from '../_shared/strip-color-reference.ts';
+import { alignPadColorBoxes } from '../_shared/pad-color-geometry.ts';
 import {
   AQUACHEK_PRO_REFS as PRO_REFS,
   analyzeAquachekProDiscretePadRgbs,
@@ -135,6 +136,8 @@ interface ParameterAnalysisEvidence {
 }
 
 interface ColorAnalysisEvidence {
+  imageWidth?: number;
+  imageHeight?: number;
   confidence: number;
   distances: Partial<Record<StripParameter, number>>;
   margins: Partial<Record<StripParameter, number>>;
@@ -144,6 +147,8 @@ interface ColorAnalysisEvidence {
   modelPadCenterYs?: number[];
   modelPadBoxes?: NormalizedPadBox[];
   padLocalization?: 'model-boxes' | 'structure-refined';
+  padColorIdentity?: 'structure-aligned' | 'unverified';
+  sampledPadBoxes?: NormalizedPadBox[];
   localizationCandidates?: Array<{
     confidence: number;
     padCenterYs?: number[];
@@ -322,7 +327,7 @@ interface NormalizedPadBox {
 
 const SCAN_IMAGES_BUCKET = 'scan-images';
 const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash';
-const ANALYSIS_VERSION = 'aquachek-pro-v27-phone-photo-readability';
+const ANALYSIS_VERSION = 'aquachek-pro-v30-source-photo-crops';
 const MIN_ACCEPTED_CV_CONFIDENCE = 0.32;
 // Retained focus thresholds are heuristics; they do not establish accuracy
 // across phone models, lighting conditions or strip lots.
@@ -357,7 +362,7 @@ const PARAM_KEYS: StripParameter[] = [
 ];
 
 const PARAM_META: Record<StripParameter, { name: string; unit: string; min: number; max: number }> = {
-  freeChlorine: { name: 'כלור', unit: 'ppm', min: 1, max: 3 },
+  freeChlorine: { name: 'כלור חופשי', unit: 'ppm', min: 1, max: 3 },
   totalChlorine: { name: 'כלור כולל', unit: 'ppm', min: 1, max: 3 },
   bromine: { name: 'ברום', unit: 'ppm', min: 2, max: 6 },
   ph: { name: 'pH', unit: '', min: 7.2, max: 7.6 },
@@ -800,8 +805,8 @@ function analyzeAquachekCvCandidate(
     ? modelPadWidths[Math.floor(modelPadWidths.length / 2)]
     : (modelPadWidths[modelPadWidths.length / 2 - 1] + modelPadWidths[modelPadWidths.length / 2]) / 2;
 
-  // This local detector is diagnostic only. It no longer decides where pad
-  // colors are sampled; every reagent pad uses its own Gemini bounding box.
+  // Structure is diagnostic only. Four unambiguous bands may refine sampling
+  // coordinates; neither this geometry nor sampled colors replace AI values.
   const horizontalLocalization = locateAquachekProStripCenterX(
     image.width,
     image.height,
@@ -816,6 +821,12 @@ function analyzeAquachekCvCandidate(
     geometryCenterYs,
     modelStripWidth,
   );
+  const alignedBoxes = alignPadColorBoxes(image.height, normalizedPadBoxes, [
+    ...structure.colorBands,
+    ...structure.ignoredColorBands,
+  ]);
+  const sampledBoxes = alignedBoxes ?? normalizedPadBoxes;
+  const sampledCenterYs = sampledBoxes.map(box => box.centerY);
   const whiteReference = structure.carrierReference;
   const sharpness = measureAquachekProSharpness(
     image.width,
@@ -823,32 +834,36 @@ function analyzeAquachekCvCandidate(
     getRgb,
     modelCenterX * image.width,
     modelStripWidth,
-    geometryCenterYs,
+    [...sampledCenterYs].sort((left, right) => left - right),
   );
-  const pads = samplePadBoxes(image, normalizedPadBoxes);
+  const pads = samplePadBoxes(image, sampledBoxes);
   const analysis = analyzeAquachekProDiscretePadRgbs(pads, { whiteReference, refs: chart.parameters });
   return {
     values: analysis.values,
     confidence: analysis.confidence,
     notes: 'Localized reagent pads compared with the versioned application color reference; this is not a guarantee of chemical accuracy.',
     evidence: {
+      imageWidth: image.width,
+      imageHeight: image.height,
       confidence: analysis.confidence,
       distances: analysis.distances,
       margins: analysis.margins,
       padRgbs: pads,
       selectedValues: analysis.values,
-      padCenterYs: normalizedCenterYs,
+      padCenterYs: sampledCenterYs,
       modelPadCenterYs: normalizedCenterYs,
       modelPadBoxes: normalizedPadBoxes,
-      padLocalization: 'model-boxes',
+      sampledPadBoxes: sampledBoxes,
+      padLocalization: alignedBoxes ? 'structure-refined' : 'model-boxes',
+      padColorIdentity: alignedBoxes ? 'structure-aligned' : 'unverified',
       localizationCandidates: [{
         confidence: analysis.confidence,
-        padCenterYs: normalizedCenterYs,
-        padLocalization: 'model-boxes',
+        padCenterYs: sampledCenterYs,
+        padLocalization: alignedBoxes ? 'structure-refined' : 'model-boxes',
       }],
       whiteReference,
       sharpnessVariance: sharpness.variance,
-      padFocus: measureAquachekPadFocus(image.width, image.height, getRgb, normalizedPadBoxes),
+      padFocus: measureAquachekPadFocus(image.width, image.height, getRgb, sampledBoxes),
       minimumSharpnessVariance: MIN_AQUACHEK_SHARPNESS_VARIANCE,
       hardMinimumSharpnessVariance: HARD_MIN_AQUACHEK_SHARPNESS_VARIANCE,
       structure,
@@ -1023,6 +1038,10 @@ Provide best-effort visiblePadBoxes around reagent material in wet-tip-to-handle
 order (TC/bromine, FC, pH, alkalinity), normalized to the image. Preserve this physical
 order even if the strip is upside down. Avoid white gaps and background. Pad boxes are
 diagnostic; uncertainty about their exact coordinates alone must not reject a readable strip.
+Normalize coordinates against the ENTIRE first photograph, not the reference image or
+an imagined tight crop. Locate each visible reagent region separately; do not invent
+a regularly spaced coordinate template. The last box belongs on the fourth colored
+reagent pad before the long blank handle, not on the preceding pH pad.
 Report physicalPadCount from directly visible pads, independent of the boxes.
 Structural flags and padIntegrity are required. If the pad identity, physical continuity
 or a listed color level is actually unclear, report low_confidence instead of guessing.
@@ -1695,6 +1714,9 @@ function buildPhonePhotoResult(
   } else diagnosticWarnings.push(image ? 'approximate_pad_boxes' : 'pixel_sampling_not_run');
   const evidence = candidate?.evidence;
   auditEvidence.colorAnalysis = evidence;
+  if (evidence && evidence.padColorIdentity !== 'structure-aligned') {
+    diagnosticWarnings.push('pad_color_identity_unverified');
+  }
   if (evidence?.padFocus?.severeDefocus) {
     // Ordinary phone softness must not override an otherwise readable model
     // result. Keep this uncalibrated focus heuristic as a diagnostic warning.
