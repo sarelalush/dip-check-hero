@@ -65,8 +65,8 @@ function formatValue(value: number, unit: string, estimated = false) {
   return `${estimated ? 'כ־' : ''}\u2066${unit ? `${display} ${unit}` : display}\u2069`;
 }
 
-// Measurement-only entries (such as total chlorine) have no borrowed
-// free-chlorine target or low/ok/high classification.
+// Entries without a supplied comparison range remain measurement-only.
+// Total chlorine uses its own analysis range, never a free-chlorine target.
 export interface ParameterArcReading {
   paramKey: StripParameter;
   labelHe: string;

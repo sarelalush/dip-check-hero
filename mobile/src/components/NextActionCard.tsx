@@ -3,7 +3,8 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import type { StripAnalysisResult } from '../domain/scanResults';
 import type { Pool } from '../domain/pool';
 import { MEASUREMENT_SAFETY_NOTE, SHORT_TREATMENT_NOTE } from '../domain/dosage';
-import { nextAction } from '../domain/resultPresentation';
+import { nextAction, resultStatus } from '../domain/resultPresentation';
+import { MEASUREMENT_COPY } from '../domain/measurementPresentation';
 import { useTreatments } from '../state/TreatmentContext';
 import {
   cancelPoolReminderNotification,
@@ -42,6 +43,15 @@ export function NextActionCard({
   const treatmentBlocked = Boolean(chlorineReview) || result.dosage?.treatmentBlocked !== false;
   const primary = result.dosage?.primaryRecommendation;
   const showChlorinePlan = Boolean(chlorinePlan && !primary);
+  const displayStatus = resultStatus(result);
+  const inRange = displayStatus.tone === 'success';
+  const actionTitle = showChlorinePlan
+    ? chlorineReview?.reason === 'inconsistent' ? 'בודקים שוב את הכלור' : 'מטפלים בפער בין סוגי הכלור'
+    : primary?.actionUncertain ? `בודקים שוב: ${MEASUREMENT_COPY[primary.paramKey].label}`
+    : primary ? `מתחילים ב${MEASUREMENT_COPY[primary.paramKey].label}`
+    : inRange ? 'ממשיכים במעקב רגיל'
+    : displayStatus.label === 'כלור כולל מחוץ לטווח ההשוואה' ? 'קוראים את שני סוגי הכלור יחד'
+    : 'משלימים את הבדיקה';
   const followUpSteps =
     primary?.actionHe
       .split('\n')
@@ -122,30 +132,41 @@ export function NextActionCard({
     <Card style={[styles.card, showChlorinePlan && styles.reviewCard]}>
       {treatmentBlocked ? (
         <>
-          <Text style={[styles.kicker, showChlorinePlan && styles.reviewTitle]}>{showChlorinePlan
-            ? chlorinePlan!.title
-            : primary ? `מתחילים ב${primary.labelHe === 'pH' ? '־' : ''}${primary.labelHe}` : 'מה עושים עכשיו'}</Text>
+          <View style={styles.actionHeader}>
+            <View style={styles.actionIcon}><LineIcon name={inRange ? 'check' : 'results'} color={colors.primaryDeep} size={20} /></View>
+            <View style={styles.actionHeading}>
+              <Text style={styles.kicker}>מה עושים עכשיו?</Text>
+              <Text style={styles.actionTitle}>{actionTitle}</Text>
+            </View>
+          </View>
+          {isHistorical ? <Text style={styles.historicalNote}>זו בדיקה קודמת. בצע בדיקה עדכנית לפני טיפול.</Text> : null}
           {showChlorinePlan ? <>
-            <Text style={styles.reviewText}>{chlorinePlan!.explanation}</Text>
+            {chlorinePlan!.treatmentNote ? <View style={styles.beforeTreatment}>
+              <Text style={styles.beforeTitle}>לפני שמתחילים</Text>
+              <Text style={styles.note}>{chlorinePlan!.treatmentNote}</Text>
+            </View> : null}
             <TreatmentSteps steps={chlorinePlan!.steps} />
-            {chlorinePlan!.treatmentNote ? <Text style={styles.note}>{chlorinePlan!.treatmentNote}</Text> : null}
           </> : primary?.guidance ? <>
-            <Text style={styles.amount}>{primary.labelHe} {primary.status === 'high' ? 'גבוה' : 'נמוך'}</Text>
-            {isHistorical ? <Text style={styles.note}>זו בדיקה קודמת. בצע בדיקה עדכנית לפני טיפול.</Text> : null}
             <TreatmentSteps steps={primary.actionHe.split('\n').filter(Boolean)} />
-          </> : <Text style={styles.action}>{nextAction(result)}</Text>}
-          {primary ? <Text style={styles.note}>מדד אחד בכל פעם. אחרי הבדיקה החדשה נבחר את הצעד הבא.</Text> : null}
+          </> : <Text style={styles.followUp}>{nextAction(result)}</Text>}
+          {primary ? <View style={styles.nextStage}>
+            <LineIcon name="history" color={colors.primaryDeep} size={15} />
+            <Text style={styles.nextStageText}>מטפלים עכשיו במדד אחד. בבדיקה הבאה נבחר מחדש את הטיפול לפי כל הערכים, גם אם השתנו.</Text>
+          </View> : null}
           {primary ? <Text style={styles.note}>אמת חריגה לפני הוספת חומר. פעל לפי התווית ואל תערבב חומרים.</Text> : null}
-          <DisclosureSection title="מידע חשוב">
+          <DisclosureSection title="הסבר ומידע חשוב">
+            {showChlorinePlan ? <Text style={styles.note}>{chlorinePlan!.explanation}</Text> : null}
+            {primary?.guidance ? <Text style={styles.note}>{primary.guidance.meaning}</Text> : null}
             <Text style={styles.note}>{MEASUREMENT_SAFETY_NOTE}</Text>
             {result.evidence?.diagnosticWarnings?.length ? <Text style={styles.note}>
               הצילום והתאורה יכולים להשפיע על הקריאה. ערכים חלופיים מופיעים ליד המדד כשקיימים.
             </Text> : null}
             <Text style={styles.note}>{SHORT_TREATMENT_NOTE}</Text>
           </DisclosureSection>
-          {chlorineReview ? (
+          {chlorineReview || !primary ? (
             <Pressable accessibilityRole="button" style={styles.linkButton} onPress={onNewScan}>
-              <Text style={styles.link}>סריקת סטיק נוספת</Text>
+              <LineIcon name="scan" color={colors.primaryDeep} size={17} />
+              <Text style={styles.link}>{isHistorical ? 'בדיקה עדכנית' : 'סריקת סטיק נוספת'}</Text>
             </Pressable>
           ) : <PrimaryButton label={isHistorical ? 'בדיקה עדכנית' : 'בדיקה חוזרת'} icon="scan" onPress={onNewScan} />}
         </>
@@ -253,10 +274,18 @@ export function NextActionCard({
   );
 }
 const styles = StyleSheet.create({
-  reviewCard: { backgroundColor: '#FFFCF5', borderColor: '#E8D4A5' },
-  reviewTitle: { color: '#8A5600', fontSize: 18 },
-  reviewText: { color: colors.textSoft, fontFamily: typography.fontFamilyRegular, fontSize: 13, lineHeight: 21, ...rtl.text },
-  card: { marginTop: 14, gap: 14, borderWidth: 1, borderColor: colors.borderStrong },
+  reviewCard: { borderColor: '#E8D4A5' },
+  card: { marginTop: 14, gap: 14, padding: 16, borderWidth: 1, borderColor: colors.borderStrong },
+  actionHeader: { ...rtl.row, alignItems: 'center', gap: 10 },
+  actionIcon: { width: 40, height: 40, backgroundColor: colors.primarySoft, borderRadius: 13,
+    alignItems: 'center', justifyContent: 'center' },
+  actionHeading: { flex: 1, gap: 3 },
+  actionTitle: { color: colors.text, fontFamily: typography.fontFamilyBold, fontSize: 19, lineHeight: 28, ...rtl.text },
+  beforeTreatment: { backgroundColor: colors.warningSoft, borderRadius: 12, padding: 12, gap: 4 },
+  beforeTitle: { color: '#8A5600', fontFamily: typography.fontFamilySemiBold, fontSize: 12, ...rtl.text },
+  historicalNote: { color: '#8A5600', fontFamily: typography.fontFamilyMedium, fontSize: 13, lineHeight: 21, ...rtl.text },
+  nextStage: { ...rtl.row, alignItems: 'flex-start', gap: 6, borderTopWidth: 1, borderTopColor: colors.borderSoft, paddingTop: 12 },
+  nextStageText: { flex: 1, color: colors.textSoft, fontFamily: typography.fontFamilyRegular, fontSize: 12, lineHeight: 20, ...rtl.text },
   steps: { gap: 8 },
   stepRow: { ...rtl.row, alignItems: 'flex-start', gap: 9 },
   stepDot: {
@@ -285,8 +314,8 @@ const styles = StyleSheet.create({
   safetyText: { flex: 1 },
   kicker: {
     color: colors.primaryDeep,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 16,
+    fontFamily: typography.fontFamilyMedium,
+    fontSize: 12,
     ...rtl.text,
   },
   action: {
@@ -328,6 +357,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: 'center',
   },
-  linkButton: { minHeight: 44, justifyContent: 'center' },
+  linkButton: { ...rtl.row, minHeight: 46, justifyContent: 'center', alignItems: 'center', gap: 6,
+    borderRadius: 12, backgroundColor: colors.backgroundSoft, paddingHorizontal: 10 },
   link: { color: colors.primaryDeep, fontFamily: typography.fontFamilySemiBold, ...rtl.text },
 });

@@ -40,7 +40,7 @@ export interface DosageCalculationResult {
   policyVersion?: string;
   treatmentBlocked?: boolean;
 }
-export const TREATMENT_POLICY_VERSION = 'action-first-chlorine-guidance-2026-10-18';
+export const TREATMENT_POLICY_VERSION = 'one-current-action-retest-2026-10-19';
 export const MEASUREMENT_SAFETY_NOTE = 'הערכים הם הערכה מצילום בזמן הבדיקה. ייתכנו טעויות. אין להסתמך עליהם לבדם להוספת חומרים או לאישור רחצה. יש לאמת מדידה ולפעול לפי תווית המוצר. במצב חריג או לא ברור, פנה לאיש מקצוע. אין לערבב חומרים.';
 export const MEASUREMENT_ACTION = 'בחר מדד כדי לראות איך מתקנים אותו.';
 export const SHORT_TREATMENT_NOTE = 'לפני הוספת חומר, אמת את החריגה מול בדיקה אמינה והוראות הציוד. אין לערבב חומרים; צילום אינו אישור רחצה.';
@@ -64,7 +64,7 @@ function orderedSteps(parameter: ScanResultParameter, guidance: MetricGuidance):
     readingNeedsClarification(parameter) ? `אם בדיקה נוספת אישרה את החריגה: ${action}` : action,
     'הפעל סחרור לפי הוראות המוצר והמערכת.',
     'המתן למשך הזמן שמופיע בהוראות המוצר.',
-    'בצע בדיקה חדשה לפני מעבר למדד הבא.',
+    'בצע בדיקה חדשה. הטיפול הבא ייקבע לפי התוצאות החדשות.',
   ].join('\n');
 }
 
@@ -97,6 +97,8 @@ export function calculateDosage(result: StripAnalysisResult, pool?: Pool): Dosag
     Boolean(result.failureReason && result.failureReason !== 'none');
   const chlorineReview = getChlorineReview(result.parameters);
   const chlorinePlan = chlorineReview ? buildChlorineActionPlan(chlorineReview) : undefined;
+  const totalChlorine = result.parameters.find(parameter => parameter.key === 'totalChlorine');
+  const totalOutsideRange = totalChlorine && comparisonKind(totalChlorine) !== undefined && comparisonKind(totalChlorine) !== 'ok';
   let recommendations = result.parameters
     .filter((parameter) => TREATMENT_ORDER.includes(parameter.key) && buildMetricGuidance(parameter) !== undefined)
     .filter((parameter) => parameter.key !== 'salt' || pool?.type === 'salt')
@@ -109,8 +111,17 @@ export function calculateDosage(result: StripAnalysisResult, pool?: Pool): Dosag
     recommendations.some((rec) => rec.paramKey === key)) &&
     (result.brandId !== 'aquachek-pro-5in1' || result.parameters.some(parameter =>
       parameter.key === 'totalChlorine' && Number.isFinite(parameter.value) && parameter.value >= 0));
+  const ph = recommendations.find(rec => rec.paramKey === 'ph');
+  const alkalinity = recommendations.find(rec => rec.paramKey === 'alkalinity');
+  // Use the current readings to choose one safe action. A pH reading that may
+  // already be low must be clarified before an alkalinity-lowering treatment;
+  // this is not a plan to correct a possible future change in pH.
+  const mayHaveLowPh = ph?.actionUncertain && (
+    !ph.comparisonRange || ph.alternativeMeasured === undefined ||
+    !Number.isFinite(ph.alternativeMeasured) || ph.alternativeMeasured < ph.comparisonRange.min
+  );
   let primaryRecommendation = invalidReading || !requiredReadingsPresent ? undefined :
-    recommendations.find((rec) => rec.paramKey === 'ph' && rec.status === 'low') ??
+    ph?.status === 'low' || (alkalinity?.status === 'high' && mayHaveLowPh) ? ph :
     recommendations.find((rec) => rec.status !== 'ok');
   // Keep alkalinity/pH correction first, and address excessive free chlorine
   // before any chlorine shock plan. A pair problem overrides a separate
@@ -139,7 +150,8 @@ export function calculateDosage(result: StripAnalysisResult, pool?: Pool): Dosag
     primaryRecommendation,
     summary: invalidReading ? 'צלם סטיק חדש וברור לפני קבלת הנחיות.' : primaryRecommendation?.actionHe.split('\n')[0] ?? chlorinePlan?.summary ??
       (!requiredReadingsPresent ? 'הבדיקה חלקית. השלם את המדדים החסרים לפני טיפול.'
-        : recommendations.some(rec => rec.actionUncertain)
+        : totalOutsideRange ? 'הכלור הכולל מחוץ לטווח ההשוואה. קרא אותו יחד עם הכלור החופשי לפני בחירת טיפול.'
+        : recommendations.some(rec => rec.actionUncertain) || (totalChlorine && readingNeedsClarification(totalChlorine))
           ? 'בחלק מהמדדים הצבע בין טווחים. בדוק אותם שוב לפני בחירת חומר.'
           : 'לפי ההערכה, המדדים בטווח ההשוואה. אין צורך בתיקון כדי להגיע למרכז הטווח.'),
     safetyNote: MEASUREMENT_SAFETY_NOTE,

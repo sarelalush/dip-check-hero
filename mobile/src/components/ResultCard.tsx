@@ -4,6 +4,7 @@ import { colors, radius, rtl, shadows, typography } from '../theme';
 import { LineIcon } from './LineIcon';
 import type { PadColor } from '../domain/padColor';
 import { MeasurementCard, type MeasurementTone } from './MeasurementCard';
+import { MEASUREMENT_COPY } from '../domain/measurementPresentation';
 
 const STATUS_STYLE: Record<
   DosageRecommendation['status'],
@@ -39,9 +40,10 @@ interface ResultCardProps {
   compact?: boolean;
   padColor?: PadColor;
   showPadColor?: boolean;
+  padPosition?: number;
 }
 
-export function ResultCard({ rec, compact = false, padColor, showPadColor = false }: ResultCardProps) {
+export function ResultCard({ rec, compact = false, padColor, showPadColor = false, padPosition }: ResultCardProps) {
   const status = STATUS_STYLE[rec.status];
   const reviewLabel = rec.actionUncertain ? 'קריאה בין טווחים' : status.label;
   const tone: MeasurementTone = rec.actionUncertain ? 'warning'
@@ -56,9 +58,10 @@ export function ResultCard({ rec, compact = false, padColor, showPadColor = fals
     : 'הערכה מצילום. פרטי הקריאה מופיעים במידע הנוסף.';
   const waitingText = rec.paramKey === 'freeChlorine' && rec.status === 'high'
     ? 'אין להוסיף עוד כלור. בדוק שוב לפני טיפול נוסף.'
-    : 'בהמשך, אחרי בדיקה חוזרת.';
+    : 'הטיפול במדד הזה ייקבע בבדיקה הבאה.';
 
   if (compact) {
+    const copy = MEASUREMENT_COPY[rec.paramKey];
     const range = rec.comparisonRange;
     const comparisonText = range && Number.isFinite(range.min) && Number.isFinite(range.max) && range.min <= range.max
       ? `טווח השוואה: \u2066${range.min}–${range.max}${rec.unit ? ` ${rec.unit}` : ''}\u2069` : undefined;
@@ -66,12 +69,17 @@ export function ResultCard({ rec, compact = false, padColor, showPadColor = fals
       Number.isFinite(rec.alternativeMeasured) && rec.alternativeMeasured !== rec.measured
       ? `הצבע קרוב גם ל־${formatValue(rec.alternativeMeasured, rec.unit)}.` : undefined;
     const actionNote = rec.actionUncertain
-      ? 'בדוק שוב את המדד לפני בחירת חומר; שתי דרגות הצבע מצביעות על כיווני טיפול שונים.'
-      : rec.active || rec.status === 'ok' ? rec.actionHe.split('\n')[0] : waitingText;
+      ? 'הצבע בין שתי דרגות שמשנות את הטיפול. בדוק שוב לפני הוספת חומר.'
+      : rec.status === 'ok' ? undefined
+      : rec.active ? 'זה המדד שמטפלים בו קודם. ההוראות מופיעות למעלה.'
+      : waitingText;
     return (
-      <MeasurementCard label={rec.labelHe} value={formatValue(rec.measured, rec.unit, true)}
-        status={reviewLabel} tone={tone} detail={comparisonText}
-        note={[actionNote, alternativeNote].filter(Boolean).join(' ')}
+      <MeasurementCard label={copy.label} description={copy.description} explanation={copy.explanation}
+        padPosition={padPosition} value={formatValue(rec.measured, rec.unit, true)}
+        status={rec.actionUncertain ? 'בין שני טווחים' : rec.status === 'ok' ? 'בטווח לפי הצילום'
+          : rec.status === 'high' ? 'גבוה מהטווח' : 'נמוך מהטווח'} tone={tone} detail={comparisonText}
+        note={[actionNote, rec.actionUncertain ? alternativeNote : undefined].filter(Boolean).join(' ')}
+        detailNote={!rec.actionUncertain ? alternativeNote : undefined}
         showPadColor={showPadColor} padColor={padColor} />
     );
   }

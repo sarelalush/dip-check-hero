@@ -47,8 +47,11 @@ export function resultStatus(result?: StripAnalysisResult) {
   if (required.some((key) => !result.parameters.some((item) => item.key === key))) {
     return { label: 'הבדיקה חלקית', tone: 'neutral' as const };
   }
+  const totalChlorine = result.parameters.find(item => item.key === 'totalChlorine');
+  if (totalChlorine && comparisonKind(totalChlorine) !== 'ok')
+    return { label: 'כלור כולל מחוץ לטווח ההשוואה', tone: 'warning' as const };
   if (result.parameters.some(item =>
-    treatmentParameters.includes(item.key) && readingNeedsClarification(item)))
+    (treatmentParameters.includes(item.key) || item.key === 'totalChlorine') && readingNeedsClarification(item)))
     return { label: 'קריאה בין טווחים', tone: 'warning' as const };
   return { label: 'הערכים בטווח לפי ההערכה', tone: 'success' as const };
 }
@@ -58,5 +61,7 @@ export function nextAction(result?: StripAnalysisResult) {
   if (resultStatus(result).tone === 'neutral') return 'הבדיקה חלקית. השלם את המדדים החסרים לפני טיפול.';
   if (resultStatus(result).label === 'נדרש צילום חוזר')
     return 'צלם סטיק חדש וברור לפני קבלת המלצת טיפול.';
+  if (resultStatus(result).label === 'כלור כולל מחוץ לטווח ההשוואה')
+    return 'הכלור הכולל מחוץ לטווח ההשוואה. קרא אותו יחד עם הכלור החופשי לפני בחירת טיפול.';
   return (result.dosage?.policyVersion === TREATMENT_POLICY_VERSION ? result.dosage : calculateDosage(result)).summary;
 }

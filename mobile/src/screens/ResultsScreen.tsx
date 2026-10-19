@@ -9,7 +9,8 @@ import { ParameterArcs, type ParameterArcReading } from '../components/Parameter
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ResultCard } from '../components/ResultCard';
 import { TotalChlorineReadingCard } from '../components/TotalChlorineReadingCard';
-import { colors, radius, rtl, shadows, typography } from '../theme';
+import { ResultOverview } from '../components/ResultOverview';
+import { colors, radius, rtl, typography } from '../theme';
 import type { DosageRecommendation } from '../domain/dosage';
 import { calculateDosage, protectAnalysisResult, MEASUREMENT_SAFETY_NOTE } from '../domain/dosage';
 import type { Pool } from '../domain/pool';
@@ -40,6 +41,9 @@ import { usePadPhotoColors } from '../hooks/usePadPhotoColors';
 type Props = NativeStackScreenProps<RootStackParamList, 'Results'>;
 const FALLBACK_POOL_NAME = 'הבריכה שלי';
 const autoSavedResultIds = new Set<string>();
+const PRO_PAD_POSITION: Partial<Record<DosageRecommendation['paramKey'], number>> = {
+  totalChlorine: 1, freeChlorine: 2, ph: 3, alkalinity: 4,
+};
 const CORE_RESULT_PARAMETER_ORDER: DosageRecommendation['paramKey'][] = [
   'freeChlorine',
   'ph',
@@ -559,8 +563,12 @@ export function ResultsScreen({ navigation, route }: Props) {
       measured: totalChlorineReading.value,
       unit: totalChlorineReading.unit,
       estimated: true,
-      requiresReview: Boolean(chlorineReview),
-      reviewLabel: chlorineReview?.reason === 'gap' ? 'חשד לכלור קשור' : 'קריאות סותרות',
+      status: comparisonKind(totalChlorineReading),
+      target: comparisonKind(totalChlorineReading) !== undefined
+        ? targetForParameter(totalChlorineReading) : undefined,
+      requiresReview: Boolean(chlorineReview) || readingNeedsClarification(totalChlorineReading),
+      reviewLabel: chlorineReview?.reason === 'gap' ? 'חשד לכלור קשור'
+        : chlorineReview?.reason === 'inconsistent' ? 'קריאות סותרות' : 'קריאה בין טווחים',
     }] : []),
     ...resultCards.filter(rec => rec.paramKey === 'ph' || rec.paramKey === 'alkalinity')
       .map(rec => ({ ...rec, estimated: true, requiresReview: rec.actionUncertain })),
@@ -727,18 +735,8 @@ export function ResultsScreen({ navigation, route }: Props) {
 
   return (
     <AppShell activeTab={isSavedResult ? 'history' : 'scan'} navigation={navigation}>
-      <View style={styles.heroCard}>
-        <View pointerEvents="none" style={styles.heroGlowLeft} />
-        <View pointerEvents="none" style={styles.heroGlowRight} />
-        <Text style={styles.heroKicker}>תוצאות הבדיקה</Text>
-        <Text style={styles.heroTitle}>{poolName}</Text>
-        <Text style={styles.heroMeta}>
-          {[volumeLabel, formatAnalysisDate(visibleAnalysisResult.analyzedAt)]
-            .filter(Boolean)
-            .join(' · ')}
-        </Text>
-        <Text style={styles.heroMeta}>הערכה מצילום</Text>
-      </View>
+      <ResultOverview result={visibleAnalysisResult} poolName={poolName} isHistorical={isSavedResult}
+        metadata={[volumeLabel, formatAnalysisDate(visibleAnalysisResult.analyzedAt)].filter(Boolean).join(' · ')} />
 
       {visibleAnalysisResult.lowConfidence ? <LowConfidenceWarning /> : null}
 
@@ -761,14 +759,16 @@ export function ResultsScreen({ navigation, route }: Props) {
       />
 
       <View style={styles.cardsList}>
-        <Text style={styles.sectionTitle}>הערכות המדדים</Text>
-        <Text style={styles.sectionCaption}>לפי סדר הפדים, מקצה הסטיק לידית</Text>
+        <Text style={styles.sectionTitle}>מה הסטיק מראה?</Text>
+        <Text style={styles.sectionCaption}>הריבועים לפי הסדר, מקצה הסטיק לכיוון הידית</Text>
         {showTotalChlorine ? (
           <TotalChlorineReadingCard parameter={totalChlorineReading} chlorineReview={chlorineReview}
+            padPosition={visibleAnalysisResult.brandId === 'aquachek-pro-5in1' ? 1 : undefined}
             padColor={padColors.totalChlorine} />
         ) : null}
         {resultCards.map((rec) => (
           <ResultCard key={rec.paramKey} rec={rec} compact showPadColor
+            padPosition={visibleAnalysisResult.brandId === 'aquachek-pro-5in1' ? PRO_PAD_POSITION[rec.paramKey] : undefined}
             padColor={padColors[rec.paramKey]} />
         ))}
       </View>
@@ -784,12 +784,15 @@ export function ResultsScreen({ navigation, route }: Props) {
       ) : null}
 
       <View style={styles.section}>
-        <DisclosureSection title="תצוגה גרפית" summary="השוואת המדדים לטווחי ההשוואה">
+        <DisclosureSection title="השוואה בגרף" summary="למי שרוצה לראות גם את המספרים בגרף">
           <ParameterArcs recs={graphReadings} />
         </DisclosureSection>
       </View>
 
-      <DisclosureSection title="מידע נוסף">
+      <DisclosureSection title="איך קוראים את התוצאות?" summary="הסבר על הצבעים, המספרים ומקורות המידע">
+        <Text style={styles.explanationText}>הריבוע הצבעוני מציג את צבע הסטיק. צבע תגית המצב מסביר אם הקריאה בטווח, גבוהה או נמוכה — אלה שני דברים שונים.</Text>
+        <Text style={styles.explanationText}>כ־ פירושו שהמספר הוא הערכה מהצילום. ppm היא יחידת ריכוז של חומר במים. הטווח המוצג הוא טווח ההשוואה של האפליקציה, ולא מינון להוספה.</Text>
+        <Text style={styles.explanationText}>מדדים בטווח אינם אישור לרחצה. לפני הוספת חומר, אמת את המדידה ופעל לפי הוראות המוצר והמערכת.</Text>
         <GuidanceSources />
       </DisclosureSection>
 
@@ -857,58 +860,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     ...rtl.textCenter,
   },
-  heroCard: {
-    marginTop: 14,
-    minHeight: 108,
-    borderRadius: 26,
-    overflow: 'hidden',
-    backgroundColor: colors.primary,
-    padding: 20,
-    justifyContent: 'center',
-    ...shadows.hero,
-  },
-  heroGlowLeft: {
-    position: 'absolute',
-    left: -34,
-    bottom: -42,
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: 'rgba(255,255,255,0.16)',
-  },
-  heroGlowRight: {
-    position: 'absolute',
-    right: -24,
-    top: -28,
-    width: 106,
-    height: 106,
-    borderRadius: 53,
-    backgroundColor: 'rgba(255,255,255,0.22)',
-  },
-  heroKicker: {
-    color: colors.whiteMuted,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0,
-    ...rtl.text,
-  },
-  heroTitle: {
-    marginTop: 5,
-    color: colors.white,
-    fontFamily: typography.fontFamilyExtraBold,
-    fontSize: 25,
-    fontWeight: '900',
-    ...rtl.text,
-  },
-  heroMeta: {
-    marginTop: 5,
-    color: colors.whiteMuted,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 12,
-    fontWeight: '800',
-    ...rtl.text,
-  },
   section: {
     marginTop: 16,
   },
@@ -924,6 +875,7 @@ const styles = StyleSheet.create({
     ...rtl.text,
   },
   sectionCaption: { color: colors.textSoft, fontFamily: typography.fontFamilyRegular, fontSize: 12, marginBottom: 4, ...rtl.text },
+  explanationText: { color: colors.textSoft, fontFamily: typography.fontFamilyRegular, fontSize: 13, lineHeight: 22, ...rtl.text },
   savedNotice: { ...rtl.row, alignItems: 'center', justifyContent: 'center', gap: 5 },
   savedText: {
     color: colors.textSoft,

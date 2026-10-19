@@ -102,7 +102,7 @@ export function DemoResultScreen({
           <Text style={styles.actionTitle}>{demoPrimary ? `מתחילים ב${demoPrimary.labelHe}` : 'המדדים בטווח'}</Text>
           {demoPrimary ? <TreatmentSteps steps={demoPrimary.actionHe.split('\n')} />
             : <Text style={styles.body}>המשך מעקב רגיל.</Text>}
-          {demoPrimary ? <Text style={styles.note}>מדד אחד בכל פעם. אחרי הבדיקה החדשה נבחר את הצעד הבא.</Text> : null}
+          {demoPrimary ? <Text style={styles.note}>מטפלים עכשיו במדד אחד. בבדיקה הבאה נבחר מחדש את הטיפול לפי כל הערכים, גם אם השתנו.</Text> : null}
           <Text style={styles.note}>אמת חריגה לפני הוספת חומר. פעל לפי התווית ואל תערבב חומרים.</Text>
         </Card>
         {demoDosage.recommendations.map((rec) => (
