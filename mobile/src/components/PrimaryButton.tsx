@@ -8,10 +8,12 @@ interface PrimaryButtonProps {
   label: string;
   icon?: LineIconName;
   onPress?: () => void;
+  variant?: 'default' | 'refined';
 }
 
-export function PrimaryButton({ busy = false, disabled = false, label, icon, onPress }: PrimaryButtonProps) {
+export function PrimaryButton({ busy = false, disabled = false, label, icon, onPress, variant = 'default' }: PrimaryButtonProps) {
   const isDisabled = disabled || busy;
+  const refined = variant === 'refined';
 
   return (
     <Pressable
@@ -20,23 +22,28 @@ export function PrimaryButton({ busy = false, disabled = false, label, icon, onP
       accessibilityState={{ disabled: isDisabled, busy: Boolean(busy) }}
       disabled={isDisabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.button, isDisabled && styles.disabled, pressed && !isDisabled && styles.pressed]}
+      style={({ pressed }) => [styles.button, refined && styles.refinedButton, isDisabled && styles.disabled, pressed && !isDisabled && styles.pressed]}
     >
       {busy ? (
-        <View style={styles.icon}>
-          <ActivityIndicator color={colors.primary} size="small" />
+        <View style={[styles.icon, refined && styles.refinedIcon]}>
+          <ActivityIndicator color={refined ? colors.white : colors.primary} size="small" />
         </View>
       ) : icon ? (
-        <View style={styles.icon}>
-          <LineIcon name={icon} color={colors.primary} size={18} />
+        <View style={[styles.icon, refined && styles.refinedIcon]}>
+          <LineIcon name={icon} color={refined ? colors.white : colors.primary} size={18} />
         </View>
       ) : null}
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, refined && styles.refinedLabel]}>{label}</Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  refinedButton: { minHeight: 50, borderRadius: 15, backgroundColor: '#087E99', gap: 7,
+    paddingHorizontal: 18, paddingVertical: 10, shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.14, shadowRadius: 11, elevation: 3 },
+  refinedIcon: { width: 26, height: 26, backgroundColor: 'transparent' },
+  refinedLabel: { flexShrink: 1, fontWeight: '700' },
   button: {
     minHeight: 52,
     borderRadius: 17,

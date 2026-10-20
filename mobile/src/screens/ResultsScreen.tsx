@@ -5,10 +5,11 @@ import { AppShell } from '../components/AppShell';
 import { Card } from '../components/Card';
 import { LineIcon } from '../components/LineIcon';
 import { LowConfidenceWarning } from '../components/LowConfidenceWarning';
-import { ParameterArcs, type ParameterArcReading } from '../components/ParameterArcs';
+import type { ParameterArcReading } from '../components/ParameterArcs';
 import { PrimaryButton } from '../components/PrimaryButton';
 import { ResultCard } from '../components/ResultCard';
 import { TotalChlorineReadingCard } from '../components/TotalChlorineReadingCard';
+import { totalChlorinePresentation } from '../domain/chlorinePresentation';
 import { ResultOverview } from '../components/ResultOverview';
 import { colors, radius, rtl, typography } from '../theme';
 import type { DosageRecommendation } from '../domain/dosage';
@@ -61,11 +62,6 @@ function formatAnalysisDate(timestamp: number) {
     month: 'long',
     year: 'numeric',
   }).format(new Date(timestamp));
-}
-
-function formatVolume(volumeLiters?: number) {
-  if (!volumeLiters || volumeLiters <= 0) return undefined;
-  return `${Math.round(volumeLiters).toLocaleString('he-IL')} ליטר`;
 }
 
 function targetForParameter(parameter: ScanResultParameter) {
@@ -247,20 +243,6 @@ function fallbackAnalysisResultFromRecord(record: SavedHistoryRecord): StripAnal
     recommendation: record.resultSummary,
     dosage: record.dosageResult,
   };
-}
-
-function SafetyCard({ text }: { text?: string }) {
-  return (
-    <View style={styles.safetyCard}>
-      <View style={styles.safetyIcon}>
-        <LineIcon name="help" color={colors.warning} size={15} />
-      </View>
-      <Text style={styles.safetyText}>
-        {text ||
-          MEASUREMENT_SAFETY_NOTE}
-      </Text>
-    </View>
-  );
 }
 
 export function ResultsScreen({ navigation, route }: Props) {
@@ -466,6 +448,7 @@ export function ResultsScreen({ navigation, route }: Props) {
         const enrichedResult: StripAnalysisResult = {
           ...result,
           id: testId,
+          poolId: result.poolId ?? pool?.id,
           dosage,
           captureMetadata: session.captureMetadata,
           imageQuality: session.imageQuality,
@@ -554,26 +537,38 @@ export function ResultsScreen({ navigation, route }: Props) {
   );
   const padColors = usePadPhotoColors(visibleAnalysisResult);
   const totalChlorineReading = visibleAnalysisResult?.parameters.find(parameter => parameter.key === 'totalChlorine');
+  const totalChlorineDisplay = totalChlorinePresentation(totalChlorineReading);
   const showTotalChlorine = visibleAnalysisResult?.brandId === 'aquachek-pro-5in1' || Boolean(totalChlorineReading);
   const chlorineReview = getChlorineReview(visibleAnalysisResult?.parameters ?? []);
   const graphReadings: ParameterArcReading[] = visibleAnalysisResult ? [
-    ...(totalChlorineReading && Number.isFinite(totalChlorineReading.value) && totalChlorineReading.value >= 0 ? [{
+    ...(showTotalChlorine ? [{
       paramKey: 'totalChlorine' as const,
       labelHe: PARAM_LABEL_HE.totalChlorine.labelHe,
-      measured: totalChlorineReading.value,
-      unit: totalChlorineReading.unit,
+      measured: totalChlorineDisplay?.value,
+      usesUpperCandidate: totalChlorineDisplay?.usesUpperCandidate,
+      unit: totalChlorineReading?.unit || 'ppm',
       estimated: true,
-      status: comparisonKind(totalChlorineReading),
-      target: comparisonKind(totalChlorineReading) !== undefined
+      status: totalChlorineDisplay?.kind,
+      target: totalChlorineReading && comparisonKind(totalChlorineReading) !== undefined
         ? targetForParameter(totalChlorineReading) : undefined,
-      requiresReview: Boolean(chlorineReview) || readingNeedsClarification(totalChlorineReading),
+      comparisonRange: totalChlorineReading?.idealRange,
+      requiresReview: Boolean(chlorineReview) || Boolean(totalChlorineReading && readingNeedsClarification(totalChlorineReading)),
       reviewLabel: chlorineReview?.reason === 'gap' ? 'חשד לכלור קשור'
         : chlorineReview?.reason === 'inconsistent' ? 'קריאות סותרות' : 'קריאה בין טווחים',
     }] : []),
-    ...resultCards.filter(rec => rec.paramKey === 'ph' || rec.paramKey === 'alkalinity')
-      .map(rec => ({ ...rec, estimated: true, requiresReview: rec.actionUncertain })),
+    ...(['ph', 'alkalinity'] as const).map(paramKey => {
+      const parameter = visibleAnalysisResult.parameters.find(item => item.key === paramKey);
+      return {
+        paramKey, labelHe: paramKey === 'ph' ? 'חומציות (pH)' : PARAM_LABEL_HE.alkalinity.labelHe,
+        measured: parameter?.value, unit: parameter?.unit ?? (paramKey === 'ph' ? '' : 'ppm'),
+        estimated: true,
+        status: parameter ? comparisonKind(parameter) : undefined,
+        target: parameter && comparisonKind(parameter) !== undefined ? targetForParameter(parameter) : undefined,
+        comparisonRange: parameter?.idealRange,
+        requiresReview: Boolean(parameter && readingNeedsClarification(parameter)),
+      };
+    }),
   ] : [];
-  const volumeLabel = formatVolume(pool?.volumeLiters);
 
   useEffect(() => {
     if (savedTestId || !visibleAnalysisResult || isInvalidStripResult(visibleAnalysisResult))
@@ -734,107 +729,70 @@ export function ResultsScreen({ navigation, route }: Props) {
   }
 
   return (
-    <AppShell activeTab={isSavedResult ? 'history' : 'scan'} navigation={navigation}>
+    <AppShell activeTab={isSavedResult ? 'history' : 'scan'} navigation={navigation} waterMode="plain">
       <ResultOverview result={visibleAnalysisResult} poolName={poolName} isHistorical={isSavedResult}
-        metadata={[volumeLabel, formatAnalysisDate(visibleAnalysisResult.analyzedAt)].filter(Boolean).join(' · ')} />
+        metadata={formatAnalysisDate(visibleAnalysisResult.analyzedAt)} readings={graphReadings} volumeLiters={pool?.volumeLiters} />
 
       {visibleAnalysisResult.lowConfidence ? <LowConfidenceWarning /> : null}
-
-      {session.imageUploadError && !isSavedResult ? (
-        <Card compact style={styles.warningCard}>
-          <Text style={styles.warningTitle}>התמונה נשמרה מקומית</Text>
-          <Text style={styles.warningText}>{session.imageUploadError}</Text>
-        </Card>
-      ) : null}
 
       <NextActionCard
         key={savedRecord?.testId ?? visibleAnalysisResult.id}
         result={visibleAnalysisResult}
         testId={savedRecord?.testId}
         pool={pool}
-        allowRecord={false}
+        allowRecord={!isSavedResult}
         isHistorical={isSavedResult}
         onNewScan={handleNewScan}
         onEditPool={() => pool && navigation.navigate('EditPool', { poolId: pool.id })}
       />
 
-      <View style={styles.cardsList}>
-        <Text style={styles.sectionTitle}>מה הסטיק מראה?</Text>
-        <Text style={styles.sectionCaption}>הריבועים לפי הסדר, מקצה הסטיק לכיוון הידית</Text>
-        {showTotalChlorine ? (
-          <TotalChlorineReadingCard parameter={totalChlorineReading} chlorineReview={chlorineReview}
-            padPosition={visibleAnalysisResult.brandId === 'aquachek-pro-5in1' ? 1 : undefined}
-            padColor={padColors.totalChlorine} />
-        ) : null}
-        {resultCards.map((rec) => (
-          <ResultCard key={rec.paramKey} rec={rec} compact showPadColor
-            padPosition={visibleAnalysisResult.brandId === 'aquachek-pro-5in1' ? PRO_PAD_POSITION[rec.paramKey] : undefined}
-            padColor={padColors[rec.paramKey]} />
-        ))}
-      </View>
-
-      {!isInvalidStripResult(visibleAnalysisResult) && visibleAnalysisResult.dosage?.recommendations.some(
-        (rec) => !CORE_RESULT_PARAMETER_KEYS.has(rec.paramKey),
-      ) ? (
-        <DisclosureSection title="מדדים נוספים" summary="מייצב, קשיות ומלח — לפי סוג הסטיק">
-          {visibleAnalysisResult.dosage.recommendations.filter((rec) => !CORE_RESULT_PARAMETER_KEYS.has(rec.paramKey))
-            .map((rec) => <ResultCard key={rec.paramKey} rec={rec} compact showPadColor
-              padColor={padColors[rec.paramKey]} />)}
-        </DisclosureSection>
-      ) : null}
-
       <View style={styles.section}>
-        <DisclosureSection title="השוואה בגרף" summary="למי שרוצה לראות גם את המספרים בגרף">
-          <ParameterArcs recs={graphReadings} />
+        <DisclosureSection title="פירוט הבדיקה" variant="quiet">
+          <Text style={styles.sectionCaption}>הריבועים לפי הסדר, מקצה הסטיק לכיוון הידית</Text>
+          {showTotalChlorine ? (
+            <TotalChlorineReadingCard parameter={totalChlorineReading} chlorineReview={chlorineReview}
+              padPosition={visibleAnalysisResult.brandId === 'aquachek-pro-5in1' ? 1 : undefined}
+              padColor={padColors.totalChlorine} />
+          ) : null}
+          {resultCards.map((rec) => (
+            <ResultCard key={rec.paramKey} rec={rec} compact showPadColor
+              padPosition={visibleAnalysisResult.brandId === 'aquachek-pro-5in1' ? PRO_PAD_POSITION[rec.paramKey] : undefined}
+              padColor={padColors[rec.paramKey]} />
+          ))}
+
+          {!isInvalidStripResult(visibleAnalysisResult) && visibleAnalysisResult.dosage?.recommendations.some(
+            (rec) => !CORE_RESULT_PARAMETER_KEYS.has(rec.paramKey),
+          ) ? <>
+            <Text style={styles.sectionTitle}>מדדים נוספים</Text>
+            {visibleAnalysisResult.dosage.recommendations.filter((rec) => !CORE_RESULT_PARAMETER_KEYS.has(rec.paramKey))
+              .map((rec) => <ResultCard key={rec.paramKey} rec={rec} compact showPadColor
+                padColor={padColors[rec.paramKey]} />)}
+          </> : null}
+
+          <DisclosureSection title="הסברים ומידע חשוב">
+            {visibleAnalysisResult.dosage?.primaryRecommendation?.guidance ?
+              <Text style={styles.explanationText}>{visibleAnalysisResult.dosage.primaryRecommendation.guidance.meaning}</Text> : null}
+            <Text style={styles.explanationText}>הריבוע הצבעוני מציג את צבע הסטיק. צבע תגית המצב מסביר אם הקריאה בטווח, גבוהה או נמוכה.</Text>
+            <Text style={styles.explanationText}>כ־ פירושו שהמספר הוא הערכה מהצילום. ppm היא יחידת ריכוז של חומר במים. הטווח המוצג הוא טווח ההשוואה של האפליקציה, ולא מינון להוספה.</Text>
+            <Text style={styles.explanationText}>{visibleAnalysisResult.dosage?.safetyNote || MEASUREMENT_SAFETY_NOTE}</Text>
+            <GuidanceSources />
+          </DisclosureSection>
+          {session.imageUploadError && !isSavedResult ? (
+            <View>
+              <Text style={styles.warningTitle}>התמונה נשמרה מקומית</Text>
+              <Text style={styles.warningText}>{session.imageUploadError}</Text>
+            </View>
+          ) : null}
         </DisclosureSection>
       </View>
-
-      <DisclosureSection title="איך קוראים את התוצאות?" summary="הסבר על הצבעים, המספרים ומקורות המידע">
-        <Text style={styles.explanationText}>הריבוע הצבעוני מציג את צבע הסטיק. צבע תגית המצב מסביר אם הקריאה בטווח, גבוהה או נמוכה — אלה שני דברים שונים.</Text>
-        <Text style={styles.explanationText}>כ־ פירושו שהמספר הוא הערכה מהצילום. ppm היא יחידת ריכוז של חומר במים. הטווח המוצג הוא טווח ההשוואה של האפליקציה, ולא מינון להוספה.</Text>
-        <Text style={styles.explanationText}>מדדים בטווח אינם אישור לרחצה. לפני הוספת חומר, אמת את המדידה ופעל לפי הוראות המוצר והמערכת.</Text>
-        <GuidanceSources />
-      </DisclosureSection>
-
-      {!visibleAnalysisResult.dosage?.safetyNote ? <SafetyCard /> : null}
 
       <View style={styles.actions}>
-        {isSavedResult ? (
-          <>
-            <PrimaryButton label="בדיקה חדשה" icon="camera" onPress={handleNewScan} />
-            <Pressable
-              style={styles.secondaryButton}
-              onPress={() => navigation.navigate('History')}
-            >
-              <LineIcon name="history" color={colors.primaryDark} size={16} />
-              <Text style={styles.secondaryText}>חזור להיסטוריה</Text>
-            </Pressable>
-            <Pressable style={styles.secondaryButton} onPress={() => navigation.navigate('Pools')}>
-              <LineIcon name="pools" color={colors.primaryDark} size={16} />
-              <Text style={styles.secondaryText}>חזור לבריכות שלי</Text>
-            </Pressable>
-          </>
-        ) : (
-          <>
-            <View style={styles.savedNotice} accessibilityLiveRegion="polite">
-              <LineIcon
-                name={autoSaved ? 'check' : 'history'}
-                color={colors.primaryDeep}
-                size={15}
-              />
-              <Text style={styles.savedText}>
-                {autoSaved ? 'נשמר בהיסטוריה' : 'שומר להיסטוריה'}
-              </Text>
-            </View>
-            <Pressable
-              style={styles.secondaryButton}
-              onPress={() => navigation.navigate('History')}
-            >
-              <LineIcon name="history" color={colors.primaryDark} size={16} />
-              <Text style={styles.secondaryText}>צפייה בהיסטוריה</Text>
-            </Pressable>
-          </>
-        )}
+        <Pressable accessibilityRole="button" style={styles.historyLink}
+          onPress={() => navigation.navigate('History')}>
+          <LineIcon name={!isSavedResult && autoSaved ? 'check' : 'history'} color={colors.primaryDeep} size={15} />
+          <Text style={styles.savedText} accessibilityLiveRegion="polite">{isSavedResult
+            ? 'חזרה להיסטוריה' : autoSaved ? 'נשמר בהיסטוריה · פתיחה' : 'שומר להיסטוריה…'}</Text>
+        </Pressable>
       </View>
     </AppShell>
   );
@@ -863,10 +821,6 @@ const styles = StyleSheet.create({
   section: {
     marginTop: 16,
   },
-  cardsList: {
-    marginTop: 14,
-    gap: 8,
-  },
   sectionTitle: {
     color: colors.text,
     fontFamily: typography.fontFamilySemiBold,
@@ -876,28 +830,12 @@ const styles = StyleSheet.create({
   },
   sectionCaption: { color: colors.textSoft, fontFamily: typography.fontFamilyRegular, fontSize: 12, marginBottom: 4, ...rtl.text },
   explanationText: { color: colors.textSoft, fontFamily: typography.fontFamilyRegular, fontSize: 13, lineHeight: 22, ...rtl.text },
-  savedNotice: { ...rtl.row, alignItems: 'center', justifyContent: 'center', gap: 5 },
+  historyLink: { ...rtl.row, alignItems: 'center', justifyContent: 'center', minHeight: 44, gap: 5 },
   savedText: {
     color: colors.textSoft,
     fontFamily: typography.fontFamilyRegular,
     fontSize: 12,
     ...rtl.text,
-  },
-  safetyCard: {
-    marginTop: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(240,165,41,0.28)',
-    backgroundColor: colors.warningSoft,
-    padding: 14,
-    flexDirection: 'row-reverse',
-    alignItems: 'flex-start',
-    gap: 10,
-  },
-  warningCard: {
-    marginTop: 12,
-    borderColor: 'rgba(240,165,41,0.28)',
-    backgroundColor: colors.warningSoft,
   },
   warningTitle: {
     color: colors.warning,
@@ -908,23 +846,6 @@ const styles = StyleSheet.create({
   },
   warningText: {
     marginTop: 5,
-    color: colors.textSoft,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 11,
-    fontWeight: '800',
-    lineHeight: 18,
-    ...rtl.text,
-  },
-  safetyIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.white,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  safetyText: {
-    flex: 1,
     color: colors.textSoft,
     fontFamily: typography.fontFamilyRegular,
     fontSize: 11,

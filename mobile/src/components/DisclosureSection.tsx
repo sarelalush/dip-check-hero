@@ -7,31 +7,32 @@ export function DisclosureSection({
   title,
   summary,
   children,
+  variant = 'default',
 }: {
   title: string;
   summary?: string;
   children: ReactNode;
+  variant?: 'default' | 'quiet';
 }) {
   const [expanded, setExpanded] = useState(false);
+  const quiet = variant === 'quiet';
 
   return (
-    <View style={styles.section}>
+    <View style={[styles.section, quiet && styles.quietSection]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={title}
         accessibilityState={{ expanded }}
         onPress={() => setExpanded((value) => !value)}
-        style={({ pressed }) => [styles.header, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.header, quiet && styles.quietHeader, pressed && styles.pressed]}
       >
         <View style={styles.copy}>
-          <Text style={styles.title}>{title}</Text>
+          <Text style={[styles.title, quiet && styles.quietTitle]}>{title}</Text>
           {summary ? <Text style={styles.summary}>{summary}</Text> : null}
         </View>
-        <LineIcon
-          name={expanded ? 'chevronUp' : 'chevronDown'}
-          color={colors.primaryDeep}
-          size={18}
-        />
+        <View style={quiet ? styles.quietChevron : undefined}>
+          <LineIcon name={expanded ? 'chevronUp' : 'chevronDown'} color={colors.primaryDeep} size={quiet ? 13 : 18} />
+        </View>
       </Pressable>
       {expanded ? <View style={styles.body}>{children}</View> : null}
     </View>
@@ -39,6 +40,10 @@ export function DisclosureSection({
 }
 
 const styles = StyleSheet.create({
+  quietSection: { borderRadius: 18, borderColor: '#E0EDF2' },
+  quietHeader: { minHeight: 52, paddingHorizontal: 14, paddingVertical: 12 },
+  quietTitle: { fontSize: 13 },
+  quietChevron: { width: 25, height: 25, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F8FA' },
   section: {
     backgroundColor: colors.surface,
     borderWidth: 1,

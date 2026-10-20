@@ -18,7 +18,7 @@ export function ServiceConsentScreen({ navigation }: Props) {
   const showConsent = Boolean(status?.releaseReady && !status.deletionPending && failureKind !== 'service_update');
   return <ScrollView contentContainerStyle={styles.content}>
     <Text style={styles.title}>לפני המשך השימוש</Text>
-    <Text style={styles.body}>השירות מסייע בהערכת מדדים מצילום. הוא אינו בדיקת מעבדה ואינו מאשר רחצה. הגרסה הנוכחית אינה מחשבת מינון חומרים.</Text>
+    <Text style={styles.body}>השירות מעריך מדדים מסריקת סטיק ומציע מנות תחזוקה חלקיות כשיש מספיק נתונים לחישוב נתמך. אין הזנה ידנית של מדדי מים. השירות אינו בדיקת מעבדה או אישור רחצה. אחרי טיפול נדרשת סריקה חדשה.</Text>
     {!showConsent ? <View style={styles.notice}>
       <Text style={styles.noticeTitle}>{status?.deletionPending ? 'בקשת המחיקה שלך בטיפול'
         : checking ? 'בודקים את זמינות השירות'

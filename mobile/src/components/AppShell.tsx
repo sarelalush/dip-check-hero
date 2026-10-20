@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import Svg, { Defs, LinearGradient, RadialGradient, Rect, Stop } from 'react-native-svg';
 import { ImageBackground, Platform, ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,7 +18,7 @@ interface AppShellProps {
   navigation: NavigationProp<RootStackParamList>;
   scroll?: boolean;
   showBottomTabs?: boolean;
-  waterMode?: 'soft' | 'full';
+  waterMode?: 'soft' | 'full' | 'plain';
   contentStyle?: StyleProp<ViewStyle>;
 }
 
@@ -43,7 +44,7 @@ export function AppShell({
 
   const phone = (
     <View style={[styles.phone, !showDevicePreview && styles.nativePhone, waterMode === 'full' && styles.phoneFull]}>
-      <WaterBackdrop full={waterMode === 'full'} />
+      <WaterBackdrop full={waterMode === 'full'} plain={waterMode === 'plain'} />
       {showDevicePreview ? <DeviceStatusBar light={waterMode === 'full'} /> : null}
       {scroll ? (
         <SafeAreaView style={styles.safeScroll} edges={[]}>
@@ -72,7 +73,21 @@ export function AppShell({
   return <WebPhoneFrame>{phone}</WebPhoneFrame>;
 }
 
-function WaterBackdrop({ full }: { full: boolean }) {
+function WaterBackdrop({ full, plain }: { full: boolean; plain: boolean }) {
+  if (plain) return <View pointerEvents="none" style={[StyleSheet.absoluteFillObject, styles.plainBackdrop]}>
+    <Svg width="100%" height="100%" viewBox="0 0 390 850" preserveAspectRatio="none" accessible={false}>
+      <Defs>
+        <LinearGradient id="resultsSurface" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#E5F5F8" /><Stop offset="0.45" stopColor="#F5FAFC" /><Stop offset="1" stopColor="#EEF7FA" />
+        </LinearGradient>
+        <RadialGradient id="resultsGlow" cx="1" cy="0" rx="0.8" ry="0.6">
+          <Stop offset="0" stopColor="#ADE8EF" stopOpacity={0.4} /><Stop offset="1" stopColor="#ADE8EF" stopOpacity={0} />
+        </RadialGradient>
+      </Defs>
+      <Rect width={390} height={850} fill="url(#resultsSurface)" />
+      <Rect width={390} height={850} fill="url(#resultsGlow)" />
+    </Svg>
+  </View>;
   return (
     <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
       <ImageBackground source={APP_POOL_IMAGE} resizeMode="cover" style={[styles.topWaterImage, full && styles.fullWaterImage]}>
@@ -83,6 +98,7 @@ function WaterBackdrop({ full }: { full: boolean }) {
 }
 
 const styles = StyleSheet.create({
+  plainBackdrop: { backgroundColor: '#EDF8FB' },
   phone: {
     flex: 1,
     width: '100%',

@@ -45,12 +45,9 @@ interface ResultCardProps {
 
 export function ResultCard({ rec, compact = false, padColor, showPadColor = false, padPosition }: ResultCardProps) {
   const status = STATUS_STYLE[rec.status];
-  const reviewLabel = rec.actionUncertain ? 'קריאה בין טווחים' : status.label;
-  const tone: MeasurementTone = rec.actionUncertain ? 'warning'
-    : rec.status === 'ok' ? 'success' : rec.status === 'high' ? 'danger' : 'warning';
-  const displayStyle = rec.actionUncertain ? {
-    backgroundColor: colors.warningSoft, borderColor: '#E8D4A5', color: '#8A5600',
-  } : status;
+  const reviewLabel = status.label;
+  const tone: MeasurementTone = rec.status === 'ok' ? 'success' : rec.status === 'high' ? 'danger' : 'warning';
+  const displayStyle = status;
   const isActive = Boolean(rec.active);
   const verificationNote = rec.alternativeMeasured !== undefined && Number.isFinite(rec.alternativeMeasured) &&
     rec.alternativeMeasured !== rec.measured
@@ -69,14 +66,14 @@ export function ResultCard({ rec, compact = false, padColor, showPadColor = fals
       Number.isFinite(rec.alternativeMeasured) && rec.alternativeMeasured !== rec.measured
       ? `הצבע קרוב גם ל־${formatValue(rec.alternativeMeasured, rec.unit)}.` : undefined;
     const actionNote = rec.actionUncertain
-      ? 'הצבע בין שתי דרגות שמשנות את הטיפול. בדוק שוב לפני הוספת חומר.'
+      ? 'הסטטוס מתייחס לערך המוצג. ההתאמה למקרא אינה חד־משמעית; בצע סריקה חדשה לפני הוספת חומר.'
       : rec.status === 'ok' ? undefined
       : rec.active ? 'זה המדד שמטפלים בו קודם. ההוראות מופיעות למעלה.'
       : waitingText;
     return (
       <MeasurementCard label={copy.label} description={copy.description} explanation={copy.explanation}
         padPosition={padPosition} value={formatValue(rec.measured, rec.unit, true)}
-        status={rec.actionUncertain ? 'בין שני טווחים' : rec.status === 'ok' ? 'בטווח לפי הצילום'
+        status={rec.status === 'ok' ? 'בטווח לפי הצילום'
           : rec.status === 'high' ? 'גבוה מהטווח' : 'נמוך מהטווח'} tone={tone} detail={comparisonText}
         note={[actionNote, rec.actionUncertain ? alternativeNote : undefined].filter(Boolean).join(' ')}
         detailNote={!rec.actionUncertain ? alternativeNote : undefined}

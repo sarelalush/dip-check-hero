@@ -10,6 +10,7 @@ import { usePools } from './PoolsContext';
 import { useAuth } from './AuthContext';
 import { getTestCloudId, syncTestsWithCloud, upsertTestToCloud } from '../services/testCloudSync';
 import { getPublicScanImageUrl } from '../services/scanImageStorage';
+import { getSavedTreatmentPlan, treatmentPlanContentKey } from '../domain/savedTreatmentPlan';
 
 export interface SavedHistoryRecord {
   id: string;
@@ -132,6 +133,26 @@ function recordUpdatedAt(record: SavedHistoryRecord) {
   return record.updatedAt ?? record.testedAt ?? record.createdAt ?? 0;
 }
 
+function mergeHistoryRecord(first: SavedHistoryRecord, second: SavedHistoryRecord): SavedHistoryRecord {
+  const preferred = recordUpdatedAt(second) >= recordUpdatedAt(first) ? second : first;
+  const firstPlan = getSavedTreatmentPlan(first.analysisResult);
+  const secondPlan = getSavedTreatmentPlan(second.analysisResult);
+  const plan = !firstPlan ? secondPlan : !secondPlan ? firstPlan :
+    firstPlan.product && !secondPlan.product ? firstPlan :
+    secondPlan.product && !firstPlan.product ? secondPlan :
+    firstPlan.proposedAt === secondPlan.proposedAt
+      ? getSavedTreatmentPlan(preferred.analysisResult) ?? firstPlan
+      : secondPlan.proposedAt > firstPlan.proposedAt ? secondPlan : firstPlan;
+  const analysis = preferred.analysisResult;
+  return {
+    ...preferred,
+    imagePath: preferred.imagePath ?? first.imagePath ?? second.imagePath,
+    imageUrl: preferred.imageUrl ?? first.imageUrl ?? second.imageUrl,
+    analysisResult: plan && analysis?.id === plan.resultId && analysis.analyzedAt === plan.analyzedAt
+      ? { ...analysis, treatmentPlan: plan } : analysis,
+  };
+}
+
 function dedupeHistoryRecords(records: SavedHistoryRecord[]) {
   const unique = new Map<string, SavedHistoryRecord>();
 
@@ -139,9 +160,7 @@ function dedupeHistoryRecords(records: SavedHistoryRecord[]) {
     const key = recordKey(record);
     const existing = unique.get(key);
 
-    if (!existing || recordUpdatedAt(record) >= recordUpdatedAt(existing)) {
-      unique.set(key, record);
-    }
+    unique.set(key, existing ? mergeHistoryRecord(existing, record) : record);
   }
 
   return Array.from(unique.values())
@@ -180,7 +199,10 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
   const historyRecordsRef = useRef<SavedHistoryRecord[]>([]);
   const syncInFlightRef = useRef(false);
   const syncRunIdRef = useRef(0);
+  const recordSyncQueue = useRef(new Map<string, Promise<void>>());
   const ownerKey = authLoading ? undefined : user && accountId ? `${user.id}:${accountId}` : 'anonymous';
+  const activeOwnerRef = useRef(ownerKey);
+  activeOwnerRef.current = ownerKey;
   const isReadyForOwner = Boolean(ownerKey && hydratedOwnerKey === ownerKey && hydrated);
 
   useEffect(() => {
@@ -280,6 +302,7 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
       ) return;
 
       const syncRunId = syncRunIdRef.current + 1;
+      const syncStartedAt = Date.now();
       syncRunIdRef.current = syncRunId;
       syncInFlightRef.current = true;
       setSyncing(true);
@@ -288,7 +311,21 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
       try {
         const result = await syncTestsWithCloud(localRecords, user, accountId, pools);
         if (syncRunIdRef.current === syncRunId) {
-          setHistoryRecords(dedupeHistoryRecords(result.records));
+          const remoteKeys = new Set(result.records.map(recordKey));
+          // Keep instructions saved while a full sync was already in flight.
+          // Absent older records remain absent, preserving cloud deletions.
+          const changedRecords = historyRecordsRef.current.filter(record =>
+            remoteKeys.has(recordKey(record)) || recordUpdatedAt(record) >= syncStartedAt);
+          const merged = dedupeHistoryRecords([...result.records, ...changedRecords]);
+          historyRecordsRef.current = merged;
+          setHistoryRecords(merged);
+          for (const record of merged) {
+            const plan = getSavedTreatmentPlan(record.analysisResult);
+            const synced = result.records.find(item => recordKey(item) === recordKey(record));
+            const syncedPlan = getSavedTreatmentPlan(synced?.analysisResult);
+            if (plan && (!syncedPlan || treatmentPlanContentKey(plan) !== treatmentPlanContentKey(syncedPlan)))
+              syncRecordToCloud(record);
+          }
           await AsyncStorage.setItem(getHistoryCacheReadyKey(ownerKey), HISTORY_CACHE_READY_VERSION);
         }
       } catch (error) {
@@ -314,25 +351,40 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
     await syncAuthenticatedHistory(historyRecordsRef.current);
   }, [syncAuthenticatedHistory]);
 
-  async function syncRecordToCloud(record: SavedHistoryRecord) {
-    if (!user || !accountId) return;
+  async function persistRecordToCloud(record: SavedHistoryRecord) {
+    if (!user || !accountId || activeOwnerRef.current !== ownerKey) return;
 
     try {
-      const syncedRecord = await upsertTestToCloud(record, user.id, accountId, pools);
-      if (!syncedRecord) return;
+      const latest = historyRecordsRef.current.find(item => recordKey(item) === recordKey(record));
+      const outgoing = latest ? mergeHistoryRecord(record, latest) : record;
+      const syncedRecord = await upsertTestToCloud(outgoing, user.id, accountId, pools);
+      if (!syncedRecord || activeOwnerRef.current !== ownerKey) return;
 
-      setHistoryRecords((current) =>
-        dedupeHistoryRecords(current.map((item) =>
+      const mergeSynced = (current: SavedHistoryRecord[]) => dedupeHistoryRecords(current.map((item) =>
           item.testId === syncedRecord.testId || item.id === syncedRecord.id || item.cloudId === syncedRecord.cloudId
-            ? normalizeHistoryRecord({ ...item, ...syncedRecord })
+            ? normalizeHistoryRecord(mergeHistoryRecord(item, syncedRecord))
             : item,
-        )),
-      );
+        ));
+      historyRecordsRef.current = mergeSynced(historyRecordsRef.current);
+      setHistoryRecords(mergeSynced);
       setSyncError(undefined);
     } catch (error) {
+      if (activeOwnerRef.current !== ownerKey) return;
       console.warn('Failed to sync history record with cloud', error);
       setSyncError('שמירת הבדיקה לענן נכשלה. היא נשמרה מקומית.');
     }
+  }
+
+  function syncRecordToCloud(record: SavedHistoryRecord) {
+    // The initial autosave must finish before a later instruction snapshot for
+    // the same test, so a late response cannot erase its amount in the cloud.
+    const key = `${ownerKey ?? ''}:${record.testId}`;
+    const previous = recordSyncQueue.current.get(key) ?? Promise.resolve();
+    const pending = previous.catch(() => {}).then(() => persistRecordToCloud(record));
+    recordSyncQueue.current.set(key, pending);
+    void pending.finally(() => {
+      if (recordSyncQueue.current.get(key) === pending) recordSyncQueue.current.delete(key);
+    });
   }
 
   const value = useMemo<ResultsHistoryContextValue>(
@@ -343,9 +395,10 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
       syncing,
       syncError,
       getHistoryRecord(testId) {
-        return historyRecords.find((record) => record.testId === testId || record.id === testId || record.cloudId === testId);
+        return isReadyForOwner ? historyRecords.find((record) => record.testId === testId || record.id === testId || record.cloudId === testId) : undefined;
       },
       getPoolHistoryRecords(poolId, limit = 3) {
+        if (!isReadyForOwner) return [];
         const ids = poolIdsFor(poolId, pools);
         return historyRecords
           .filter((record) => isRecordForPool(record, ids))
@@ -358,11 +411,22 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         const createdAt = Date.now();
         const testedAt = analysisResult.analyzedAt ?? createdAt;
         const testId = createTestId(analysisResult, createdAt);
-        const existingRecord = historyRecords.find((record) => record.testId === testId || record.id === testId || record.cloudId === testId);
-        if (existingRecord) return existingRecord;
+        const existingRecord = historyRecordsRef.current.find((record) => record.testId === testId || record.id === testId || record.cloudId === testId);
+        const incomingPlan = getSavedTreatmentPlan(analysisResult);
+        const existingPlan = getSavedTreatmentPlan(existingRecord?.analysisResult);
+        // A manual DPD proposal must not replace an archive that arrived while
+        // its form was open (including an in-flight initial cloud sync).
+        if (existingRecord && incomingPlan?.shock && existingPlan &&
+            treatmentPlanContentKey(existingPlan) !== treatmentPlanContentKey(incomingPlan)) return existingRecord;
+        if (existingRecord && (!incomingPlan || (existingPlan &&
+          treatmentPlanContentKey(existingPlan) === treatmentPlanContentKey(incomingPlan)))) return existingRecord;
 
         const brand = analysisResult.brandId ? getBrand(analysisResult.brandId) : undefined;
-        const record: SavedHistoryRecord = {
+        const record: SavedHistoryRecord = existingRecord ? {
+          ...existingRecord,
+          updatedAt: Math.max(createdAt, recordUpdatedAt(existingRecord) + 1),
+          analysisResult: { ...(existingRecord.analysisResult ?? analysisResult), treatmentPlan: incomingPlan },
+        } : {
           id: testId,
           testId,
           accountId,
@@ -385,12 +449,10 @@ export function ResultsHistoryProvider({ children }: { children: ReactNode }) {
         };
         record.cloudId = getTestCloudId(record);
 
-        setHistoryRecords((current) => {
-          if (current.some((item) => item.testId === record.testId || item.id === record.id || item.cloudId === record.cloudId)) {
-            return current;
-          }
-          return dedupeHistoryRecords([record, ...current]);
-        });
+        // Update the ref immediately: parent autosave and child snapshot effects
+        // can run in the same render, before React publishes the next state.
+        historyRecordsRef.current = dedupeHistoryRecords([record, ...historyRecordsRef.current]);
+        setHistoryRecords(current => dedupeHistoryRecords([record, ...current]));
         syncRecordToCloud(record);
         return record;
       },

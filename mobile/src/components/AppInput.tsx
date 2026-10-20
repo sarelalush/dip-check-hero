@@ -24,6 +24,7 @@ export function AppInput({
     <View>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        accessibilityLabel={label}
         autoCapitalize="none"
         keyboardType={keyboardType}
         multiline={multiline}

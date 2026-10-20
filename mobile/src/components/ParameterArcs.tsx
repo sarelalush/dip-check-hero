@@ -2,304 +2,192 @@ import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, G, Line, Path } from 'react-native-svg';
 import type { ScanParameterStatusKind } from '../domain/scanResults';
 import type { StripParameter } from '../domain/strip';
-import { colors, radius, rtl, shadows, typography } from '../theme';
+import { colors, rtl, typography } from '../theme';
 import PRO_CHART from '../../../supabase/functions/_shared/aquachek-pro-chart.json';
 
 const DISPLAY_RANGE: Record<string, { min: number; max: number }> = {
-  cyanuricAcid: { min: 0, max: 150 },
-  salt: { min: 0, max: 6000 },
-  hardness: { min: 0, max: 1000 },
+  cyanuricAcid: { min: 0, max: 150 }, salt: { min: 0, max: 6000 }, hardness: { min: 0, max: 1000 },
   ...Object.fromEntries(Object.entries(PRO_CHART.parameters).map(([key, levels]) =>
     [key, { min: levels[0].value, max: levels[levels.length - 1].value }])),
 };
-
-const STATUS_COLOR: Record<ScanParameterStatusKind, string> = {
-  ok: colors.success,
-  low: colors.warning,
-  high: colors.danger,
-};
-
-const STATUS_LABEL: Record<ScanParameterStatusKind, string> = {
-  ok: 'בטווח לפי ההערכה',
-  low: 'נמוך',
-  high: 'גבוה',
-};
-
-const SVG_WIDTH = 220;
-const SVG_HEIGHT = 132;
-const CX = SVG_WIDTH / 2;
+const STATUS_COLOR = { ok: '#1D7056', low: '#80521D', high: '#A23C4C' };
+const ARC_COLOR = { ok: colors.success, low: colors.warning, high: colors.danger };
+const CX = 110;
 const CY = 122;
 const RING_GAP = 14;
 const RING_THICK = 10;
 const BASE_RADIUS = 38;
-const START_ANGLE = 180;
-const END_ANGLE = 360;
 
-function clamp01(value: number) {
-  return Math.max(0, Math.min(1, value));
-}
-
-function polar(cx: number, cy: number, radius: number, angleDeg: number) {
-  const angle = (angleDeg * Math.PI) / 180;
-  return {
-    x: cx + radius * Math.cos(angle),
-    y: cy + radius * Math.sin(angle),
-  };
-}
-
-function arcPath(cx: number, cy: number, radius: number, startDeg: number, endDeg: number) {
-  const start = polar(cx, cy, radius, startDeg);
-  const end = polar(cx, cy, radius, endDeg);
-  const delta = Math.abs(endDeg - startDeg);
-  const largeArc = delta > 180 ? 1 : 0;
-  const sweep = endDeg > startDeg ? 1 : 0;
-  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArc} ${sweep} ${end.x} ${end.y}`;
-}
-
-function rangeFor(rec: ParameterArcReading) {
-  return DISPLAY_RANGE[rec.paramKey] ?? { min: 0, max: Math.max((rec.target ?? 0) * 2, rec.measured * 1.2, 1) };
-}
-
-function formatValue(value: number, unit: string, estimated = false) {
-  const display = Number.isInteger(value) ? `${value}` : `${value.toFixed(1)}`;
-  return `${estimated ? 'כ־' : ''}\u2066${unit ? `${display} ${unit}` : display}\u2069`;
-}
-
-// Entries without a supplied comparison range remain measurement-only.
-// Total chlorine uses its own analysis range, never a free-chlorine target.
 export interface ParameterArcReading {
   paramKey: StripParameter;
   labelHe: string;
-  measured: number;
+  measured?: number;
   unit: string;
   target?: number;
+  comparisonRange?: { min: number; max: number };
   status?: ScanParameterStatusKind;
   estimated?: boolean;
   requiresReview?: boolean;
   reviewLabel?: string;
+  usesUpperCandidate?: boolean;
 }
 
-function readingColor(rec: ParameterArcReading) {
-  if (rec.requiresReview) return '#8A5600';
-  return rec.status ? STATUS_COLOR[rec.status] : colors.primaryDeep;
+function readable(rec: ParameterArcReading): rec is ParameterArcReading & { measured: number } {
+  return typeof rec.measured === 'number' && Number.isFinite(rec.measured) && rec.measured >= 0;
+}
+function colorFor(rec: ParameterArcReading, arc = false) {
+  if (!readable(rec)) return colors.textSoft;
+  if (rec.status && rec.status !== 'ok') return arc ? ARC_COLOR[rec.status] : STATUS_COLOR[rec.status];
+  if (rec.requiresReview && (rec.paramKey === 'totalChlorine' || !rec.status)) return arc ? colors.warning : '#946023';
+  return rec.status ? arc ? ARC_COLOR[rec.status] : STATUS_COLOR[rec.status] : colors.primaryDeep;
+}
+function statusLabel(rec: ParameterArcReading) {
+  if (!readable(rec)) return 'לא נקרא';
+  const base = rec.status === 'high' ? 'גבוה' : rec.status === 'low' ? 'נמוך' : rec.status === 'ok' ? 'בטווח' : 'ללא טווח השוואה';
+  if (rec.usesUpperCandidate) return `${base}. מוצגת האפשרות הגבוהה מבין שתי התאמות למקרא; זו הערכה מצילום.`;
+  const review = rec.requiresReview ? rec.reviewLabel ?? 'יש יותר מהתאמה אחת למקרא' : undefined;
+  return review ? `${base}. ההתאמה למקרא אינה חד־משמעית: ${review}` : base;
+}
+function tileStatus(rec: ParameterArcReading) {
+  if (rec.usesUpperCandidate && readable(rec) && rec.status)
+    return rec.status === 'high' ? 'גבוה' : rec.status === 'low' ? 'נמוך' : 'בטווח';
+  // The overview heading already states the pair problem in full. Keep the
+  // metric's high/low result prominent rather than repeating that whole warning.
+  const pairReview = rec.paramKey === 'totalChlorine' && rec.requiresReview &&
+    (rec.reviewLabel === 'חשד לכלור קשור' || rec.reviewLabel === 'קריאות סותרות');
+  if (pairReview && readable(rec)) {
+    if (rec.status === 'high') return 'גבוה';
+    if (rec.status === 'low') return 'נמוך';
+    if (rec.status === 'ok') return 'פער בכלור';
+  }
+  if (rec.paramKey === 'totalChlorine' && rec.requiresReview) return 'צילום חוזר';
+  return !readable(rec) ? 'לא נקרא' : rec.status === 'high' ? 'גבוה' : rec.status === 'low' ? 'נמוך'
+    : rec.status === 'ok' ? 'בטווח' : 'ללא טווח השוואה';
+}
+function tileBackground(rec: ParameterArcReading) {
+  if (!readable(rec)) return '#F7FAFC';
+  if (rec.status === 'high') return '#FFFAFA';
+  if (rec.status === 'low' || (rec.requiresReview && rec.paramKey === 'totalChlorine')) return '#FFFCF6';
+  return '#F8FCFD';
+}
+function tileBorder(rec: ParameterArcReading) {
+  if (!readable(rec)) return '#E4EDF2';
+  if (rec.status === 'high') return '#F4DEDF';
+  if (rec.status === 'low' || (rec.requiresReview && rec.paramKey === 'totalChlorine')) return '#F1E4CA';
+  return '#DDECF0';
+}
+function badgeBackground(rec: ParameterArcReading) {
+  if (!readable(rec)) return '#EAF0F4';
+  if (rec.status === 'high') return '#FBEAEC';
+  if (rec.status === 'low' || (rec.requiresReview && rec.paramKey === 'totalChlorine')) return '#FFF0D5';
+  return rec.status === 'ok' ? '#E6F5EE' : '#EAF2F6';
+}
+function formatValue(rec: ParameterArcReading) {
+  if (!readable(rec)) return '—';
+  const value = displayNumber(rec);
+  return `${rec.estimated ? 'כ־' : ''}\u2066${value}${rec.unit ? ` ${rec.unit}` : ''}\u2069`;
+}
+function displayNumber(rec: ParameterArcReading) {
+  if (!readable(rec)) return '—';
+  return rec.measured.toLocaleString('he-IL', { maximumFractionDigits: 1 });
+}
+function polar(radius: number, angle: number) {
+  const radians = angle * Math.PI / 180;
+  return { x: CX + radius * Math.cos(radians), y: CY + radius * Math.sin(radians) };
+}
+function arcPath(radius: number, endAngle: number) {
+  const start = polar(radius, 180);
+  const end = polar(radius, endAngle);
+  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 0 1 ${end.x} ${end.y}`;
+}
+function rangeFor(rec: ParameterArcReading) {
+  const sourceRange = rec.comparisonRange;
+  const supplied = sourceRange && Number.isFinite(sourceRange.min) && Number.isFinite(sourceRange.max) &&
+    sourceRange.min <= sourceRange.max ? sourceRange : undefined;
+  const display = DISPLAY_RANGE[rec.paramKey];
+  // Frame the existing arc using the chart scale, expanding for an outside
+  // reading/range. Display geometry never supplies a comparison range or dose.
+  const min = Math.min(display?.min ?? 0, supplied?.min ?? display?.min ?? 0,
+    readable(rec) ? rec.measured : display?.min ?? 0);
+  const max = Math.max(display?.max ?? 1, supplied?.max ?? 0, readable(rec) ? rec.measured : 0, min + 1);
+  return { min, max };
 }
 
-interface ParameterArcsProps {
-  recs: ParameterArcReading[];
-}
-
-export function ParameterArcs({ recs }: ParameterArcsProps) {
+export function ParameterArcs({ recs }: { recs: ParameterArcReading[] }) {
   const ordered = recs.slice(0, 6);
-
   if (!ordered.length) return null;
-
+  const radius = BASE_RADIUS + (ordered.length - 1) * RING_GAP;
+  const padding = RING_THICK / 2 + 3;
+  const bounds = `${CX - radius - padding} ${CY - radius - padding} ${2 * (radius + padding)} ${radius + 2 * padding}`;
   return (
-    <View style={styles.card}>
-      <View style={styles.topRow}>
-        <View style={styles.statusColumn}>
-          {ordered.map((rec) => {
-            const color = readingColor(rec);
-            return (
-              <View key={`label-${rec.paramKey}`} style={styles.statusItem}>
-                <View style={[styles.statusDot, { backgroundColor: color }]} />
-                <View style={styles.statusCopy}>
-                  <Text style={styles.statusLabel}>{rec.requiresReview ? rec.reviewLabel ?? 'קריאה בין טווחים' : rec.status ? STATUS_LABEL[rec.status]
-                    : rec.estimated ? 'קריאה משוערת' : 'הערכה מצילום'}</Text>
-                  <Text style={styles.statusName} numberOfLines={1}>
-                    {rec.labelHe}
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-
-        <Svg width={180} height={124} viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`} style={styles.arcSvg}>
+    <View style={styles.chart}>
+      <View style={styles.plot}>
+        {/* Keep the plot in one SVG. A positioned opaque View can paint above
+            the web SVG and cover its inner rings, regardless of JSX order. */}
+        <Svg width="100%" height={134} viewBox={bounds} preserveAspectRatio="xMidYMid meet" style={styles.arcSvg} accessible={false}>
           {ordered.map((rec, index) => {
-            const radius = BASE_RADIUS + (ordered.length - 1 - index) * RING_GAP;
+            const r = BASE_RADIUS + (ordered.length - 1 - index) * RING_GAP;
             const range = rangeFor(rec);
-            const valuePct = clamp01((rec.measured - range.min) / (range.max - range.min));
-            const targetPct = typeof rec.target === 'number' && Number.isFinite(rec.target)
-              ? clamp01((rec.target - range.min) / (range.max - range.min)) : undefined;
-            const valueAngle = START_ANGLE + (END_ANGLE - START_ANGLE) * valuePct;
-            const targetMark = targetPct === undefined ? undefined
-              : polar(CX, CY, radius, START_ANGLE + (END_ANGLE - START_ANGLE) * targetPct);
-            const valueMark = polar(CX, CY, radius, valueAngle);
-            const statusColor = readingColor(rec);
-
-            return (
-              <G key={`ring-${rec.paramKey}`}>
-                <Path
-                  d={arcPath(CX, CY, radius, START_ANGLE, END_ANGLE)}
-                  fill="none"
-                  stroke="#E7F2F5"
-                  strokeLinecap="round"
-                  strokeWidth={RING_THICK}
-                />
-                {valuePct > 0.01 ? (
-                  <Path
-                    d={arcPath(CX, CY, radius, START_ANGLE, Math.max(START_ANGLE + 1, valueAngle))}
-                    fill="none"
-                    stroke={statusColor}
-                    strokeLinecap="round"
-                    strokeOpacity={0.94}
-                    strokeWidth={RING_THICK}
-                  />
-                ) : null}
-                {valuePct > 0.01 ? <Circle cx={valueMark.x} cy={valueMark.y} fill={statusColor} r={RING_THICK * 0.46} /> : null}
-                {targetMark ? <Line
-                  x1={targetMark.x}
-                  x2={targetMark.x}
-                  y1={targetMark.y - RING_THICK / 2 - 2}
-                  y2={targetMark.y + RING_THICK / 2 + 2}
-                  stroke={colors.text}
-                  strokeLinecap="round"
-                  strokeOpacity={0.52}
-                  strokeWidth={2}
-                /> : null}
-              </G>
-            );
+            const fraction = readable(rec) ? Math.max(0, Math.min(1, (rec.measured - range.min) / (range.max - range.min))) : undefined;
+            const valueAngle = fraction === undefined ? undefined : 180 + 180 * fraction;
+            const valueMark = valueAngle === undefined ? undefined : polar(r, valueAngle);
+            const target = typeof rec.target === 'number' && Number.isFinite(rec.target)
+              ? polar(r, 180 + 180 * Math.max(0, Math.min(1, (rec.target - range.min) / (range.max - range.min)))) : undefined;
+            return <G key={rec.paramKey}>
+              <Path d={arcPath(r, 360)} fill="none" stroke="#E4EFF2" strokeWidth={RING_THICK} strokeLinecap="round" />
+              {fraction !== undefined && fraction > 0.001 ?
+                <Path d={arcPath(r, valueAngle!)} fill="none" stroke={colorFor(rec, true)}
+                  strokeWidth={RING_THICK} strokeLinecap="round" /> : null}
+              {valueMark ? <>
+                <Circle cx={valueMark.x} cy={valueMark.y} r={RING_THICK * 0.7} fill={colors.surface} />
+                <Circle cx={valueMark.x} cy={valueMark.y} r={RING_THICK * 0.46} fill={colorFor(rec, true)} />
+              </> : null}
+              {target ? <Line x1={target.x} x2={target.x} y1={target.y - 7} y2={target.y + 7}
+                stroke={colors.textSoft} strokeWidth={1.5} strokeOpacity={0.65} strokeLinecap="round" /> : null}
+            </G>;
           })}
         </Svg>
       </View>
-
-      <View style={styles.legend}>
-        <View style={styles.legendHeader}>
-          <Text style={styles.legendMeta}>מדד</Text>
-          <Text style={styles.legendMeta}>הערכה מצילום</Text>
-        </View>
-        {ordered.map((rec) => {
-          return (
-            <View key={`row-${rec.paramKey}`} style={styles.legendRow}>
-              <View style={styles.legendRight}>
-                <Text style={styles.paramName}>{rec.labelHe}</Text>
-                {typeof rec.target === 'number' && Number.isFinite(rec.target) ? (
-                  <Text style={styles.target}>מרכז טווח ההשוואה: {formatValue(rec.target, rec.unit)}</Text>
-                ) : null}
-              </View>
-              <View style={styles.legendLeft}>
-                <Text style={[styles.valuePill, { backgroundColor: readingColor(rec) }]}>
-                  {formatValue(rec.measured, rec.unit, rec.estimated)}
-                </Text>
-              </View>
+      <View style={styles.readings}>
+        {ordered.map(rec => (
+          <View key={rec.paramKey} style={[styles.reading, { backgroundColor: tileBackground(rec), borderColor: tileBorder(rec) }]} accessible
+            accessibilityLabel={`${rec.labelHe}, ${formatValue(rec)}, ${statusLabel(rec)}`}>
+            <Text style={styles.name}>{rec.paramKey === 'ph' ? 'חומציות' : rec.labelHe}</Text>
+            <View style={styles.valueRow}>
+              {readable(rec) && rec.estimated ? <Text style={styles.approximation}>כ־</Text> : null}
+              <Text style={styles.value} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+                {displayNumber(rec)}
+              </Text>
             </View>
-          );
-        })}
+            <Text style={styles.unit}>{rec.paramKey === 'ph' ? 'pH' : rec.unit || ' '}</Text>
+            <View style={[styles.statusRow, { backgroundColor: badgeBackground(rec) }]}>
+              <View style={[styles.dot, { backgroundColor: colorFor(rec) }]} />
+              <Text style={[styles.status, { color: colorFor(rec) }]}>{tileStatus(rec)}</Text>
+            </View>
+          </View>
+        ))}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 22,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    padding: 16,
-    ...shadows.card,
-  },
-  topRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  arcSvg: {
-    marginTop: 2,
-  },
-  statusColumn: {
-    flex: 1,
-    paddingTop: 0,
-    gap: 10,
-  },
-  statusItem: {
-    flexDirection: 'row-reverse',
-    alignItems: 'flex-start',
-    gap: 8,
-  },
-  statusDot: {
-    marginTop: 4,
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-  },
-  statusCopy: {
-    flex: 1,
-  },
-  statusLabel: {
-    color: colors.text,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 12,
-    fontWeight: '900',
-    ...rtl.text,
-  },
-  statusName: {
-    marginTop: 2,
-    color: colors.muted,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 10,
-    fontWeight: '800',
-    ...rtl.text,
-  },
-  legend: {
-    marginTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.borderSoft,
-    paddingTop: 12,
-    gap: 9,
-  },
-  legendHeader: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  legendMeta: {
-    color: colors.muted,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 10,
-    fontWeight: '800',
-    ...rtl.text,
-  },
-  legendRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  legendLeft: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 7,
-  },
-  legendRight: {
-    flex: 1,
-    alignItems: 'flex-end',
-  },
-  valuePill: {
-    overflow: 'hidden',
-    borderRadius: radius.round,
-    color: colors.white,
-    fontFamily: typography.fontFamilyBold,
-    fontSize: 11,
-    fontWeight: '900',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    ...rtl.textCenter,
-  },
-  paramName: {
-    color: colors.text,
-    fontFamily: typography.fontFamilySemiBold,
-    fontSize: 12,
-    fontWeight: '900',
-    ...rtl.text,
-  },
-  target: {
-    marginTop: 2,
-    color: colors.muted,
-    fontFamily: typography.fontFamilyRegular,
-    fontSize: 10,
-    fontWeight: '800',
-    ...rtl.text,
-  },
+  chart: { gap: 14 },
+  plot: { alignSelf: 'center', width: '100%', maxWidth: 244, height: 134, justifyContent: 'center' },
+  arcSvg: { position: 'relative', zIndex: 1 },
+  readings: { ...rtl.row, alignItems: 'stretch', gap: 8 },
+  reading: { flex: 1, minWidth: 0, paddingHorizontal: 7, paddingTop: 13, paddingBottom: 11, borderRadius: 18,
+    borderWidth: 1, alignItems: 'center', gap: 4 },
+  name: { width: '100%', minHeight: 22, color: '#36576C', fontFamily: typography.fontFamilySemiBold, fontSize: 12,
+    lineHeight: 20, ...rtl.textCenter },
+  valueRow: { ...rtl.row, alignItems: 'baseline', justifyContent: 'center', maxWidth: '100%', gap: 2, minHeight: 41, marginTop: 2 },
+  approximation: { color: '#6C8494', fontFamily: typography.fontFamilyRegular, fontSize: 12, lineHeight: 24, ...rtl.text },
+  value: { flexShrink: 1, color: '#153C53', fontFamily: typography.fontFamilyBold, fontSize: 30, lineHeight: 41,
+    fontVariant: ['tabular-nums'], writingDirection: 'ltr', textAlign: 'center' },
+  unit: { minHeight: 17, color: '#6B8393', fontFamily: typography.fontFamilyMedium, fontSize: 11, lineHeight: 17,
+    writingDirection: 'ltr', textAlign: 'center' },
+  statusRow: { ...rtl.row, maxWidth: '100%', justifyContent: 'center', alignItems: 'center', gap: 4,
+    borderRadius: 9, minHeight: 26, paddingHorizontal: 7, paddingVertical: 4, marginTop: 'auto' },
+  dot: { width: 4, height: 4, borderRadius: 2, flexShrink: 0 },
+  status: { flexShrink: 1, fontFamily: typography.fontFamilySemiBold, fontSize: 11, lineHeight: 17, ...rtl.textCenter },
 });

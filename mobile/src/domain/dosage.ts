@@ -40,7 +40,7 @@ export interface DosageCalculationResult {
   policyVersion?: string;
   treatmentBlocked?: boolean;
 }
-export const TREATMENT_POLICY_VERSION = 'one-current-action-retest-2026-10-19';
+export const TREATMENT_POLICY_VERSION = 'volume-based-opening-portions-2026-10-20';
 export const MEASUREMENT_SAFETY_NOTE = 'הערכים הם הערכה מצילום בזמן הבדיקה. ייתכנו טעויות. אין להסתמך עליהם לבדם להוספת חומרים או לאישור רחצה. יש לאמת מדידה ולפעול לפי תווית המוצר. במצב חריג או לא ברור, פנה לאיש מקצוע. אין לערבב חומרים.';
 export const MEASUREMENT_ACTION = 'בחר מדד כדי לראות איך מתקנים אותו.';
 export const SHORT_TREATMENT_NOTE = 'לפני הוספת חומר, אמת את החריגה מול בדיקה אמינה והוראות הציוד. אין לערבב חומרים; צילום אינו אישור רחצה.';
@@ -49,7 +49,7 @@ export const TREATMENT_ORDER: StripParameter[] = ['alkalinity', 'ph', 'freeChlor
 function orderedSteps(parameter: ScanResultParameter, guidance: MetricGuidance): string {
   const kind = comparisonKind(parameter);
   if (kind === 'ok') return readingNeedsClarification(parameter)
-    ? 'הצבע בין דרגות שמשנות את כיוון הטיפול. בדוק שוב לפני הוספת חומר.'
+    ? 'ההתאמה למקרא אינה חד־משמעית. בצע סריקה חדשה לפני הוספת חומר.'
     : 'לפי ההערכה, אין צורך בתיקון מדד זה.';
   const action = guidance.action.replace(/^אם החריגה אומתה, /, '');
   if (parameter.key === 'freeChlorine' && kind === 'high') {
@@ -89,8 +89,9 @@ function statusCard(parameter: ScanResultParameter): DosageRecommendation {
     exactAmountAvailable: false,
   };
 }
-// The current catalog has no manufacturer dosing protocols. Keep correction
-// directions usable while omitting unsupported numerical quantities and timers.
+// Current eligibility is recalculated; an optional treatmentPlan separately
+// archives the original instructions/quantity for reading in history. Archives
+// cannot authorize another dose. The stored legacy product branch stays disabled.
 export function calculateDosage(result: StripAnalysisResult, pool?: Pool): DosageCalculationResult {
   const volumeMissing = !pool || !Number.isFinite(pool.volumeLiters) || pool.volumeLiters <= 0;
   const invalidReading = result.accepted === false || result.isValidStrip === false || result.lowConfidence ||
@@ -105,8 +106,8 @@ export function calculateDosage(result: StripAnalysisResult, pool?: Pool): Dosag
     .map(statusCard)
     .sort((a, b) => TREATMENT_ORDER.indexOf(a.paramKey) - TREATMENT_ORDER.indexOf(b.paramKey))
     .map((rec) => invalidReading ? { ...rec, guidance: undefined, actionHe: 'צלם סטיק חדש וברור לפני קבלת הנחיות.' } : rec);
-  // One current action in the original order. Low pH retains priority; the
-  // chlorine plan follows alkalinity/pH correction, without numerical doses.
+  // One current action: when both TA and pH are low, correct TA first. Otherwise
+  // low pH retains priority over an acid treatment for high TA.
   const requiredReadingsPresent = ['ph', 'freeChlorine', 'alkalinity'].every((key) =>
     recommendations.some((rec) => rec.paramKey === key)) &&
     (result.brandId !== 'aquachek-pro-5in1' || result.parameters.some(parameter =>
@@ -121,6 +122,7 @@ export function calculateDosage(result: StripAnalysisResult, pool?: Pool): Dosag
     !Number.isFinite(ph.alternativeMeasured) || ph.alternativeMeasured < ph.comparisonRange.min
   );
   let primaryRecommendation = invalidReading || !requiredReadingsPresent ? undefined :
+    ph?.status === 'low' && alkalinity?.status === 'low' ? alkalinity :
     ph?.status === 'low' || (alkalinity?.status === 'high' && mayHaveLowPh) ? ph :
     recommendations.find((rec) => rec.status !== 'ok');
   // Keep alkalinity/pH correction first, and address excessive free chlorine
@@ -149,10 +151,10 @@ export function calculateDosage(result: StripAnalysisResult, pool?: Pool): Dosag
     recommendations,
     primaryRecommendation,
     summary: invalidReading ? 'צלם סטיק חדש וברור לפני קבלת הנחיות.' : primaryRecommendation?.actionHe.split('\n')[0] ?? chlorinePlan?.summary ??
-      (!requiredReadingsPresent ? 'הבדיקה חלקית. השלם את המדדים החסרים לפני טיפול.'
+      (!requiredReadingsPresent ? 'הבדיקה חלקית. בצע סריקה חדשה לקבלת המדדים החסרים.'
         : totalOutsideRange ? 'הכלור הכולל מחוץ לטווח ההשוואה. קרא אותו יחד עם הכלור החופשי לפני בחירת טיפול.'
         : recommendations.some(rec => rec.actionUncertain) || (totalChlorine && readingNeedsClarification(totalChlorine))
-          ? 'בחלק מהמדדים הצבע בין טווחים. בדוק אותם שוב לפני בחירת חומר.'
+          ? 'בחלק מהקריאות לא התקבלה התאמה חד־משמעית למקרא. בצע סריקה חדשה לפני טיפול.'
           : 'לפי ההערכה, המדדים בטווח ההשוואה. אין צורך בתיקון כדי להגיע למרכז הטווח.'),
     safetyNote: MEASUREMENT_SAFETY_NOTE,
     retestNote: 'בדוק שוב במועד שמופיע בהוראות המוצר. זמן המתנה או צילום לבדם אינם אישור רחצה.',
@@ -172,6 +174,7 @@ export function protectAnalysisResult(result: StripAnalysisResult, pool?: Pool):
     parameters: result.parameters.map((parameter) => {
       const kind = comparisonKind(parameter);
       const actionUncertain = readingNeedsClarification(parameter);
+      const unclearTotalChlorine = parameter.key === 'totalChlorine' && actionUncertain;
       const chlorineIssue = parameter.key === 'totalChlorine' ? chlorineReview : undefined;
       return {
         ...parameter,
@@ -179,9 +182,9 @@ export function protectAnalysisResult(result: StripAnalysisResult, pool?: Pool):
         status: {
           kind: kind ?? parameter.status.kind,
           label: chlorineIssue ? chlorineIssue.reason === 'gap' ? 'חשד לכלור קשור' : 'קריאות סותרות'
-            : actionUncertain ? 'קריאה בין טווחים' : kind === undefined ? 'נתוני ההשוואה אינם זמינים' : kind === 'ok' ? 'בטווח לפי ההערכה'
+            : unclearTotalChlorine ? 'נדרש צילום חוזר' : kind === undefined ? 'נתוני ההשוואה אינם זמינים' : kind === 'ok' ? 'בטווח לפי ההערכה'
             : kind === 'low' ? 'מתחת לטווח ההשוואה' : 'מעל לטווח ההשוואה',
-          tone: actionUncertain || chlorineIssue ? 'warning' as const : kind === undefined ? 'neutral' as const : kind === 'ok' ? 'success' as const : 'warning' as const,
+          tone: unclearTotalChlorine || chlorineIssue ? 'warning' as const : kind === undefined ? 'neutral' as const : kind === 'ok' ? 'success' as const : 'warning' as const,
         },
         recommendation: chlorineReview && (parameter.key === 'freeChlorine' || parameter.key === 'totalChlorine')
           ? chlorinePlan!.summary : dosage.recommendations.find((rec) => rec.paramKey === parameter.key)?.actionHe ??

@@ -1,6 +1,7 @@
-import type { ScanParameterStatusKind, ScanResultParameter } from './scanResults';
+import type { ScanParameterStatusKind, ScanResultParameter, StripAnalysisResult } from './scanResults';
 import type { StripParameter } from './strip';
-import { comparisonKind, type ChlorineReview } from './readingComparison';
+import { comparisonKind, getChlorineReview, type ChlorineReview } from './readingComparison';
+import { totalChlorinePresentation } from './chlorinePresentation';
 
 export interface MetricGuidance {
   action: string;
@@ -10,13 +11,19 @@ export interface MetricGuidance {
   steps: string[];
 }
 
-// General guidance, never a chemical quantity, a product-specific protocol or
-// swim clearance. Comparison bands alone are not a treatment indication.
+// General guidance. Separate stagedDosage derives supported maintenance
+// quantities; neither layer provides swim clearance.
 // Sources: CDC Home Pool Water Treatment and Testing / Pool Chemical Safety;
 // Taylor Technologies Total Alkalinity; Pentair Pool Water Chemistry.
 export const GUIDANCE_SOURCES = [
+  { label: 'מנת תחזוקה לחומצה — מסמך מוצר HASA', url: 'https://hasa.com/hubfs/Product%20Assets/Muriatic%20Acid/Muriatic%20Acid%20-%20Product%20Page.pdf' },
+  { label: 'הרכב וצפיפות חומצת הייחוס — HASA', url: 'https://hasa.com/hubfs/Safety%20Data%20Sheets/SDS%20-%20Safety%20Data%20Sheets/HASA%20Muriatic%20Acid_2026.pdf' },
+  { label: 'מנת פתיחה לנתרן פחמתי 99% — תווית HTH', url: 'https://images.thdstatic.com/catalog/pdfImages/e3/e33cb098-b9a6-4a26-83d2-1c7fecc0fa11.pdf' },
+  { label: 'חישובי מינון ואיזון מים — מחלקת הבריאות של אינדיאנה', url: 'https://www.in.gov/health/eph/public-swimming-pool-and-spa-program/chemical-adjustment-formulas-for-swimming-pools/' },
+  { label: 'ריכוזי כלור נוזלי — Olin', url: 'https://olinchloralkali.com/wp-content/uploads/sites/5/2025/08/Olin-Sodium-Hypochlorite-PSM.pdf' },
   { label: 'בדיקות מים וחיטוי — CDC', url: 'https://www.cdc.gov/healthy-swimming/about/home-pool-and-hot-tub-water-treatment-and-testing.html' },
   { label: 'כלור קשור ופער בין קריאות הכלור — CDC', url: 'https://www.cdc.gov/healthy-swimming/toolkit/chloramines-and-pool-operation.html' },
+  { label: 'טיפול בכלור קשור — מחלקת הבריאות של אינדיאנה', url: 'https://www.in.gov/health/eph/files/How-To-Shock-The-Pool-2022.pdf' },
   { label: 'כלור חופשי, כולל וטיפול שוק — AquaChek', url: 'https://www.aquachek.com/faq/' },
   { label: 'בטיחות בחומרים — CDC', url: 'https://www.cdc.gov/healthy-swimming/toolkit/pool-chemical-safety.html' },
   { label: 'אלקליניות — Taylor Technologies', url: 'https://taylortechnologies.com/blogs/news/pool-total-alkalinity-explained' },
@@ -35,29 +42,77 @@ export interface ChlorineActionPlan {
   treatmentNote?: string;
 }
 
-// Conditional correction directions, not a shock dose inferred from a photo.
+// App observation interval with no chemical addition. This is not a measured
+// turnover time, a chloramine-removal protocol, or a swimming re-entry time.
+export const CHLORINE_RECHECK_HOURS = 2;
+
+// Scan-only follow-up directions, not a shock dose inferred from a photo.
 // TC/FC alternatives may overlap: a gap is a suspicion, not confirmed CC.
 export function buildChlorineActionPlan(review: ChlorineReview): ChlorineActionPlan {
   if (review.reason === 'inconsistent') return {
     title: 'קריאות הכלור אינן תואמות',
-    summary: 'בדוק מחדש את שני סוגי הכלור לפני בחירת טיפול.',
+    summary: 'אל תוסיף חומר לפי הקריאה הסותרת; בדוק את שני סוגי הכלור.',
     explanation: 'כלור כולל אינו יכול להיות נמוך מכלור חופשי. אין להסיק מכאן שחסר כלור.',
     steps: [
-      'בדוק כלור כולל וחופשי בערכת DPD שמודדת את שניהם, לפי הוראותיה.',
-      'בחר את הטיפול לפי התוצאות העדכניות; אין להוסיף חומר בגלל הקריאה הסותרת.',
+      'אל תוסיף חומר לפי הקריאה הסותרת.',
+      'טבול סטיק חדש וצלם אותו באפליקציה לפי הוראות הסטיק.',
+      'אם הסתירה חוזרת, פנה לאיש בריכות לפני טיפול בחומרים.',
     ],
   };
   return {
-    title: 'הפחתת כלור קשור',
-    summary: 'לכלור קשור גבוה: טיפול שוק מתאים לפי התווית, סחרור ובדיקה חוזרת.',
-    explanation: 'לפי הקריאות, הכלור הכולל גבוה מהחופשי. כיוון הטיפול בכלור קשור גבוה הוא שוק מתאים.',
+    title: 'סחרור ובדיקה חוזרת',
+    summary: `הפעל סחרור וסינון וסרוק סטיק חדש לאחר ${CHLORINE_RECHECK_HOURS} שעות.`,
+    explanation: 'כלור כולל מורכב מכלור חופשי וכלור קשור. הפער בסריקה מעלה חשד לכלור קשור. הצעד הנוכחי הוא מעקב ללא הוספת חומר; סחרור וסינון לבדם אינם מבטיחים שהפער יתוקן.',
     steps: [
-      'לטיפול בכלור קשור גבוה, השתמש במוצר שוק כלורי מתאים לבריכה ולמערכת, לפי התווית וללא רוחצים.',
-      'הפעל סחרור ואוורור לפי הוראות המוצר. אין לערבב חומרים.',
-      'לאחר זמן ההמתנה שבתווית, בדוק שוב כלור כולל, חופשי ו־pH.',
-      'חזור לרחצה רק כשהמדדים עומדים בדרישות המוצר ומערכת החיטוי.',
+      `הפעל את משאבת הסחרור והסינון למשך ${CHLORINE_RECHECK_HOURS} שעות, לפי הוראות המערכת.`,
+      'אל תוסיף כעת כלור, חומר שוק או מנטרל לפי הבדיקה הזו.',
+      `לאחר ${CHLORINE_RECHECK_HOURS} שעות, סרוק סטיק חדש באפליקציה. אם הפער נשאר, פנה לאיש בריכות.`,
     ],
-    treatmentNote: 'הקריאה מצילום היא הערכה. לפני טיפול שוק, אשר כלור קשור גבוה בערכת DPD ובדוק התאמה ל־pH ולמייצב.',
+    treatmentNote: 'שעתיים הן מרווח מעקב באפליקציה, ולא זמן תיקון מובטח או אישור רחצה. אם הוספת חומר, זמן ההמתנה שבתווית קודם. אם הפער נשאר בסריקה החוזרת, או שיש עכירות או גירוי, פנה לאיש בריכות; אין להמשיך בסבבי סחרור בלבד או לנחש כמות שוק.',
+  };
+}
+
+// A visible action route, independent of whether a numeric proposal was saved.
+// The upper TC candidate can trigger review, never a CC result or shock dose.
+// Original parameters, chlorine-pair evidence and numeric eligibility stay intact.
+export function buildScanChlorineActionPlan(result: StripAnalysisResult): ChlorineActionPlan | undefined {
+  if (result.accepted === false || result.isValidStrip === false || result.lowConfidence ||
+      result.source === 'mock' || result.source === 'remote-mock' ||
+      (result.failureReason && result.failureReason !== 'none')) return undefined;
+  const review = getChlorineReview(result.parameters);
+  if (review?.reason === 'inconsistent') return buildChlorineActionPlan(review);
+  const total = totalChlorinePresentation(result.parameters.find(parameter => parameter.key === 'totalChlorine'));
+  const free = result.parameters.find(parameter => parameter.key === 'freeChlorine');
+  const freeKind = free ? comparisonKind(free) : undefined;
+  const totalOutside = total?.kind === 'high' || total?.kind === 'low';
+  if (!review && !totalOutside) return undefined;
+  if (freeKind === 'high') return {
+    title: 'מפחיתים את הכלור הגבוה',
+    summary: 'הפחת או השהה הזנת כלור לפי הוראות המערכת והמשך סחרור.',
+    explanation: 'גם הכלור החופשי גבוה מטווח ההשוואה. זה מסלול להפחתת הזנת כלור; אין להוסיף עוד כלור רק בגלל הכלור הכולל.',
+    steps: [
+      'אל תוסיף כלור נוסף. הפחת או השהה הזנת כלור לפי הוראות המערכת.',
+      'הפעל סחרור וסינון לפי הוראות המערכת.',
+      'בדוק שוב כלור חופשי ו־pH לפני חידוש ההזנה, לפי דרישות המוצר והמערכת.',
+    ],
+    treatmentNote: 'אין להסיק זמן רחצה מהצילום. אין להוסיף מנטרל כלור ללא הוראות למוצר המסוים.',
+  };
+  if (review?.reason === 'gap') return buildChlorineActionPlan(review);
+  if (total?.usesUpperCandidate && total.kind === 'high' && free && freeKind && total.value > free.value) {
+    const plan = buildChlorineActionPlan({ reason: 'gap' });
+    return { ...plan,
+      explanation: 'בכלור הכולל מוצגת האפשרות הגבוהה מבין שתי התאמות למקרא. היא מעלה חשד לפער מול הכלור החופשי; אין לראות בפער הזה מדידה של כלור קשור או לחשב ממנו כמות שוק.',
+    };
+  }
+  return {
+    title: 'משלימים את הטיפול בכלור',
+    summary: 'בחר את תיקון הכלור לפי בדיקה עדכנית של הכלור החופשי והכולל.',
+    explanation: 'חריגה בכלור הכולל לבדה אינה קובעת אם להוסיף כלור או להפחית אותו. נדרשת גם קריאה מתאימה של הכלור החופשי.',
+    steps: [
+      'הפעל סחרור וסינון לפי הוראות המערכת.',
+      'טבול סטיק חדש וסרוק אותו באפליקציה כדי לקרוא את שני סוגי הכלור.',
+      'בחר את הצעד הבא לפי הסריקה החדשה. אם לא מתקבלת קריאה מתאימה, פנה לאיש בריכות לפני הוספת חומר.',
+    ],
   };
 }
 
@@ -72,8 +127,8 @@ function guidanceFor(key: StripParameter, kind: ScanParameterStatusKind): Metric
   };
   if (key === 'ph') return {
     action: kind === 'high'
-      ? 'אם החריגה אומתה, הורד pH עם חומר ייעודי לפי מינון התווית.'
-      : 'אם החריגה אומתה, העלה pH עם חומר ייעודי לפי מינון התווית.',
+      ? 'אם החריגה אומתה, הוסף חומצת מלח (HCl) המיועדת לבריכות להורדת pH, לפי מינון התווית.'
+      : 'אם החריגה אומתה, הוסף מעלה pH ‏(pH Plus), לפי מינון התווית.',
     followUp: 'אחרי הטיפול, בדוק שוב pH ואלקליניות במועד שמופיע בהוראות המוצר.',
     meaning: kind === 'high'
       ? 'pH גבוה יכול להפחית את יעילות הכלור. החריגה כאן היא ביחס לטווח ההשוואה שבאפליקציה.'
@@ -87,7 +142,7 @@ function guidanceFor(key: StripParameter, kind: ScanParameterStatusKind): Metric
   };
   if (key === 'freeChlorine') return {
     action: kind === 'low'
-      ? 'אמת כלור בערכת DPD. אם אושר חוסר, השלם כלור לפי הוראות מערכת החיטוי והמוצר.'
+      ? 'אם סריקה עדכנית מאשרת חוסר, הוסף כלור נוזלי לבריכות לפי מינון התווית והוראות מערכת החיטוי.'
       : 'הפחת או השהה הזנת כלור לפי הוראות המערכת, והמשך סחרור.',
     followUp: kind === 'low'
       ? 'בדוק גם pH ומייצב לפני בחירת המינון; בדוק כלור שוב לפי הוראות המוצר.'
@@ -95,7 +150,7 @@ function guidanceFor(key: StripParameter, kind: ScanParameterStatusKind): Metric
     meaning: kind === 'low'
       ? 'כלור חופשי הוא החלק הזמין לחיטוי. רמה נמוכה עלולה להעיד שאין מספיק חומר חיטוי, אך קריאת סטיק לבדה אינה קובעת זאת.'
       : 'ההערכה של הכלור החופשי גבוהה מטווח ההשוואה. אין לקבוע זמן רחצה או טיפול נוסף מהצילום.',
-    verification: 'אמת כלור חופשי בערכת DPD לפי הוראותיה, ובדוק גם pH. אחרי טיפול מרוכז, כלור גבוה מאוד יכול להלבין את בדיקת הצבע וליצור קריאת אפס או קריאה נמוכה שגויה.',
+    verification: 'טבול סטיק חדש וסרוק באפליקציה לפי הוראות הסטיק. אחרי טיפול מרוכז, קריאת אפס או קריאה נמוכה עלולה להיות שגויה; במקרה כזה פנה לאיש בריכות לפני הוספה נוספת.',
     steps: [CHECK_SPEC, 'ברר אם החומר מכיל מייצב כלור או אם נוסף מייצב בנפרד; הדבר משנה את דרישות החיטוי.',
       kind === 'low'
         ? 'אם מדידה אמינה אישרה חוסר, בדוק שמערכת החיטוי פועלת לפי הוראות היצרן וקבל הוראות תיקון המתאימות למערכת. אל תוסיף עוד כלור בגלל קריאת אפס שלא אומתה.'
@@ -104,8 +159,8 @@ function guidanceFor(key: StripParameter, kind: ScanParameterStatusKind): Metric
   };
   if (key === 'alkalinity') return {
     action: kind === 'low'
-      ? 'אם החריגה אומתה, השתמש במעלה אלקליניות לפי מינון התווית.'
-      : 'אם החריגה אומתה, הורד אלקליניות עם מוצר מתאים לפי הוראות התווית.',
+      ? 'אם החריגה אומתה, הוסף מעלה אלקליניות (סודה לשתייה ייעודית לבריכות), לפי מינון התווית.'
+      : 'אם החריגה אומתה, הוסף חומצת מלח (HCl) המיועדת לבריכות, לפי מינון התווית.',
     followUp: 'אחרי הטיפול, בדוק שוב אלקליניות ו־pH לפי הוראות המוצר.',
     meaning: kind === 'low'
       ? 'אלקליניות מסייעת לייצב את ה־pH. אלקליניות נמוכה יכולה לגרום לשינויים חדים בו.'

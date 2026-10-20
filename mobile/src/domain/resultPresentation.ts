@@ -58,7 +58,7 @@ export function resultStatus(result?: StripAnalysisResult) {
 
 export function nextAction(result?: StripAnalysisResult) {
   if (!result) return 'בצע בדיקה ראשונה כדי לקבל הערכה למדדים.';
-  if (resultStatus(result).tone === 'neutral') return 'הבדיקה חלקית. השלם את המדדים החסרים לפני טיפול.';
+  if (resultStatus(result).tone === 'neutral') return 'הבדיקה חלקית. בצע סריקה חדשה לקבלת המדדים החסרים.';
   if (resultStatus(result).label === 'נדרש צילום חוזר')
     return 'צלם סטיק חדש וברור לפני קבלת המלצת טיפול.';
   if (resultStatus(result).label === 'כלור כולל מחוץ לטווח ההשוואה')

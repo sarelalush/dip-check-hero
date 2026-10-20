@@ -1,5 +1,6 @@
 import type { StatusTone } from '../components/StatusBadge';
 import type { DosageCalculationResult } from './dosage';
+import type { SavedTreatmentPlan } from './savedTreatmentPlan';
 import type { StripParameter } from './strip';
 import type { CaptureMetadata, ImageQualityReport } from './captureQuality';
 import type { PadColorBand, PadColorBox } from '../../../supabase/functions/_shared/pad-color-geometry';
@@ -113,4 +114,5 @@ export interface StripAnalysisResult {
   parameters: ScanResultParameter[];
   recommendation: string;
   dosage?: DosageCalculationResult;
+  treatmentPlan?: SavedTreatmentPlan;
 }

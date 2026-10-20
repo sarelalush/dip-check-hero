@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useAuth } from './AuthContext';
+import { dpdFollowUpIssue, type DpdReading } from '../domain/chlorineShock';
 
 export interface TreatmentRecord {
   testId: string;
@@ -17,11 +18,20 @@ export interface TreatmentRecord {
   performedAt: number;
   retestAt?: number;
   notificationId?: string;
+  // Earliest time to sample again for another computed portion, when the
+  // supported treatment has a known minimum. This is not swim clearance.
+  doseRetestNotBefore?: number;
+  kind?: 'chlorine-shock';
+  // A recorded full shock needs a new quantitative DPD review before automatic
+  // maintenance resumes. This local check is not a bathing authorization.
+  requiresDpdFollowUp?: boolean;
+  dpdFollowUp?: DpdReading;
 }
 interface TreatmentContextValue {
   hydrated: boolean;
   error?: string;
   getTreatment: (testId: string) => TreatmentRecord | undefined;
+  getLatestPoolTreatment: (poolIds: string[]) => TreatmentRecord | undefined;
   saveTreatment: (record: TreatmentRecord) => Promise<void>;
 }
 const TreatmentContext = createContext<TreatmentContextValue | null>(null);
@@ -58,6 +68,14 @@ export function TreatmentProvider({ children }: { children: ReactNode }) {
                     typeof item.actionText === 'string' &&
                     Number.isFinite(item.performedAt),
                 )
+                .map((item) => {
+                  if (item.kind !== 'chlorine-shock') return item;
+                  const followUp = item.dpdFollowUp;
+                  const reviewed = item.requiresDpdFollowUp === false && followUp &&
+                    Number.isFinite(followUp.measuredAt) && followUp.measuredAt > item.performedAt &&
+                    !dpdFollowUpIssue(followUp);
+                  return { ...item, requiresDpdFollowUp: !reviewed, dpdFollowUp: reviewed ? followUp : undefined };
+                })
                 .slice(0, 200)
             : [];
           current.current = { owner, records: restored };
@@ -87,6 +105,11 @@ export function TreatmentProvider({ children }: { children: ReactNode }) {
       error,
       getTreatment: (testId) =>
         storedOwner === owner ? records.find((record) => record.testId === testId) : undefined,
+      getLatestPoolTreatment: (poolIds) => storedOwner === owner
+        ? records.filter(record => poolIds.includes(record.poolId))
+          .reduce<TreatmentRecord | undefined>((latest, record) =>
+            !latest || record.performedAt > latest.performedAt ? record : latest, undefined)
+        : undefined,
       async saveTreatment(record) {
         if (!owner || storedOwner !== owner || current.current.owner !== owner || saving.current)
           throw new Error('לא ניתן לשמור כרגע. נסה שוב בעוד רגע.');
